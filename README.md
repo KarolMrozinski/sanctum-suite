@@ -1,28 +1,41 @@
 <div align="center">
 
-# 🏛️ SANCTUM-SUITE
-### Sovereign Enterprise AI Safety & Cyber Resilience Platform
+  <br />
+  <h1>🏛️ SANCTUM-SUITE</h1>
+  <p><b>Next-Generation AI Safety & Autonomous Cyber Resilience Platform</b></p>
 
-[![License](https://img.shields.io/badge/license-Limited_Source--Available-orange.svg)](#)
-[![Python](https://img.shields.io/badge/python-3.11%2B-blue.svg)](#)
-[![Parrot OS](https://img.shields.io/badge/OS-Parrot_Sec_6.x_Containers-teal.svg)](#)
-[![OWASP](https://img.shields.io/badge/OWASP-LLM_Top_10_%7C_ASVS-red.svg)](#)
-[![Regulatory](https://img.shields.io/badge/compliance-DORA_%7C_NIS2_%7C_ISO_42001_%7C_TIBER--EU-gold.svg)](#)
-[![CI/CD](https://img.shields.io/badge/CI%2FCD-GitHub_Actions-green.svg)](#)
+  <p>
+    <i>Zintegrowana platforma państwowej cyber-odporności łącząca pasywne rozpoznanie infrastruktury, ewolucyjny Red-Teaming (GAN Mutation & APT Emulation), profiling jądra eBPF Cilium, orkiestrację Parrot OS, audyt pamięci CUDA GPU, proxy L7 Guardrail, tunelowanie Cyber Plumber, grafowy OSINT oraz certyfikację z normami DORA, NIS2, ISO/IEC 42001 i OWASP ASVS.</i>
+  </p>
 
-*Zintegrowana platforma państwowej cyber-odporności łącząca ewolucyjny Red-Teaming (GAN Mutation & APT Emulation), profiling jądra eBPF Cilium, orkiestrację Parrot OS, audyt pamięci CUDA GPU, proxy L7 Guardrail, tunelowanie Cyber Plumber, grafowy OSINT (SpiderGraph / Vx-Underground) oraz certyfikację z normami DORA, NIS2, ISO/IEC 42001 i OWASP ASVS.*
+  <p>
+    <a href="#cechy-systemu">Cechy Systemu</a> •
+    <a href="#architektura-systemu">Architektura</a> •
+    <a href="#szybki-start">Szybki Start</a> •
+    <a href="#integracja-cicd">Integracja CI/CD</a> •
+    <a href="#dostępne-komendy-cli">Komendy CLI</a> •
+    <a href="#licencja-systemu">Licencja</a>
+  </p>
 
-[Cechy Systemu](#cechy-systemu) • [Architektura Systemu](#architektura-systemu) • [Szybki Start](#szybki-start) • [Integracja CI/CD](#integracja-cicd) • [Licencja Systemu](#licencja-systemu)
+  <p>
+    <a href="https://github.com/KarolMrozinski/sanctum-suite"><img src="https://img.shields.io/badge/Version-1.0.0--Enterprise-38bdf8?style=for-the-badge&logo=github" alt="Version"></a>
+    <a href="https://python.org"><img src="https://img.shields.io/badge/Python-3.11%2B-blue?style=for-the-badge&logo=python&logoColor=white" alt="Python"></a>
+    <a href="https://nextjs.org"><img src="https://img.shields.io/badge/Dashboard-Next.js_14-000000?style=for-the-badge&logo=nextdotjs&logoColor=white" alt="Next.js"></a>
+    <a href="https://www.parrotsec.org"><img src="https://img.shields.io/badge/OS-Parrot_Sec_6.x-00d2ff?style=for-the-badge&logo=parrotsecurity&logoColor=white" alt="Parrot OS"></a>
+    <a href="https://ebpf.io"><img src="https://img.shields.io/badge/Kernel-eBPF_Cilium-f43f5e?style=for-the-badge&logo=ebpf&logoColor=white" alt="eBPF"></a>
+  </p>
 
----
+  <br />
 
 </div>
+
+---
 
 ## Cechy Systemu
 
 **SANCTUM-SUITE** to zintegrowana platforma cyber-odporności stworzona z myślą o nowoczesnych zespołach Security, SOC i rządowych agencjach cyberbezpieczeństwa. Platforma zabezpiecza całe środowisko aplikacyjne – od niskopoziomowego jądra Linuksa (eBPF Cilium), kontenerów i pamięci VRAM GPU, aż po agenty LLM oraz infrastrukturę krytyczną.
 
-Dzięki automatyzacji opartej o profilowanie eBPF, sanitację L7 Guardrail, matryce DORA/NIS2/ISO42001 oraz autonomicznych agentów SOAR, SANCTUM drastycznie skraca czas reakcji na incydenty i samoczynnie wdraża łatki bezpieczeństwa (Self-Healing PRs).
+Dzięki automatyzacji opartej o profilowanie eBPF, sanitację L7 Guardrail, matryce DORA/NIS2/ISO42001 oraz autonomicznych agentów SOAR, SANCTUM drastycznie skraca czas reakcji na incydenty (MTTR) i samoczynnie wdraża łatki bezpieczeństwa (Self-Healing PRs).
 
 ### Kluczowe Filary Systemu
 
@@ -69,13 +82,14 @@ Dzięki automatyzacji opartej o profilowanie eBPF, sanitację L7 Guardrail, matr
 
 ## Architektura Systemu
 
-Below logic outlines the automated audit execution pipeline within **SANCTUM-SUITE**:
+Poniższy schemat ilustruje kompletny potok wykonawczy automatycznego audytu w **SANCTUM-SUITE**:
 
 ```mermaid
 graph LR
-    classDef core fill:#0f172a,stroke:#38bdf8,stroke-width:2px,color:#fff;
+    classDef target fill:#0f172a,stroke:#38bdf8,stroke-width:2px,color:#fff;
     classDef process fill:#1e293b,stroke:#cbd5e1,stroke-width:1px,color:#fff;
-    classDef output fill:#1e3a8a,stroke:#60a5fa,stroke-width:1px,color:#fff;
+    classDef core fill:#312e81,stroke:#818cf8,stroke-width:2px,color:#fff;
+    classDef output fill:#064e3b,stroke:#34d399,stroke-width:1px,color:#fff;
 
     Target["🎯 Domain / Infrastructure"] --> Sanitizer["🛡️ L7 Sanitizer & eBPF Cilium"]
     Sanitizer --> OSINT["🔍 SpiderGraph OSINT, Parrot & GPU Probe"]
@@ -86,6 +100,7 @@ graph LR
     SOAR --> Patch["🩹 Self-Healing Auto-Patcher & GitHub PR"]
     Correlator --> Reports["📄 Signed RSA-2048 PDF/HTML Reports"]
 
-    class Target,Sanitizer,OSINT process;
+    class Target target;
+    class Sanitizer,OSINT process;
     class RedTeam,Correlator,Graph core;
     class SOAR,Patch,Reports output;
