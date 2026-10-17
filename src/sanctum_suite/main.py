@@ -7,6 +7,7 @@ from rich.progress import Progress, SpinnerColumn, TextColumn
 from sanctum_suite.orchestrator.engine import SanctumUnifiedOrchestrator
 from sanctum_suite.core.analytics import AnalyticsStoreEngine
 from sanctum_suite.core.tui import SanctumInteractiveDashboard
+from sanctum_suite.core.port_scanner import AsyncPortScanner
 
 app = typer.Typer(help="SANCTUM-SUITE: Enterprise Cyber Resilience Platform")
 console = Console()
@@ -78,6 +79,35 @@ def run_tui_dashboard(
     dashboard = SanctumInteractiveDashboard()
     dashboard.render_live_session(target, duration_seconds=5)
 
+@app.command(name="scan-ports")
+def scan_ports_cmd(
+    host: str = typer.Option("127.0.0.1", help="Adres IP lub domena do przeskanowania portów"),
+) -> None:
+    """Uruchamia szybki, asynchroniczny skan otwartych portów i usług."""
+    console.print(
+        Panel.fit(
+            f"[bold magenta]🔌 SANCTUM ASYNC PORT SCANNER[/bold magenta]\nTarget Host: [cyan]{host}[/cyan]",
+            border_style="magenta",
+        )
+    )
+
+    scanner = AsyncPortScanner()
+    with console.status("[bold green]Skanowanie otwartych portów TCP..."):
+        open_ports = scanner.run_sync_port_scan(host)
+
+    table = Table(title=f"Open Ports on {host}", header_style="bold cyan")
+    table.add_column("Port", style="yellow", justify="right")
+    table.add_column("Detected Service", style="green")
+    table.add_column("Status", style="bold red")
+
+    for port_info in open_ports:
+        table.add_row(str(port_info["port"]), port_info["service"], "OPEN")
+
+    console.print("\n")
+    if open_ports:
+        console.print(table)
+    else:
+        console.print("[dim yellow]Nie znaleziono otwartych portów w standardowym zakresie.[/dim yellow]")
 
 if __name__ == "__main__":
     app()
