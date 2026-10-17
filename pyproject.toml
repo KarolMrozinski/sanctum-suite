@@ -21,6 +21,8 @@ dependencies = [
     "reportlab>=4.0.0",
     "fastapi>=0.100.0",
     "uvicorn>=0.22.0",
+    "pytest>=7.4.0",
+    "pytest-asyncio>=0.21.0",
 ]
 [project.scripts]
 sanctum = "sanctum_suite.main:app"
