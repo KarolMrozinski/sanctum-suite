@@ -19,6 +19,8 @@ dependencies = [
     "duckdb>=0.9.0",
     "jinja2>=3.1.0",
     "reportlab>=4.0.0",
+    "fastapi>=0.100.0",
+    "uvicorn>=0.22.0",
 ]
 [project.scripts]
 sanctum = "sanctum_suite.main:app"

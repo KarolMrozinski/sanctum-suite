@@ -1,4 +1,5 @@
 import typer
+import uvicorn
 from rich.console import Console
 from rich.panel import Panel
 from rich.table import Table
@@ -112,6 +113,21 @@ def scan_ports_cmd(
     else:
         console.print("[dim yellow]Nie znaleziono otwartych portów w standardowym zakresie.[/dim yellow]")
 
+@app.command(name="serve")
+def start_api_server(
+    host: str = typer.Option("127.0.0.1", help="Adres IP interfejsu serwera API"),
+    port: int = typer.Option(8000, help="Port sieciowy serwera HTTP/WebSocket"),
+) -> None:
+    """Uruchamia serwer REST API i WebSockets (FastAPI + Uvicorn)."""
+    console.print(
+        Panel.fit(
+            f"[bold cyan]🌐 SANCTUM-SUITE REST & WEBSOCKET API SERVER[/bold cyan]\n"
+            f"Endpoint: [yellow]http://{host}:{port}[/yellow]\n"
+            f"Swagger Docs: [green]http://{host}:{port}/docs[/green]",
+            border_style="cyan",
+        )
+    )
+    uvicorn.run("sanctum_suite.api.server:app", host=host, port=port, reload=False)
 
 if __name__ == "__main__":
     app()
