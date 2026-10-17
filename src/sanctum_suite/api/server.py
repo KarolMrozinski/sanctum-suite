@@ -7,6 +7,8 @@ import json
 
 from sanctum_suite.orchestrator.engine import SanctumUnifiedOrchestrator
 from sanctum_suite.core.analytics import AnalyticsStoreEngine
+from sanctum_suite.core.sigma_yara import DetectionRuleGenerator
+from sanctum_suite.core.anomaly import MLAnomalyDetector
 
 app = FastAPI(
     title="SANCTUM-SUITE Enterprise API",
@@ -29,10 +31,15 @@ async def verify_api_key(api_key: str = Security(api_key_header)):
 
 orchestrator = SanctumUnifiedOrchestrator()
 analytics = AnalyticsStoreEngine()
+rules_gen = DetectionRuleGenerator()
+anomaly_detector = MLAnomalyDetector()
 
 
 class AuditRequest(BaseModel):
     target_domain: str
+
+class PromptInspectRequest(BaseModel):
+    prompt: str
 
 
 @app.get("/")
@@ -77,3 +84,30 @@ async def websocket_incident_stream(websocket: WebSocket) -> None:
             await asyncio.sleep(3)
     except WebSocketDisconnect:
         pass
+
+@app.post("/api/v1/inspect-prompt", dependencies=[Security(verify_api_key)])
+async def inspect_prompt_endpoint(payload: PromptInspectRequest) -> Dict[str, Any]:
+    """Skanuje prompt przez Guardrail Proxy oraz Anomaly Detector."""
+    is_blocked, msg, details = orchestrator.guardrail.inspect_prompt(payload.prompt)
+    anomaly_res = anomaly_detector.score_prompt_anomaly(payload.prompt)
+    
+    return {
+        "is_blocked": is_blocked,
+        "status_message": msg,
+        "guardrail_details": details,
+        "ml_anomaly_analysis": anomaly_res,
+    }
+
+
+@app.get("/api/v1/detection-rules", dependencies=[Security(verify_api_key)])
+async def get_detection_rules(audit_id: str = Query("SNC-0001", description="ID Audytu")) -> Dict[str, str]:
+    """Generuje natywne reguły Sigma i YARA dla wskazanego audytu."""
+    yara_rule = rules_gen.generate_yara_rule(audit_id)
+    sigma_rule = rules_gen.generate_sigma_rule(audit_id, "enterprise-core.com", [{"issue": "PROMPT_INJECTION_RISK"}])
+    
+    return {
+        "audit_id": audit_id,
+        "sigma_rule": sigma_rule,
+        "yara_rule": yara_rule,
+    }
+

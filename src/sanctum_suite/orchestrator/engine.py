@@ -15,6 +15,8 @@ from sanctum_suite.core.honeypot import DecoyHoneypotSensor
 from sanctum_suite.modules.osint import SpectreOsintModule
 from sanctum_suite.modules.shadow import ShadowAgentModule
 from sanctum_suite.modules.ghost import GhostCommModule
+from sanctum_suite.core.sigma_yara import DetectionRuleGenerator
+from sanctum_suite.core.anomaly import MLAnomalyDetector
 
 
 class SanctumUnifiedOrchestrator:
@@ -37,6 +39,8 @@ class SanctumUnifiedOrchestrator:
         self.guardrail = LLMGuardrailProxy()
         self.siem = SIEMIntegrationExporter()
         self.honeypot = DecoyHoneypotSensor()
+        self.rules_gen = DetectionRuleGenerator()
+        self.anomaly_detector = MLAnomalyDetector()
 
     def execute_full_resilience_audit(self, target_domain: str) -> dict:
         audit_id = f"SNC-{hash(target_domain) & 0xFFFF:04X}"
@@ -85,6 +89,14 @@ class SanctumUnifiedOrchestrator:
         # Generowanie raportów
         report_path_html = self.reporter.generate_html_report(audit_summary, f"report_{audit_id}.html")
         report_path_pdf = self.pdf_reporter.generate_pdf_report(audit_summary, f"report_{audit_id}.pdf")
+
+        sigma_rule = self.rules_gen.generate_sigma_rule(audit_id, target_domain, shadow_res["vulnerabilities"])
+        yara_rule = self.rules_gen.generate_yara_rule(audit_id)
+
+        audit_summary["detection_rules"] = {
+            "sigma": sigma_rule,
+            "yara": yara_rule,
+        }
 
         # Kryptograficzne podpisanie pliku PDF
         pdf_signature = self.signer.sign_file(report_path_pdf)
