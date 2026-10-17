@@ -47,6 +47,9 @@ from sanctum_suite.core.lowlevel_resilience import LowLevelResilienceEngine
 from sanctum_suite.core.exploit_lab import ExploitLabEngine
 from sanctum_suite.core.cyber_plumber import CyberPlumberNetworkEngine
 from sanctum_suite.core.spider_graph import SpiderGraphOsintEngine
+from sanctum_suite.core.cilium_profiler import CiliumSecurityProfileEngine
+from sanctum_suite.core.dora_iso_reporter import DoraIsoComplianceReporter
+from sanctum_suite.core.l7_sanitizer_proxy import L7GuardrailSanitizerProxy
 from sanctum_suite.modules.osint import SpectreOsintModule
 from sanctum_suite.modules.shadow import ShadowAgentModule
 from sanctum_suite.modules.ghost import GhostCommModule
@@ -55,7 +58,7 @@ from sanctum_suite.modules.multimodal_fuzzer import MultimodalSafetyFuzzer
 
 
 class SanctumUnifiedOrchestrator:
-    """Sovereign Enterprise Orchestration Engine z Exploit Lab, Cyber Plumber Network i Spider Graph OSINT."""
+    """Sovereign Enterprise Orchestration Engine z Cilium Profiler, DORA/ISO Reporter i L7 Guardrail Proxy."""
 
     def __init__(self) -> None:
         self.osint = SpectreOsintModule()
@@ -111,6 +114,9 @@ class SanctumUnifiedOrchestrator:
         self.exploit_lab = ExploitLabEngine()
         self.cyber_plumber = CyberPlumberNetworkEngine()
         self.spider_graph = SpiderGraphOsintEngine()
+        self.cilium_profiler = CiliumSecurityProfileEngine()
+        self.dora_iso_reporter = DoraIsoComplianceReporter()
+        self.l7_sanitizer = L7GuardrailSanitizerProxy()
 
     def execute_full_resilience_audit(self, target_domain: str, role: UserRole = UserRole.ADMIN, license_key: str = "SANCTUM-FREE-KEY", tenant_id: str = "default_tenant") -> dict:
         self.rbac.verify_permission(role, "RUN_AUDIT")
@@ -120,12 +126,15 @@ class SanctumUnifiedOrchestrator:
 
         audit_id = f"SNC-{hash(target_domain) & 0xFFFF:04X}"
 
+        # L7 Input Sanitization
+        sanitized_input = self.l7_sanitizer.sanitize_input_payload(target_domain)
+
         # Uruchomienie tunelu Cyber Plumber, mikro-kontenera Parrot Sec i AnonSurf
         plumber_tunnel = self.cyber_plumber.establish_multihop_tunnel("entry-node.proxy", "exit-node.proxy")
         parrot_container = self.parrot_containers.spawn_parrot_microcontainer("DEEP_SCAN")
         anonsurf_status = self.anonsurf.enable_anonsurf_tunnel()
 
-        # Faza 1: OSINT, Port, Container, GPU, Kernel Exploit Lab & Spider Graph Probe
+        # Faza 1: OSINT, Port, Container, GPU, Kernel Exploit Lab & Cilium eBPF Profiling
         osint_res = self.osint.scan_target(target_domain)
         probe_results = self.async_scanner.run_sync_batch_scan(osint_res["subdomains"])
         open_ports = self.port_scanner.run_sync_port_scan("127.0.0.1")
@@ -136,6 +145,7 @@ class SanctumUnifiedOrchestrator:
         lowlevel_res = self.lowlevel_resilience.execute_low_level_audit(target_domain)
         kernel_exploit_audit = self.exploit_lab.inspect_kernel_mitigations()
         spider_graph_res = self.spider_graph.build_infrastructure_graph(target_domain)
+        cilium_profile = self.cilium_profiler.generate_least_privilege_policy("llm-service")
 
         # Faza 2: AI Safety, Mutator, Agent Tool Fuzzing & Sovereign Threat Actor Emulation
         shadow_res = self.shadow.evaluate_llm_endpoints(osint_res["subdomains"])
@@ -146,13 +156,14 @@ class SanctumUnifiedOrchestrator:
         gan_mutations = self.gan_mutator.generate_mutations("ignore previous instructions")
         apt_simulation = self.threat_actors.simulate_threat_actor_ttps(target_domain, "EQUATION_GROUP_TAO")
 
-        # Faza 3: DLP, Forensics, Global Regulatory (DORA/NIS2/ISO42001) & OWASP LLM
+        # Faza 3: DLP, Forensics, DORA/ISO 42001 Certification & OWASP LLM
         honeytoken_info = self.dlp_shield.inject_synthetic_honeytoken("AWS_KEY")
         dlp_inspection = self.dlp_shield.inspect_output_for_exfiltration("Safe output without leak.")
         forensics_analysis = self.forensics.analyze_memory_dump("mem_sample.raw")
         nist_evaluation = self.nist_engine.evaluate_frameworks(shadow_res["vulnerabilities"])
         owasp_evaluation = self.owasp_engine.evaluate_owasp_top10(shadow_res["vulnerabilities"])
         global_compliance = self.global_regulatory.evaluate_global_compliance(shadow_res["vulnerabilities"])
+        dora_iso_scorecard = self.dora_iso_reporter.generate_audit_scorecard(shadow_res["vulnerabilities"])
         scorecard = self.parrot_owasp_reporter.generate_compliance_scorecard(owasp_evaluation, nist_evaluation)
 
         # Faza 4: Threat Correlation, Attack Graph & EDR Sync
@@ -184,6 +195,7 @@ class SanctumUnifiedOrchestrator:
             "license_tier": lic_info["tier"].value,
             "overall_score": final_score,
             "risk_level": risk.value,
+            "sanitized_input": sanitized_input,
             "plumber_tunnel": plumber_tunnel,
             "anonsurf_tunnel": anonsurf_status,
             "parrot_container": parrot_container,
@@ -199,6 +211,7 @@ class SanctumUnifiedOrchestrator:
             "parrot_scan": parrot_scan,
             "lowlevel_resilience": lowlevel_res,
             "kernel_exploit_audit": kernel_exploit_audit,
+            "cilium_profile": cilium_profile,
             "shadow_summary": shadow_res,
             "multi_turn_summary": multi_turn_res,
             "multimodal_summary": multimodal_res,
@@ -212,6 +225,7 @@ class SanctumUnifiedOrchestrator:
             "nist_evaluation": nist_evaluation,
             "owasp_evaluation": owasp_evaluation,
             "global_compliance": global_compliance,
+            "dora_iso_scorecard": dora_iso_scorecard,
             "compliance_scorecard": scorecard,
             "edr_telemetry": edr_telemetry,
             "k8s_isolation": k8s_isolation,

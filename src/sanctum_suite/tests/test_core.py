@@ -44,6 +44,9 @@ from sanctum_suite.core.lowlevel_resilience import LowLevelResilienceEngine
 from sanctum_suite.core.exploit_lab import ExploitLabEngine
 from sanctum_suite.core.cyber_plumber import CyberPlumberNetworkEngine
 from sanctum_suite.core.spider_graph import SpiderGraphOsintEngine
+from sanctum_suite.core.cilium_profiler import CiliumSecurityProfileEngine
+from sanctum_suite.core.dora_iso_reporter import DoraIsoComplianceReporter
+from sanctum_suite.core.l7_sanitizer_proxy import L7GuardrailSanitizerProxy
 
 def test_mitre_mapping():
     mitre = MitreMapperEngine()
@@ -391,4 +394,27 @@ def test_spider_graph_osint_engine():
     graph = spider.build_infrastructure_graph("target.internal")
     assert graph["nodes_count"] >= 4
     assert graph["edges_count"] >= 3
-    assert graph["format"] == "GraphML / JSON-LD"    
+    assert graph["format"] == "GraphML / JSON-LD"   
+
+def test_cilium_security_profile_engine():
+    engine = CiliumSecurityProfileEngine()
+    res = engine.generate_least_privilege_policy("inference-engine", "sanctum-ns")
+    assert res["status"] == "POLICY_GENERATED"
+    assert res["policy"]["kind"] == "CiliumNetworkPolicy"
+
+
+def test_dora_iso_compliance_reporter():
+    reporter = DoraIsoComplianceReporter()
+    res = reporter.generate_audit_scorecard([])
+    assert res["readiness_status"] == "CERTIFICATION_READY"
+    assert res["standard_evaluations"]["DORA_Art_6_ICT_Risk_Management"] == "COMPLIANT"
+
+
+def test_l7_guardrail_sanitizer_proxy():
+    proxy = L7GuardrailSanitizerProxy()
+    input_res = proxy.sanitize_input_payload("Valid text prompt")
+    assert input_res["is_clean"] is True
+
+    output_res = proxy.sanitize_output_payload("System token: SECRET_KEY")
+    assert output_res["leak_prevented"] is True
+    assert "[REDACTED]" in output_res["sanitized_response"]     
