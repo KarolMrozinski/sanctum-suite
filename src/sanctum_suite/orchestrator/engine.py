@@ -20,6 +20,8 @@ from sanctum_suite.core.github_integration import GitHubAutomatedPRPublisher
 from sanctum_suite.core.rbac import RBACPermissionManager, UserRole
 from sanctum_suite.core.compliance import RegulatoryComplianceEngine
 from sanctum_suite.core.attack_graph import AttackGraphEngine
+from sanctum_suite.core.task_queue import AsyncTaskQueueManager
+from sanctum_suite.core.container_scanner import DockerContainerCVEAnalyzer
 from sanctum_suite.modules.osint import SpectreOsintModule
 from sanctum_suite.modules.shadow import ShadowAgentModule
 from sanctum_suite.modules.ghost import GhostCommModule
@@ -28,7 +30,7 @@ from sanctum_suite.modules.multimodal_fuzzer import MultimodalSafetyFuzzer
 
 
 class SanctumUnifiedOrchestrator:
-    """Enterprise Orchestration Engine z EU AI Act compliance, Attack Graph i Client SDK."""
+    """Enterprise Orchestration Engine z Attack Graph UI, Task Queue i Container Scannerem."""
 
     def __init__(self) -> None:
         self.osint = SpectreOsintModule()
@@ -57,15 +59,18 @@ class SanctumUnifiedOrchestrator:
         self.multimodal_fuzzer = MultimodalSafetyFuzzer()
         self.compliance_engine = RegulatoryComplianceEngine()
         self.attack_graph_engine = AttackGraphEngine()
+        self.task_queue = AsyncTaskQueueManager()
+        self.container_scanner = DockerContainerCVEAnalyzer()
 
     def execute_full_resilience_audit(self, target_domain: str, role: UserRole = UserRole.ADMIN) -> dict:
         self.rbac.verify_permission(role, "RUN_AUDIT")
         audit_id = f"SNC-{hash(target_domain) & 0xFFFF:04X}"
 
-        # Faza 1: OSINT & Network Probing
+        # Faza 1: OSINT, Network Probing & Container Scanning
         osint_res = self.osint.scan_target(target_domain)
         probe_results = self.async_scanner.run_sync_batch_scan(osint_res["subdomains"])
         open_ports = self.port_scanner.run_sync_port_scan("127.0.0.1")
+        container_scan = self.container_scanner.inspect_container_image()
 
         # Faza 2: AI Safety Red-Teaming, Multi-Turn & Multimodal Fuzzing
         shadow_res = self.shadow.evaluate_llm_endpoints(osint_res["subdomains"])
@@ -103,6 +108,7 @@ class SanctumUnifiedOrchestrator:
             "osint_summary": osint_res,
             "probed_endpoints": probe_results,
             "open_ports": open_ports,
+            "container_scan": container_scan,
             "shadow_summary": shadow_res,
             "multi_turn_summary": multi_turn_res,
             "multimodal_summary": multimodal_res,

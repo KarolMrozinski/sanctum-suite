@@ -17,6 +17,8 @@ from fastapi import HTTPException
 from sanctum_suite.core.compliance import RegulatoryComplianceEngine
 from sanctum_suite.core.attack_graph import AttackGraphEngine
 from sanctum_client.client import SanctumSuiteClient
+from sanctum_suite.core.task_queue import AsyncTaskQueueManager
+from sanctum_suite.core.container_scanner import DockerContainerCVEAnalyzer
 
 def test_mitre_mapping():
     mitre = MitreMapperEngine()
@@ -152,3 +154,18 @@ def test_attack_graph_engine():
 def test_client_sdk_instantiation():
     client = SanctumSuiteClient(base_url="http://127.0.0.1:8000")
     assert client.headers["X-API-Key"] == "sanctum-secret-key-2026"        
+
+def test_task_queue_manager():
+    queue = AsyncTaskQueueManager()
+    task_id = queue.enqueue_audit_task("test.com")
+    assert task_id.startswith("task-")
+    
+    status = queue.get_task_status(task_id)
+    assert status["status"] == "QUEUED"
+
+
+def test_container_cve_analyzer():
+    analyzer = DockerContainerCVEAnalyzer()
+    res = analyzer.inspect_container_image("sanctum-suite:latest")
+    assert res["vulnerabilities_found"] >= 1
+    assert "cve_id" in res["cves"][0]    

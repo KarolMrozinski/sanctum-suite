@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
+import AttackGraphVisualizer from "@/components/AttackGraph3D";
 
 interface IncidentEvent {
   event: string;
@@ -59,6 +60,10 @@ export default function SanctumDashboard() {
           <h3 className="text-xs text-slate-400 uppercase tracking-wider">MITRE ATT&CK Mapping</h3>
           <p className="text-4xl font-extrabold text-rose-400 mt-2">2 Tactics</p>
           <span className="inline-block mt-3 text-xs text-rose-400 bg-rose-950/50 px-2 py-1 rounded border border-rose-800">AML.T0051 / T1190</span>
+        </div>
+
+        <div className="md:col-span-3 mt-4">
+          <AttackGraphVisualizer />
         </div>
 
         {/* Live Event Stream */}
