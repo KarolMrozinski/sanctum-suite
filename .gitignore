@@ -5,8 +5,14 @@ venv/
 *.log
 *.sqlite3
 *.duckdb
+sanctum_analytics.duckdb
+sanctum_audit.db
 .vscode/
 dist/
 build/
 *.egg-info/
+*.pdf
+*.html
+report_*.pdf
+report_*.html
 reports/
