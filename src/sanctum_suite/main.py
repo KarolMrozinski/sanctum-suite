@@ -17,7 +17,7 @@ console = Console()
 def run_full_audit(
     target: str = typer.Option("enterprise-core.com", help="Domena docelowa do przeprowadzenia pełnego audytu"),
 ) -> None:
-    """Uruchamia pełną sekwencję audytową (Async Probe + OSINT + Red-Teaming + DuckDB)."""
+    """Uruchamia pełną sekwencję audytową (Async Probe + OSINT + Red-Teaming + DuckDB + PDF/HTML Reports)."""
     console.print(
         Panel.fit(
             f"[bold cyan]🏛️ SANCTUM-SUITE UNIFIED ORCHESTRATOR[/bold cyan]\n"
@@ -46,7 +46,9 @@ def run_full_audit(
     table.add_row("Target Domain", result["target"])
     table.add_row("Probed Endpoints", str(len(result["probed_endpoints"])))
     table.add_row("Identified Vulnerabilities", str(len(result["shadow_summary"]["vulnerabilities"])))
-    table.add_row("Generated Report", result["report_path"])
+    table.add_row("Attack Chains Found", str(result["correlation"]["chain_count"]))
+    table.add_row("Generated HTML Report", result["report_path_html"])
+    table.add_row("Generated PDF Report", result["report_path_pdf"])
 
     console.print("\n")
     console.print(table)
@@ -79,6 +81,7 @@ def run_tui_dashboard(
     dashboard = SanctumInteractiveDashboard()
     dashboard.render_live_session(target, duration_seconds=5)
 
+
 @app.command(name="scan-ports")
 def scan_ports_cmd(
     host: str = typer.Option("127.0.0.1", help="Adres IP lub domena do przeskanowania portów"),
@@ -108,6 +111,7 @@ def scan_ports_cmd(
         console.print(table)
     else:
         console.print("[dim yellow]Nie znaleziono otwartych portów w standardowym zakresie.[/dim yellow]")
+
 
 if __name__ == "__main__":
     app()

@@ -18,6 +18,7 @@ dependencies = [
     "httpx>=0.25.0",
     "duckdb>=0.9.0",
     "jinja2>=3.1.0",
+    "reportlab>=4.0.0",
 ]
 [project.scripts]
 sanctum = "sanctum_suite.main:app"
