@@ -32,6 +32,9 @@ from sanctum_suite.core.dlp_shield import DLPShieldEngine
 from sanctum_suite.core.parrot_engine import ParrotSecEngine
 from sanctum_suite.core.anonsurf_proxy import AnonSurfProxyModule
 from sanctum_suite.core.parrot_forensics import ParrotForensicsEngine
+from sanctum_suite.core.parrot_containers import ParrotContainerOrchestrator
+from sanctum_suite.core.nist_compliance import NistComplianceEngine
+from sanctum_suite.core.gpu_probe import GPUMemorySecurityProbe
 
 def test_mitre_mapping():
     mitre = MitreMapperEngine()
@@ -286,4 +289,27 @@ def test_parrot_forensics_engine():
     forensics = ParrotForensicsEngine()
     res = forensics.analyze_memory_dump("dump.raw")
     assert res["forensic_status"] == "ANALYSIS_COMPLETE"
-    assert res["integrity_verified"] is True    
+    assert res["integrity_verified"] is True   
+
+def test_parrot_container_orchestrator():
+    orchestrator = ParrotContainerOrchestrator()
+    container_info = orchestrator.spawn_parrot_microcontainer("RECON")
+    assert "container_id" in container_info
+    assert container_info["status"] == "RUNNING"
+
+    term_res = orchestrator.terminate_container(container_info["container_id"])
+    assert term_res["status"] == "TERMINATED"
+
+
+def test_nist_compliance_engine():
+    engine = NistComplianceEngine()
+    eval_res = engine.evaluate_frameworks([])
+    assert eval_res["nist_ai_rmf"]["govern"] == "PASS"
+    assert eval_res["overall_compliance"] == "PASS"
+
+
+def test_gpu_memory_security_probe():
+    probe = GPUMemorySecurityProbe()
+    gpu_info = probe.inspect_gpu_runtime()
+    assert gpu_info["vram_status"] == "SECURE"
+    assert gpu_info["isolation_verified"] is True     
