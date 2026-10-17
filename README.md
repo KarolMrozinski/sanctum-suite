@@ -11,12 +11,13 @@
 
 *Jednolita platforma klasy Enterprise łącząca pasywne rozpoznanie infrastruktury, adaptacyjny Red-Teaming modeli LLM/Vision, automatyczną naprawę kodu (Self-Healing) oraz audyty zgodności regulacyjnej.*
 
-[Cechy Systemu](#-kluczowe-filary-systemu) • [Architektura](#-architektura-systemu) • [Szybki Start](#-szybki-start) • [Integracja CI/CD](#-integracja-cicd-github-actions-gate) • [Licencja](#-licencja)
+[Cechy Systemu](#cechy-systemu) • [Architektura](#architektura) • [Szybki Start](#szybki-start) • [Integracja CI/CD](#integracja-cicd) • [Licencja](#licencja)
 
 ---
 
 </div>
 
+<a id="cechy-systemu"></a>
 ## 📌 O Platformie
 
 **SANCTUM-SUITE** to zintegrowany SOC Workbench nowej generacji stworzony z myślą o nowoczesnych zespołach Security & DevOps. Platforma zabezpiecza całe środowisko aplikacyjne – od warstwy sieciowej i kontenerowej, aż po punkty końcowe sztucznej inteligencji.
@@ -64,6 +65,7 @@ Dzięki automatyzacji opartej o silnik korelacji zagrożeń, SANCTUM zmniejsza c
 
 ---
 
+<a id="architektura"></a>
 ## 🏗️ Architektura Systemu
 
 Below logic outlines the automated audit execution pipeline within **SANCTUM-SUITE**:
