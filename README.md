@@ -11,7 +11,7 @@
 
 *Jednolita platforma klasy Enterprise łącząca pasywne rozpoznanie infrastruktury, adaptacyjny Red-Teaming modeli LLM/Vision, automatyczną naprawę kodu (Self-Healing) oraz audyty zgodności regulacyjnej.*
 
-[Cechy Systemu](#-kluczowe-filar-systemu) • [Architektura](#-architektura-systemu) • [Szybki Start](#-szybki-start) • [Integracja CI/CD](#-integracja-cicd) • [Licencja](#-licencja)
+[Cechy Systemu](#-kluczowe-filary-systemu) • [Architektura](#-architektura-systemu) • [Szybki Start](#-szybki-start) • [Integracja CI/CD](#-integracja-cicd-github-actions-gate) • [Licencja](#-licencja)
 
 ---
 
