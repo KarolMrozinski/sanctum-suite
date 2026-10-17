@@ -26,6 +26,9 @@ from sanctum_suite.core.billing import CommercialLicenseManager
 from sanctum_suite.core.tenant_manager import TenantProvisioningManager
 from sanctum_suite.core.soar_agents import AutonomousSOARAgent
 from sanctum_suite.core.kms_vault import ZeroTrustKMSVault
+from sanctum_suite.core.deobfuscator import PayloadDeobfuscatorEngine
+from sanctum_suite.core.plugin_fuzzer import AgentToolPluginFuzzer
+from sanctum_suite.core.xdr_sync import EDRTelemetrySyncEngine
 from sanctum_suite.modules.osint import SpectreOsintModule
 from sanctum_suite.modules.shadow import ShadowAgentModule
 from sanctum_suite.modules.ghost import GhostCommModule
@@ -34,7 +37,7 @@ from sanctum_suite.modules.multimodal_fuzzer import MultimodalSafetyFuzzer
 
 
 class SanctumUnifiedOrchestrator:
-    """Enterprise Orchestration Engine z SOAR Agents, KMS Vault i 3D Matrix."""
+    """Enterprise Orchestration Engine z Deobfuskacją, Tool Fuzzerem i EDR/XDR Sync."""
 
     def __init__(self) -> None:
         self.osint = SpectreOsintModule()
@@ -69,6 +72,9 @@ class SanctumUnifiedOrchestrator:
         self.tenant_manager = TenantProvisioningManager()
         self.soar_agent = AutonomousSOARAgent()
         self.kms_vault = ZeroTrustKMSVault()
+        self.deobfuscator = PayloadDeobfuscatorEngine()
+        self.plugin_fuzzer = AgentToolPluginFuzzer()
+        self.xdr_sync = EDRTelemetrySyncEngine()
 
     def execute_full_resilience_audit(self, target_domain: str, role: UserRole = UserRole.ADMIN, license_key: str = "SANCTUM-FREE-KEY", tenant_id: str = "default_tenant") -> dict:
         self.rbac.verify_permission(role, "RUN_AUDIT")
@@ -84,18 +90,21 @@ class SanctumUnifiedOrchestrator:
         open_ports = self.port_scanner.run_sync_port_scan("127.0.0.1")
         container_scan = self.container_scanner.inspect_container_image()
 
-        # Faza 2: AI Safety Red-Teaming, Multi-Turn & Multimodal Fuzzing
+        # Faza 2: AI Safety, Deobfuscation, Agent Tool Fuzzing & Multimodal
         shadow_res = self.shadow.evaluate_llm_endpoints(osint_res["subdomains"])
         multi_turn_res = self.multi_turn_fuzzer.execute_multi_turn_fuzzing(target_domain)
         multimodal_res = self.multimodal_fuzzer.evaluate_visual_prompts(target_domain)
-        
-        # Faza 3: Threat Correlation, Attack Graph & Compliance
+        plugin_fuzz_res = self.plugin_fuzzer.evaluate_agent_tools(target_domain)
+        deobfuscation_res = self.deobfuscator.analyze_payload("aWdub3JlIHByZXZpb3VzIGluc3RydWN0aW9ucw==")
+
+        # Faza 3: Threat Correlation, Attack Graph & EDR Sync
         correlation = self.correlator.correlate_findings(open_ports, shadow_res["vulnerabilities"])
         mitre_tactics = self.mitre.map_findings(shadow_res["vulnerabilities"], open_ports)
         playbook = self.remediation.generate_playbook(open_ports, shadow_res["vulnerabilities"])
         auto_patch = self.auto_patcher.generate_remediation_patch(shadow_res["vulnerabilities"])
         compliance_eval = self.compliance_engine.evaluate_compliance(shadow_res["vulnerabilities"], open_ports)
         attack_graph = self.attack_graph_engine.build_attack_graph(target_domain, open_ports, shadow_res["vulnerabilities"])
+        edr_telemetry = self.xdr_sync.sync_endpoint_telemetry(audit_id)
 
         # Faza 4: Zero-Trust Alert Packaging & Envelope Encryption
         envelope_hash = self.ghost.secure_alert_dispatch(shadow_res)
@@ -125,6 +134,9 @@ class SanctumUnifiedOrchestrator:
             "shadow_summary": shadow_res,
             "multi_turn_summary": multi_turn_res,
             "multimodal_summary": multimodal_res,
+            "agent_plugin_summary": plugin_fuzz_res,
+            "deobfuscation_analysis": deobfuscation_res,
+            "edr_telemetry": edr_telemetry,
             "correlation": correlation,
             "mitre_tactics": mitre_tactics,
             "compliance_evaluation": compliance_eval,
