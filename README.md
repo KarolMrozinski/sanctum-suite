@@ -3,8 +3,9 @@
 [![Architecture](https://img.shields.io/badge/architecture-Modular%20%7C%20Enterprise%20Grade-darkblue)](#)
 [![Python](https://img.shields.io/badge/python-3.11%2B-blue)](#)
 [![Frontend](https://img.shields.io/badge/frontend-Next.js%2014%20%7C%20React-black)](#)
+[![AI Security](https://img.shields.io/badge/AI%20Red--Teaming-Multi--Turn%20Adaptive-purple)](#)
 [![Detection](https://img.shields.io/badge/rules-Sigma%20%7C%20YARA-red)](#)
-[![AI Security](https://img.shields.io/badge/AI%20Security-ML%20Anomaly%20Detection-purple)](#)
+[![Self-Healing](https://img.shields.io/badge/remediation-Automated%20Patching-emerald)](#)
 [![Framework](https://img.shields.io/badge/framework-MITRE%20ATT%26CK%20%7C%20ATLAS-orange)](#)
 [![SIEM](https://img.shields.io/badge/SIEM-CEF%20%7C%20Webhooks-purple)](#)
 [![Docker](https://img.shields.io/badge/docker-Ready-blue)](#)
@@ -12,15 +13,17 @@
 [![CI/CD](https://img.shields.io/badge/CI%2FCD-GitHub%20Actions-green)](#)
 [![License](https://img.shields.io/badge/license-View--Only-orange)](#)
 
-> **SANCTUM-SUITE** to zintegrowana, wielomodułowa platforma bezpieczeństwa klasy Enterprise. Łączy rozpoznanie powierzchni ataku (**SPECTRE-OSINT**), automatyczny Red-Teaming modeli LLM (**SHADOW-AGENT**), samoleczącą się sieć P2P Zero-Trust (**GHOST-COMM**), asynchroniczny skaner portów/usług, silnik korelacji zagrożeń z mapowaniem **MITRE ATT&CK/ATLAS**, automatyczne scenariusze naprawcze (Playbooks), generator reguł detekcyjnych **Sigma & YARA**, silnik detekcji anomalii oparty o heurystykę i entropię tekstu (**ML Anomaly Detection**), ochronne middleware **LLM Guardrail Proxy**, integrację **SIEM/CEF**, pasywny **Honeypot Sensor**, dedykowany pulpit webowy w **Next.js / React**, kryptograficzne podpisywanie raportów RSA oraz serwer **REST API / WebSockets** (`FastAPI` + `X-API-Key`).
+> **SANCTUM-SUITE** to zintegrowana, wielomodułowa platforma bezpieczeństwa klasy Enterprise. Łączy rozpoznanie powierzchni ataku (**SPECTRE-OSINT**), automatyczny wielostopniowy Red-Teaming modeli LLM (**Multi-Turn Adaptive Jailbreak Fuzzer** / **SHADOW-AGENT**), samoleczącą się sieć P2P Zero-Trust (**GHOST-COMM**), rozproszoną szynę zdarzeń (**Distributed Event Bus**), automatyczne generowanie poprawek kodu (**Self-Healing Code PRs**), asynchroniczny skaner portów/usług, silnik korelacji zagrożeń z mapowaniem **MITRE ATT&CK/ATLAS**, automatyczne scenariusze naprawcze (Playbooks), generator reguł detekcyjnych **Sigma & YARA**, silnik detekcji anomalii oparty o heurystykę i entropię tekstu (**ML Anomaly Detection**), ochronne middleware **LLM Guardrail Proxy**, integrację **SIEM/CEF**, pasywny **Honeypot Sensor**, dedykowany pulpit webowy w **Next.js / React**, kryptograficzne podpisywanie raportów RSA oraz serwer **REST API / WebSockets** (`FastAPI` + `X-API-Key`).
 
 ---
 
 ## ⚡ Kluczowe Moduły i Funkcjonalności Systemu
 
 - **SPECTRE-OSINT & Async Probing:** Pasywna agregacja aktywów cyfrowych, asynchroniczne sondowanie nagłówków i certyfikatów (`httpx` + `asyncio`).
-- **Async Port & Service Scanner:** Błyskawiczny, wielowątkowy skaner otwartych portów TCP (SSH, HTTP, HTTPS, DB, Ollama API).
-- **SHADOW-AGENT AI Red-Teaming:** Automatyczny fuzzing modeli LLM pod kątem *Prompt Injection*, wycieków instrukcji i złamań guardraili.
+- **Async Port & Service Scanner:** Błyskawiczny, wielowiątkowy skaner otwartych portów TCP (SSH, HTTP, HTTPS, DB, Ollama API).
+- **Multi-Turn Adaptive AI Red-Teaming:** Zaawansowany fuzzer symulujący wielostopniowe, konwersacyjne ataki socjotechniczne (np. *Crescendo Jailbreaks*) w celu testowania odporności modeli LLM.
+- **Automated Self-Healing Code Patcher:** Silnik generujący gotowe łatki kodu (Unified Diffs) oraz propozycje Pull Requestów naprawiających zidentyfikowane podatności.
+- **Distributed Telemetry Event Bus:** Rozproszona magistrala zdarzeń (kompatybilna z wzorcem Kafka/RabbitMQ) umożliwiająca asynchroniczną komunikację klastrów skanujących.
 - **Enterprise Web Dashboard (Next.js / React):** Nowoczesny pulpit nawigacyjny SOC Workbench wizualizujący metryki ryzyka oraz żywy strumień telemetrii przez WebSockets.
 - **LLM Guardrail Proxy & ML Anomaly Detection:** Inspection proxy filtrujące złośliwe prompty z analizą entropii tekstu i oceną anomalii w czasie rzeczywistym.
 - **Detection Rules Generator (Sigma & YARA):** Automatyczna synteza natywnych reguł **Sigma** (dla SIEM) i **YARA** (dla skanowania logów/pamięci) na podstawie wykrytych podatności.
@@ -30,14 +33,14 @@
 - **Threat Correlation & MITRE ATT&CK/ATLAS:** Wykrywanie złożonych łańcuchów ataku (*Attack Chains*) oraz taksonomia zagrożeń wg standardu **MITRE ATT&CK** i **MITRE ATLAS**.
 - **Remediation Playbook Engine:** Automatyczne generowanie skryptów hardeningowych (reguły `iptables`, polityki WAF i rekomendacje dla guardraili LLM).
 - **Cryptographic Report Signing:** Kryptograficzny stempel integralności raportów PDF/HTML przy użyciu kluczy **RSA-2048** (pliki `.sig`).
-- **Secured REST & WebSockets API:** Asynchroniczny serwer API z obsługą nagłówków `X-API-Key`, interaktywną dokumentacją Swagger UI, nowymi endpointami inspekcji promptów/reguł detekcji oraz strumieniowaniem alertów w czasie rzeczywistym.
+- **Secured REST & WebSockets API:** Asynchroniczny serwer API z obsługą nagłówków `X-API-Key`, interaktywną dokumentacją Swagger UI oraz strumieniowaniem alertów w czasie rzeczywistym.
 - **OLAP Analytics & Persistence:** Trwała analityka wariancji ryzyka w **DuckDB** oraz archiwizacja audytów w **SQLite**.
 - **Executive Reporting & Live TUI:** Podpisane cyfrowo raporty zgodności dla zarządu (**PDF** / **HTML**) oraz pełnoekranowy pulpit **Rich Live TUI Dashboard**.
 - **Enterprise Containerization & CI/CD:** Gotowy plik `Dockerfile` + `docker-compose.yml` oraz automatyczny potok testowy w **GitHub Actions**.
 
 ---
 
-## 🏗️ Pełna Architektura Przepływu Audytowego
+## 🏗️ Pełna Architettura Przepływu Audytowego
 
 ```mermaid
 graph TD
@@ -52,12 +55,14 @@ graph TD
     OSINT["SPECTRE-OSINT / Async Probe"]
     PortScan["Async Port Scanner"]
     Honeypot["Decoy Honeypot Sensor"]
-    RedTeam["SHADOW-AGENT (LLM Fuzzer)"]
+    RedTeam["Multi-Turn Adaptive Fuzzer / SHADOW-AGENT"]
     Correlator["Threat Correlation Engine"]
     Mitre["MITRE ATT&CK / ATLAS Mapper"]
     Playbook["Remediation Playbook Engine"]
+    AutoPatch["Automated Code Patcher (Self-Healing)"]
     SigmaYara["Sigma & YARA Rule Generator"]
     SIEM["SIEM Exporter (CEF / Webhook)"]
+    EventBus["Distributed Event Bus"]
     GhostMesh["GHOST-COMM Zero-Trust Mesh"]
     Signer["RSA-2048 Report Signer"]
     DuckDB["DuckDB OLAP Analytics"]
@@ -71,11 +76,11 @@ graph TD
     Orchestrator -->|3. Monitor Decoy Traps| Honeypot
     OSINT & PortScan -->|4. Feed Targets| RedTeam
     RedTeam & PortScan -->|5. Attack Chain & MITRE Mapping| Correlator & Mitre
-    Correlator & RedTeam -->|6. Generate Hardening Playbooks & Rules| Playbook & SigmaYara
-    Correlator -->|7. Export Telemetry & Dispatch Alerts| SIEM & GhostMesh
+    Correlator & RedTeam -->|6. Generate Hardening Playbooks, Patches & Rules| Playbook & AutoPatch & SigmaYara
+    Correlator -->|7. Export Telemetry & Dispatch Events| SIEM & EventBus & GhostMesh
     Orchestrator -->|8. Persist Security Events| DuckDB
     Orchestrator -->|9. Generate & Sign Artifacts| Reports & Signer
 
     class Orchestrator,API,WebDash core;
-    class Guardrail,OSINT,PortScan,Honeypot,RedTeam,Correlator,Mitre,Playbook,SigmaYara,SIEM,GhostMesh module;
+    class Guardrail,OSINT,PortScan,Honeypot,RedTeam,Correlator,Mitre,Playbook,AutoPatch,SigmaYara,SIEM,EventBus,GhostMesh module;
     class DuckDB,Reports,Signer output;
