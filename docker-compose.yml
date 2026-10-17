@@ -2,12 +2,26 @@ version: '3.8'
 
 services:
   sanctum-core:
-    build: .
+    build:
+      context: .
+      dockerfile: Dockerfile
     container_name: sanctum-suite-core
+    restart: always
     ports:
       - "8000:8000"
-    volumes:
-      - .:/app
     environment:
-      - PYTHONUNBUFFERED=1
-    restart: unless-stopped
+      - SANCTUM_ENV=production
+      - SANCTUM_API_KEY=sanctum-secret-key-2026
+    deploy:
+      resources:
+        limits:
+          cpus: '2.0'
+          memory: 2048M
+        reservations:
+          cpus: '0.5'
+          memory: 512M
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/healthz')"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
