@@ -9,13 +9,16 @@ from sanctum_suite.core.port_scanner import AsyncPortScanner
 from sanctum_suite.core.signer import SecurityReportSigner
 from sanctum_suite.core.mitre import MitreMapperEngine
 from sanctum_suite.core.remediation import RemediationPlaybookEngine
+from sanctum_suite.core.proxy import LLMGuardrailProxy
+from sanctum_suite.core.siem import SIEMIntegrationExporter
+from sanctum_suite.core.honeypot import DecoyHoneypotSensor
 from sanctum_suite.modules.osint import SpectreOsintModule
 from sanctum_suite.modules.shadow import ShadowAgentModule
 from sanctum_suite.modules.ghost import GhostCommModule
 
 
 class SanctumUnifiedOrchestrator:
-    """Enterprise Orchestration Engine z podpisem cyfrowym, MITRE ATT&CK i remediacją."""
+    """Enterprise Orchestration Engine z Guardrail Proxy, SIEM & Honeypot capabilities."""
 
     def __init__(self) -> None:
         self.osint = SpectreOsintModule()
@@ -31,6 +34,9 @@ class SanctumUnifiedOrchestrator:
         self.signer = SecurityReportSigner()
         self.mitre = MitreMapperEngine()
         self.remediation = RemediationPlaybookEngine()
+        self.guardrail = LLMGuardrailProxy()
+        self.siem = SIEMIntegrationExporter()
+        self.honeypot = DecoyHoneypotSensor()
 
     def execute_full_resilience_audit(self, target_domain: str) -> dict:
         audit_id = f"SNC-{hash(target_domain) & 0xFFFF:04X}"
@@ -40,20 +46,22 @@ class SanctumUnifiedOrchestrator:
         probe_results = self.async_scanner.run_sync_batch_scan(osint_res["subdomains"])
         open_ports = self.port_scanner.run_sync_port_scan("127.0.0.1")
 
-        # Faza 2: AI Safety Red-Teaming
+        # Faza 2: AI Safety Red-Teaming & Guardrail Inspection
         shadow_res = self.shadow.evaluate_llm_endpoints(osint_res["subdomains"])
         
-        # Faza 3: Korelacja Threat Intel & MITRE Mapping
+        # Faza 3: Threat Correlation, MITRE Mapping & Remediation
         correlation = self.correlator.correlate_findings(open_ports, shadow_res["vulnerabilities"])
         mitre_tactics = self.mitre.map_findings(shadow_res["vulnerabilities"], open_ports)
         playbook = self.remediation.generate_playbook(open_ports, shadow_res["vulnerabilities"])
 
-        # Faza 4: Zero-Trust Alert Packaging
+        # Faza 4: Zero-Trust Alert Packaging & SIEM Format
         envelope_hash = self.ghost.secure_alert_dispatch(shadow_res)
 
         base_score = min(100.0, len(shadow_res["vulnerabilities"]) * 40.0 + len(open_ports) * 10.0 + 10.0)
         final_score = min(100.0, base_score * correlation["risk_multiplier"])
         risk = RiskLevel.HIGH if final_score > 50 else RiskLevel.LOW
+
+        cef_log = self.siem.format_cef_event(audit_id, target_domain, final_score, risk.value)
 
         # Zapis w bazach danych
         self.db.save_audit(audit_id, target_domain, final_score, risk.value)
@@ -71,6 +79,7 @@ class SanctumUnifiedOrchestrator:
             "correlation": correlation,
             "mitre_tactics": mitre_tactics,
             "playbook": playbook,
+            "cef_log": cef_log,
         }
 
         # Generowanie raportów
