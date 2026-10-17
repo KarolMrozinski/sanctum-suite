@@ -38,6 +38,9 @@ from sanctum_suite.core.gpu_probe import GPUMemorySecurityProbe
 from sanctum_suite.core.owasp_llm import OWASPLLMComplianceEngine
 from sanctum_suite.core.llm04_resource_probe import LLMResourceExhaustionProbe
 from sanctum_suite.core.parrot_owasp_reporter import ParrotOwaspReporter
+from sanctum_suite.core.threat_actors import SovereignThreatActorEngine
+from sanctum_suite.core.global_regulatory import GlobalRegulatoryEngine
+from sanctum_suite.core.lowlevel_resilience import LowLevelResilienceEngine
 
 def test_mitre_mapping():
     mitre = MitreMapperEngine()
@@ -338,3 +341,27 @@ def test_parrot_owasp_reporter():
     card = reporter.generate_compliance_scorecard({"compliance_status": "PASSED"}, {"overall_compliance": "PASS"})
     assert card["certified_for_production"] is True
     assert "Parrot Security OS 6.x" in card["environment"]    
+
+def test_sovereign_threat_actor_engine():
+    engine = SovereignThreatActorEngine()
+    res = engine.simulate_threat_actor_ttps("enterprise.target.com", "EQUATION_GROUP_TAO")
+    assert res["simulated_actor"] == "EQUATION_GROUP_TAO"
+    assert "ZERO_DAY_KERNEL_EXPLOIT" in res["executed_ttps"]
+    assert res["status"] == "NEUTRALIZED_BY_SANCTUM_eBPF"
+
+
+def test_global_regulatory_engine():
+    engine = GlobalRegulatoryEngine()
+    res = engine.evaluate_global_compliance([])
+    assert res["dora_compliance"]["digital_operational_resilience"] == "COMPLIANT"
+    assert res["nis2_directive"]["supply_chain_security"] == "VERIFIED"
+    assert res["iso_iec_42001"]["ai_management_system"] == "CERTIFIED"
+    assert res["tiber_eu_readiness"]["threat_intelligence_targeted_testing"] == "READY"
+
+
+def test_lowlevel_resilience_engine():
+    engine = LowLevelResilienceEngine()
+    res = engine.execute_low_level_audit("kernel.target.com")
+    assert res["owasp_asvs_level"] == "LEVEL_3_ADVANCED"
+    assert res["ebpf_kernel_probe"]["tracing_status"] == "ACTIVE_BPF_EVENTS"
+    assert res["osstmm_security_metrics"]["raven_score"] > 90.0    

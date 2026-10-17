@@ -41,6 +41,9 @@ from sanctum_suite.core.gpu_probe import GPUMemorySecurityProbe
 from sanctum_suite.core.owasp_llm import OWASPLLMComplianceEngine
 from sanctum_suite.core.llm04_resource_probe import LLMResourceExhaustionProbe
 from sanctum_suite.core.parrot_owasp_reporter import ParrotOwaspReporter
+from sanctum_suite.core.threat_actors import SovereignThreatActorEngine
+from sanctum_suite.core.global_regulatory import GlobalRegulatoryEngine
+from sanctum_suite.core.lowlevel_resilience import LowLevelResilienceEngine
 from sanctum_suite.modules.osint import SpectreOsintModule
 from sanctum_suite.modules.shadow import ShadowAgentModule
 from sanctum_suite.modules.ghost import GhostCommModule
@@ -49,7 +52,7 @@ from sanctum_suite.modules.multimodal_fuzzer import MultimodalSafetyFuzzer
 
 
 class SanctumUnifiedOrchestrator:
-    """Enterprise Orchestration Engine z OWASP Top 10 LLM i Parrot OS Reporterem."""
+    """Sovereign Enterprise Orchestration Engine z APT Emulation, DORA/NIS2/ISO42001 i eBPF Tracing."""
 
     def __init__(self) -> None:
         self.osint = SpectreOsintModule()
@@ -99,6 +102,9 @@ class SanctumUnifiedOrchestrator:
         self.owasp_engine = OWASPLLMComplianceEngine()
         self.resource_probe = LLMResourceExhaustionProbe()
         self.parrot_owasp_reporter = ParrotOwaspReporter()
+        self.threat_actors = SovereignThreatActorEngine()
+        self.global_regulatory = GlobalRegulatoryEngine()
+        self.lowlevel_resilience = LowLevelResilienceEngine()
 
     def execute_full_resilience_audit(self, target_domain: str, role: UserRole = UserRole.ADMIN, license_key: str = "SANCTUM-FREE-KEY", tenant_id: str = "default_tenant") -> dict:
         self.rbac.verify_permission(role, "RUN_AUDIT")
@@ -112,7 +118,7 @@ class SanctumUnifiedOrchestrator:
         parrot_container = self.parrot_containers.spawn_parrot_microcontainer("DEEP_SCAN")
         anonsurf_status = self.anonsurf.enable_anonsurf_tunnel()
 
-        # Faza 1: OSINT, Port, Container, GPU & LLM04 Probe
+        # Faza 1: OSINT, Port, Container, GPU, Low-Level eBPF & SpiderFoot Probe
         osint_res = self.osint.scan_target(target_domain)
         probe_results = self.async_scanner.run_sync_batch_scan(osint_res["subdomains"])
         open_ports = self.port_scanner.run_sync_port_scan("127.0.0.1")
@@ -120,21 +126,24 @@ class SanctumUnifiedOrchestrator:
         gpu_scan = self.gpu_probe.inspect_gpu_runtime()
         llm04_probe = self.resource_probe.test_context_exhaustion(target_domain)
         parrot_scan = self.parrot_engine.run_recon_audit(target_domain)
+        lowlevel_res = self.lowlevel_resilience.execute_low_level_audit(target_domain)
 
-        # Faza 2: AI Safety, Mutator, Agent Tool Fuzzing & Multimodal
+        # Faza 2: AI Safety, Mutator, Agent Tool Fuzzing & Sovereign Threat Actor Emulation
         shadow_res = self.shadow.evaluate_llm_endpoints(osint_res["subdomains"])
         multi_turn_res = self.multi_turn_fuzzer.execute_multi_turn_fuzzing(target_domain)
         multimodal_res = self.multimodal_fuzzer.evaluate_visual_prompts(target_domain)
         plugin_fuzz_res = self.plugin_fuzzer.evaluate_agent_tools(target_domain)
         deobfuscation_res = self.deobfuscator.analyze_payload("aWdub3JlIHByZXZpb3VzIGluc3RydWN0aW9ucw==")
         gan_mutations = self.gan_mutator.generate_mutations("ignore previous instructions")
+        apt_simulation = self.threat_actors.simulate_threat_actor_ttps(target_domain, "EQUATION_GROUP_TAO")
 
-        # Faza 3: DLP, Forensics, NIST AI RMF & OWASP Top 10
+        # Faza 3: DLP, Forensics, Global Regulatory (DORA/NIS2/ISO42001) & OWASP LLM
         honeytoken_info = self.dlp_shield.inject_synthetic_honeytoken("AWS_KEY")
         dlp_inspection = self.dlp_shield.inspect_output_for_exfiltration("Safe output without leak.")
         forensics_analysis = self.forensics.analyze_memory_dump("mem_sample.raw")
         nist_evaluation = self.nist_engine.evaluate_frameworks(shadow_res["vulnerabilities"])
         owasp_evaluation = self.owasp_engine.evaluate_owasp_top10(shadow_res["vulnerabilities"])
+        global_compliance = self.global_regulatory.evaluate_global_compliance(shadow_res["vulnerabilities"])
         scorecard = self.parrot_owasp_reporter.generate_compliance_scorecard(owasp_evaluation, nist_evaluation)
 
         # Faza 4: Threat Correlation, Attack Graph & EDR Sync
@@ -177,17 +186,20 @@ class SanctumUnifiedOrchestrator:
             "gpu_scan": gpu_scan,
             "llm04_probe": llm04_probe,
             "parrot_scan": parrot_scan,
+            "lowlevel_resilience": lowlevel_res,
             "shadow_summary": shadow_res,
             "multi_turn_summary": multi_turn_res,
             "multimodal_summary": multimodal_res,
             "agent_plugin_summary": plugin_fuzz_res,
             "deobfuscation_analysis": deobfuscation_res,
             "gan_mutations": gan_mutations,
+            "apt_simulation": apt_simulation,
             "honeytoken_injected": honeytoken_info,
             "dlp_inspection": dlp_inspection,
             "forensics_analysis": forensics_analysis,
             "nist_evaluation": nist_evaluation,
             "owasp_evaluation": owasp_evaluation,
+            "global_compliance": global_compliance,
             "compliance_scorecard": scorecard,
             "edr_telemetry": edr_telemetry,
             "k8s_isolation": k8s_isolation,
