@@ -32,6 +32,9 @@ from sanctum_suite.core.xdr_sync import EDRTelemetrySyncEngine
 from sanctum_suite.core.gan_mutator import GANMutatorEngine
 from sanctum_suite.core.k8s_operator import K8sCiliumOperator
 from sanctum_suite.core.dlp_shield import DLPShieldEngine
+from sanctum_suite.core.parrot_engine import ParrotSecEngine
+from sanctum_suite.core.anonsurf_proxy import AnonSurfProxyModule
+from sanctum_suite.core.parrot_forensics import ParrotForensicsEngine
 from sanctum_suite.modules.osint import SpectreOsintModule
 from sanctum_suite.modules.shadow import ShadowAgentModule
 from sanctum_suite.modules.ghost import GhostCommModule
@@ -40,7 +43,7 @@ from sanctum_suite.modules.multimodal_fuzzer import MultimodalSafetyFuzzer
 
 
 class SanctumUnifiedOrchestrator:
-    """Enterprise Orchestration Engine z GAN Mutatorem, K8s Operatorem i DLP Shieldem."""
+    """Enterprise Orchestration Engine z Parrot OS Integration."""
 
     def __init__(self) -> None:
         self.osint = SpectreOsintModule()
@@ -81,6 +84,9 @@ class SanctumUnifiedOrchestrator:
         self.gan_mutator = GANMutatorEngine()
         self.k8s_operator = K8sCiliumOperator()
         self.dlp_shield = DLPShieldEngine()
+        self.parrot_engine = ParrotSecEngine()
+        self.anonsurf = AnonSurfProxyModule()
+        self.forensics = ParrotForensicsEngine()
 
     def execute_full_resilience_audit(self, target_domain: str, role: UserRole = UserRole.ADMIN, license_key: str = "SANCTUM-FREE-KEY", tenant_id: str = "default_tenant") -> dict:
         self.rbac.verify_permission(role, "RUN_AUDIT")
@@ -90,11 +96,15 @@ class SanctumUnifiedOrchestrator:
 
         audit_id = f"SNC-{hash(target_domain) & 0xFFFF:04X}"
 
-        # Faza 1: OSINT, Network Probing & Container Scanning
+        # AnonSurf Privacy Layer
+        anonsurf_status = self.anonsurf.enable_anonsurf_tunnel()
+
+        # Faza 1: OSINT, Network Probing & Parrot Sec Scan
         osint_res = self.osint.scan_target(target_domain)
         probe_results = self.async_scanner.run_sync_batch_scan(osint_res["subdomains"])
         open_ports = self.port_scanner.run_sync_port_scan("127.0.0.1")
         container_scan = self.container_scanner.inspect_container_image()
+        parrot_scan = self.parrot_engine.run_recon_audit(target_domain)
 
         # Faza 2: AI Safety, Mutator, Agent Tool Fuzzing & Multimodal
         shadow_res = self.shadow.evaluate_llm_endpoints(osint_res["subdomains"])
@@ -104,9 +114,10 @@ class SanctumUnifiedOrchestrator:
         deobfuscation_res = self.deobfuscator.analyze_payload("aWdub3JlIHByZXZpb3VzIGluc3RydWN0aW9ucw==")
         gan_mutations = self.gan_mutator.generate_mutations("ignore previous instructions")
 
-        # Faza 3: DLP & Honeytokens
+        # Faza 3: DLP & Forensics
         honeytoken_info = self.dlp_shield.inject_synthetic_honeytoken("AWS_KEY")
         dlp_inspection = self.dlp_shield.inspect_output_for_exfiltration("Safe output without leak.")
+        forensics_analysis = self.forensics.analyze_memory_dump("mem_sample.raw")
 
         # Faza 4: Threat Correlation, Attack Graph & EDR Sync
         correlation = self.correlator.correlate_findings(open_ports, shadow_res["vulnerabilities"])
@@ -137,12 +148,14 @@ class SanctumUnifiedOrchestrator:
             "license_tier": lic_info["tier"].value,
             "overall_score": final_score,
             "risk_level": risk.value,
+            "anonsurf_tunnel": anonsurf_status,
             "envelope_hash": envelope_hash,
             "kms_envelope": encrypted_kms_payload,
             "osint_summary": osint_res,
             "probed_endpoints": probe_results,
             "open_ports": open_ports,
             "container_scan": container_scan,
+            "parrot_scan": parrot_scan,
             "shadow_summary": shadow_res,
             "multi_turn_summary": multi_turn_res,
             "multimodal_summary": multimodal_res,
@@ -151,6 +164,7 @@ class SanctumUnifiedOrchestrator:
             "gan_mutations": gan_mutations,
             "honeytoken_injected": honeytoken_info,
             "dlp_inspection": dlp_inspection,
+            "forensics_analysis": forensics_analysis,
             "edr_telemetry": edr_telemetry,
             "k8s_isolation": k8s_isolation,
             "correlation": correlation,
@@ -166,6 +180,9 @@ class SanctumUnifiedOrchestrator:
         # Faza 6: Autonomiczna ewaluacja SOAR Agent
         soar_actions = self.soar_agent.evaluate_and_remediate(audit_summary)
         audit_summary["soar_actions"] = soar_actions
+
+        # Wyłączenie tunelu AnonSurf po audycie
+        self.anonsurf.disable_anonsurf_tunnel()
 
         # Zapis w bazie
         self.db.save_audit(audit_id, target_domain, final_score, risk.value)

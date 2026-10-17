@@ -29,6 +29,9 @@ from sanctum_suite.core.xdr_sync import EDRTelemetrySyncEngine
 from sanctum_suite.core.gan_mutator import GANMutatorEngine
 from sanctum_suite.core.k8s_operator import K8sCiliumOperator
 from sanctum_suite.core.dlp_shield import DLPShieldEngine
+from sanctum_suite.core.parrot_engine import ParrotSecEngine
+from sanctum_suite.core.anonsurf_proxy import AnonSurfProxyModule
+from sanctum_suite.core.parrot_forensics import ParrotForensicsEngine
 
 def test_mitre_mapping():
     mitre = MitreMapperEngine()
@@ -261,3 +264,26 @@ def test_dlp_shield_engine():
     # Test wykrywania wycieku
     leak_check = dlp.inspect_output_for_exfiltration(f"Here is the token: {token_data['honeytoken']}")
     assert leak_check["exfiltration_detected"] is True    
+
+def test_parrot_sec_engine():
+    engine = ParrotSecEngine()
+    res = engine.run_recon_audit("127.0.0.1")
+    assert res["engine"] == "ParrotSecEngine 6.x"
+    assert res["status"] == "COMPLETED"
+
+
+def test_anonsurf_proxy_module():
+    proxy = AnonSurfProxyModule()
+    start_res = proxy.enable_anonsurf_tunnel()
+    assert start_res["status"] == "ANONSURF_ACTIVE"
+    assert start_res["circuit_id"] is not None
+
+    stop_res = proxy.disable_anonsurf_tunnel()
+    assert stop_res["status"] == "ANONSURF_DISABLED"
+
+
+def test_parrot_forensics_engine():
+    forensics = ParrotForensicsEngine()
+    res = forensics.analyze_memory_dump("dump.raw")
+    assert res["forensic_status"] == "ANALYSIS_COMPLETE"
+    assert res["integrity_verified"] is True    
