@@ -1,0 +1,29 @@
+name: 'SANCTUM AI Security & Resilience Gate'
+description: 'Automated AI Red-Teaming, EU AI Act Compliance & Security Audit for Enterprise CI/CD'
+inputs:
+  target-domain:
+    description: 'Target LLM / API domain to audit'
+    required: true
+    default: '127.0.0.1'
+  license-key:
+    description: 'SANCTUM Enterprise License Key'
+    required: false
+    default: 'SANCTUM-FREE-KEY'
+outputs:
+  audit-score:
+    description: 'Overall Resilience Score'
+  compliance-status:
+    description: 'EU AI Act Compliance Result'
+runs:
+  using: 'composite'
+  steps:
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.11'
+    - name: Install SANCTUM-SUITE
+      run: pip install -e .
+      shell: bash
+    - name: Run Resilience Audit Gate
+      run: sanctum run-audit --target ${{ inputs.target-domain }}
+      shell: bash

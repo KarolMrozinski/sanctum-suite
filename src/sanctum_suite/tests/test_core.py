@@ -19,6 +19,8 @@ from sanctum_suite.core.attack_graph import AttackGraphEngine
 from sanctum_client.client import SanctumSuiteClient
 from sanctum_suite.core.task_queue import AsyncTaskQueueManager
 from sanctum_suite.core.container_scanner import DockerContainerCVEAnalyzer
+from sanctum_suite.core.billing import CommercialLicenseManager, LicenseTier
+from sanctum_suite.core.tenant_manager import TenantProvisioningManager
 
 def test_mitre_mapping():
     mitre = MitreMapperEngine()
@@ -169,3 +171,20 @@ def test_container_cve_analyzer():
     res = analyzer.inspect_container_image("sanctum-suite:latest")
     assert res["vulnerabilities_found"] >= 1
     assert "cve_id" in res["cves"][0]    
+
+def test_commercial_license_validation():
+    mgr = CommercialLicenseManager()
+
+    free_lic = mgr.validate_license_key("SANCTUM-FREE-KEY")
+    assert free_lic["tier"] == LicenseTier.COMMUNITY
+
+    ent_lic = mgr.validate_license_key("SNC-ENT-999")
+    assert ent_lic["tier"] == LicenseTier.ENTERPRISE
+
+
+def test_tenant_provisioning_manager():
+    mgr = TenantProvisioningManager()
+    tenant = mgr.register_tenant("tenant-01", "Acme Cyber Corp", "SNC-ENT-999")
+
+    assert tenant["tenant_id"] == "tenant-01"
+    assert tenant["db_schema"] == "tenant_tenant_01"    

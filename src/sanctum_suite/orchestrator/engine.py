@@ -22,6 +22,8 @@ from sanctum_suite.core.compliance import RegulatoryComplianceEngine
 from sanctum_suite.core.attack_graph import AttackGraphEngine
 from sanctum_suite.core.task_queue import AsyncTaskQueueManager
 from sanctum_suite.core.container_scanner import DockerContainerCVEAnalyzer
+from sanctum_suite.core.billing import CommercialLicenseManager, LicenseTier
+from sanctum_suite.core.tenant_manager import TenantProvisioningManager
 from sanctum_suite.modules.osint import SpectreOsintModule
 from sanctum_suite.modules.shadow import ShadowAgentModule
 from sanctum_suite.modules.ghost import GhostCommModule
@@ -30,7 +32,7 @@ from sanctum_suite.modules.multimodal_fuzzer import MultimodalSafetyFuzzer
 
 
 class SanctumUnifiedOrchestrator:
-    """Enterprise Orchestration Engine z Attack Graph UI, Task Queue i Container Scannerem."""
+    """Enterprise Orchestration Engine z Bilingiem, Multi-Tenant Provisioning i CI/CD Gate."""
 
     def __init__(self) -> None:
         self.osint = SpectreOsintModule()
@@ -61,9 +63,16 @@ class SanctumUnifiedOrchestrator:
         self.attack_graph_engine = AttackGraphEngine()
         self.task_queue = AsyncTaskQueueManager()
         self.container_scanner = DockerContainerCVEAnalyzer()
+        self.license_manager = CommercialLicenseManager()
+        self.tenant_manager = TenantProvisioningManager()
 
-    def execute_full_resilience_audit(self, target_domain: str, role: UserRole = UserRole.ADMIN) -> dict:
+    def execute_full_resilience_audit(self, target_domain: str, role: UserRole = UserRole.ADMIN, license_key: str = "SANCTUM-FREE-KEY", tenant_id: str = "default_tenant") -> dict:
         self.rbac.verify_permission(role, "RUN_AUDIT")
+        
+        # Weryfikacja licencji i limitów bilingowych
+        lic_info = self.license_manager.validate_license_key(license_key)
+        self.license_manager.check_and_increment_usage(tenant_id, lic_info["tier"], "audits")
+
         audit_id = f"SNC-{hash(target_domain) & 0xFFFF:04X}"
 
         # Faza 1: OSINT, Network Probing & Container Scanning
@@ -102,6 +111,8 @@ class SanctumUnifiedOrchestrator:
         audit_summary = {
             "audit_id": audit_id,
             "target": target_domain,
+            "tenant_id": tenant_id,
+            "license_tier": lic_info["tier"].value,
             "overall_score": final_score,
             "risk_level": risk.value,
             "envelope_hash": envelope_hash,
