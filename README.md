@@ -10,7 +10,7 @@
 [![Regulatory](https://img.shields.io/badge/compliance-DORA_%7C_NIS2_%7C_ISO_42001_%7C_TIBER--EU-gold.svg)](#)
 [![CI/CD](https://img.shields.io/badge/CI%2FCD-GitHub_Actions-green.svg)](#)
 
-*Jednolita platforma państwowej cyber-odporności łącząca ewolucyjny Red-Teaming (GAN Mutation & APT Emulation), tracing jądra eBPF, orkiestrację Parrot OS, audyt pamięci CUDA GPU, emulację zagrożeń (APT29, Sandworm, NSA TAO, Equation Group) oraz automatyczną zgodność z normami DORA, NIS2, ISO/IEC 42001 i OWASP ASVS.*
+*Jednolita platforma państwowej cyber-odporności łącząca ewolucyjny Red-Teaming (GAN Mutation & APT Emulation), tracing jądra eBPF, orkiestrację Parrot OS, audyt pamięci CUDA GPU, emulację zagrożeń (APT29, Sandworm, NSA TAO, Equation Group), tunelowanie Cyber Plumber, grafowy OSINT (SpiderGraph / Vx-Underground) oraz automatyczną zgodność z normami DORA, NIS2, ISO/IEC 42001 i OWASP ASVS.*
 
 [Cechy Systemu](#cechy-systemu) • [Architektura Systemu](#architektura-systemu) • [Szybki Start](#szybki-start) • [Integracja CI/CD](#integracja-cicd) • [Licencja Systemu](#licencja-systemu)
 
@@ -22,18 +22,18 @@
 
 **SANCTUM-SUITE** to zintegrowana platforma cyber-odporności stworzona z myślą o nowoczesnych zespołach Security, SOC i rządowych agencjach cyberbezpieczeństwa. Platforma zabezpiecza całe środowisko aplikacyjne – od niskopoziomowego jądra Linuksa (eBPF), kontenerów i pamięci VRAM GPU, aż po agenty LLM oraz infrastrukturę krytyczną.
 
-Dzięki integracji taksonomii TTPs zaawansowanych grup APT, matryc DORA/NIS2/ISO42001 oraz autonomicznych agentów SOAR, SANCTUM drastycznie skraca czas reakcji na incydenty i samoczynnie wdraża łatki bezpieczeństwa (Self-Healing PRs).
+Dzięki integracji taksonomii TTPs zaawansowanych grup APT, badaniom podatności jądra, matrycom DORA/NIS2/ISO42001 oraz autonomicznych agentów SOAR, SANCTUM drastycznie skraca czas reakcji na incydenty i samoczynnie wdraża łatki bezpieczeństwa (Self-Healing PRs).
 
 ### Kluczowe Filary Systemu
 
 <table>
   <tr>
     <td width="50%">
-      <h3>⚔️ Sovereign Threat Actors & APT Emulation</h3>
+      <h3>⚔️ Sovereign Threat Actors & Exploit Lab</h3>
       <ul>
         <li><b>Sovereign Threat Actor Engine:</b> Emulacja zaawansowanych wektorów ataku grup APT29, Sandworm, NSA TAO, Equation Group oraz wariantów Vx-Underground i Project Big Sleep.</li>
-        <li><b>eBPF Kernel Tracing & Low-Level:</b> Niskopoziomowy audyt wywołań systemowych jądra, skanowanie CWE Top 25 oraz wytyczne OWASP ASVS i OSSTMM / PTES.</li>
-        <li><b>SpiderFoot & Maltego OSINT:</b> Automatyczna rekurencyjna mapacja węzłów infrastruktury i rozpoznanie zasobów.</li>
+        <li><b>Kernel Exploit Lab:</b> Testowanie mitygacji jądra (KASLR, SMEP, SMAP), ucieczek z kontenerów i hiperwizorów.</li>
+        <li><b>Cyber Plumber & SpiderGraph OSINT:</b> Wieloskokowe tunelowanie eBPF/SSH oraz grafy powiązań infrastruktury (Maltego/SpiderFoot).</li>
       </ul>
     </td>
     <td width="50%">
@@ -77,15 +77,15 @@ graph LR
     classDef process fill:#1e293b,stroke:#cbd5e1,stroke-width:1px,color:#fff;
     classDef output fill:#1e3a8a,stroke:#60a5fa,stroke-width:1px,color:#fff;
 
-    Target["🎯 Domain / Infrastructure"] --> Parrot["🦜 Parrot OS & eBPF Tracing"]
-    Parrot --> OSINT["🔍 SpiderFoot OSINT & GPU Probe"]
-    OSINT --> RedTeam["🎭 APT Emulation, GAN Mutator & OWASP"]
+    Target["🎯 Domain / Infrastructure"] --> Plumber["🚰 Cyber Plumber & eBPF Tunnel"]
+    Plumber --> OSINT["🔍 SpiderGraph OSINT, Parrot & GPU Probe"]
+    OSINT --> RedTeam["🎭 APT Emulation, Kernel Exploit Lab & OWASP"]
     RedTeam --> Correlator["🧠 Threat Correlator, DORA, NIS2 & TIBER-EU"]
     Correlator --> Graph["🕸️ Attack Graph & ISO/IEC 42001"]
     Graph --> SOAR["🤖 Autonomous SOAR Agent & K8s eBPF"]
     SOAR --> Patch["🩹 Self-Healing Auto-Patcher & GitHub PR"]
     Correlator --> Reports["📄 Signed RSA-2048 PDF/HTML Reports"]
 
-    class Target,Parrot,OSINT process;
+    class Target,Plumber,OSINT process;
     class RedTeam,Correlator,Graph core;
     class SOAR,Patch,Reports output;
