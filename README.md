@@ -2,39 +2,50 @@
 
 [![Architecture](https://img.shields.io/badge/architecture-Modular%20%7C%20Enterprise%20Grade-darkblue)](#)
 [![Python](https://img.shields.io/badge/python-3.11%2B-blue)](#)
+[![Analytics](https://img.shields.io/badge/analytics-DuckDB%20%7C%20OLAP-yellow)](#)
 [![License](https://img.shields.io/badge/license-Non--Commercial-orange)](#)
 
-> **SANCTUM-SUITE** to zintegrowana platforma klasy Enterprise łącząca rozpoznanie powierzchni ataku (**SPECTRE-OSINT**), automatyczny red-teaming modeli LLM (**SHADOW-AGENT**) oraz samoleczącą się sieć łączności Zero-Trust (**GHOST-COMM**).
+> **SANCTUM-SUITE** to zintegrowana, wielomodułowa platforma bezpieczeństwa klasy Enterprise. Łączy rozpoznanie powierzchni ataku (**SPECTRE-OSINT**), automatyczny Red-Teaming modeli LLM (**SHADOW-AGENT**), samoleczącą się sieć P2P Zero-Trust (**GHOST-COMM**), asynchroniczny skaner portów/usług, silnik korelacji zagrożeń oraz zaawansowaną analitykę OLAP z automatycznym generowaniem raportów PDF i HTML.
 
 ---
 
-## ⚡ Kluczowe Moduły Systemu
+## ⚡ Kluczowe Moduły i Funkcjonalności Systemu
 
-1. **SPECTRE-OSINT Engine:** Pasywne rozpoznanie aktywów cyfrowych, mapowanie zależności i ocena poziomu ekspozycji (*Attack Surface Management*).
-2. **SHADOW-AGENT Red-Teaming:** Automatyczny fuzzing modeli LLM, testy podatności na *Prompt Injection* oraz przełamanie guardraili.
-3. **GHOST-COMM Mesh & Remediation:** Zabezpieczanie kanałów informacyjnych za pomocą szyfrowania kopertowego i samoleczącego się routingu P2P.
-4. **SANCTUM Unified Persistence:** Centralne przechowywanie logów incydentów oraz analiza ryzyka zbiorczego w oparciu o `SQLAlchemy`.
+- **SPECTRE-OSINT & Async Probing:** Pasywna agregacja aktywów cyfrowych, asynchroniczne sondowanie nagłówków i certyfikatów (`httpx` + `asyncio`).
+- **Async Port & Service Scanner:** Błyskawiczny, wielowątkowy skaner otwartych portów TCP (SSH, HTTP, HTTPS, DB, Ollama API).
+- **SHADOW-AGENT AI Red-Teaming:** Automatyczny fuzzing modeli LLM pod kątem *Prompt Injection*, wycieków instrukcji i złamań guardraili.
+- **GHOST-COMM Mesh & Remediation:** Bezpieczne pakowanie alertów w szyfrowane koperty P2P (AES-256-GCM) oraz zapasowy routing Zero-Trust.
+- **Threat Correlation Engine:** Wykrywanie złożonych łańcuchów ataku (*Attack Chains*) i korelacja otwartych portów z podatnościami AI.
+- **OLAP Analytics & Persistence:** Trwała analityka wariancji ryzyka w **DuckDB** oraz archiwizacja audytów w **SQLite**.
+- **Executive Reporting & Live TUI:** Automatyczny generator raportów zgodności dla zarządu (**PDF** / **HTML**) oraz pełnoekranowy pulpit **Rich Live TUI Dashboard**.
 
 ---
 
-## 🏗️ Architektura Przepływu Danych
+## 🏗️ Pełna Architektura Przepływu Audytowego
 
 ```mermaid
 graph TD
-    classDef core fill:#1a202c,stroke:#cbd5e0,stroke-width:2px,color:#fff;
-    classDef module fill:#2b6cb0,stroke:#90cdf4,stroke-width:1px,color:#fff;
+    classDef core fill:#0f172a,stroke:#38bdf8,stroke-width:2px,color:#fff;
+    classDef module fill:#1e293b,stroke:#cbd5e1,stroke-width:1px,color:#fff;
+    classDef output fill:#276749,stroke:#9ae6b4,stroke-width:1px,color:#fff;
 
     Orchestrator["SANCTUM Unified Orchestrator"]
-    OSINT["SPECTRE-OSINT Module"]
-    RedTeam["SHADOW-AGENT Module"]
-    Mesh["GHOST-COMM Module"]
-    DB["SQLite / Analytics Store"]
+    OSINT["SPECTRE-OSINT / Async Probe"]
+    PortScan["Async Port Scanner"]
+    RedTeam["SHADOW-AGENT (LLM Fuzzer)"]
+    Correlator["Threat Correlation Engine"]
+    GhostMesh["GHOST-COMM Zero-Trust Mesh"]
+    DuckDB["DuckDB OLAP Analytics"]
+    Reports["Compliance Reports (PDF / HTML)"]
 
-    Orchestrator -->|1. Discovery Scan| OSINT
-    OSINT -->|2. Feed Target Endpoints| RedTeam
-    RedTeam -->|3. Evaluate Vulnerabilities| Orchestrator
-    Orchestrator -->|4. Dispatch Encrypted Alert| Mesh
-    Orchestrator -->|5. Store Audit Trail| DB
+    Orchestrator -->|1. Network & Footprint Discovery| OSINT
+    Orchestrator -->|2. Active TCP Port Scan| PortScan
+    OSINT & PortScan -->|3. Feed Targets| RedTeam
+    RedTeam & PortScan -->|4. Attack Chain Analysis| Correlator
+    Correlator -->|5. Encrypted Alert Dispatch| GhostMesh
+    Orchestrator -->|6. Persist Security Events| DuckDB
+    Orchestrator -->|7. Generate Executive Artifacts| Reports
 
-    class Orchestrator,DB core;
-    class OSINT,RedTeam,Mesh module;
+    class Orchestrator core;
+    class OSINT,PortScan,RedTeam,Correlator,GhostMesh module;
+    class DuckDB,Reports output;
