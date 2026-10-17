@@ -1,20 +1,31 @@
 import pytest
-from sanctum_suite.core.port_scanner import AsyncPortScanner
-from sanctum_suite.core.correlator import ThreatCorrelationEngine
+from sanctum_suite.core.signer import SecurityReportSigner
+from sanctum_suite.core.mitre import MitreMapperEngine
+from sanctum_suite.core.remediation import RemediationPlaybookEngine
 
 
-def test_threat_correlation():
-    correlator = ThreatCorrelationEngine()
-    open_ports = [{"port": 11434, "service": "Ollama LLM API"}]
+def test_mitre_mapping():
+    mitre = MitreMapperEngine()
     shadow_vulns = [{"endpoint": "api.test.com", "issue": "PROMPT_INJECTION_RISK"}]
+    open_ports = [{"port": 11434, "service": "Ollama LLM API"}]
 
-    res = correlator.correlate_findings(open_ports, shadow_vulns)
-    assert res["risk_multiplier"] == 1.5
-    assert res["chain_count"] == 1
+    tactics = mitre.map_findings(shadow_vulns, open_ports)
+    assert len(tactics) == 2
+    assert tactics[0]["technique_id"] == "AML.T0051"
 
 
-@pytest.mark.asyncio
-async def test_async_port_scanner():
-    scanner = AsyncPortScanner(timeout=0.1)
-    results = await scanner.scan_host_ports("127.0.0.1", ports=[22])
-    assert isinstance(results, list)
+def test_remediation_playbook():
+    engine = RemediationPlaybookEngine()
+    open_ports = [{"port": 11434, "service": "Ollama LLM API"}]
+    playbook = engine.generate_playbook(open_ports, [])
+    assert "iptables" in playbook["firewall_hardening_script"]
+
+
+def test_report_signer(tmp_path):
+    dummy_file = tmp_path / "test_report.pdf"
+    dummy_file.write_text("Dummy PDF Content")
+
+    signer = SecurityReportSigner(key_dir=str(tmp_path / ".keys"))
+    signature = signer.sign_file(str(dummy_file))
+    assert len(signature) > 0
+    assert (tmp_path / "test_report.pdf.sig").exists()

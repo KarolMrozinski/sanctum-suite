@@ -6,13 +6,16 @@ from sanctum_suite.core.pdf_reporter import PDFReportGenerator
 from sanctum_suite.core.correlator import ThreatCorrelationEngine
 from sanctum_suite.core.scanner import AsyncEndpointScanner
 from sanctum_suite.core.port_scanner import AsyncPortScanner
+from sanctum_suite.core.signer import SecurityReportSigner
+from sanctum_suite.core.mitre import MitreMapperEngine
+from sanctum_suite.core.remediation import RemediationPlaybookEngine
 from sanctum_suite.modules.osint import SpectreOsintModule
 from sanctum_suite.modules.shadow import ShadowAgentModule
 from sanctum_suite.modules.ghost import GhostCommModule
 
 
 class SanctumUnifiedOrchestrator:
-    """Enterprise Orchestration Engine z korelacją zagrożeń i generowaniem PDF."""
+    """Enterprise Orchestration Engine z podpisem cyfrowym, MITRE ATT&CK i remediacją."""
 
     def __init__(self) -> None:
         self.osint = SpectreOsintModule()
@@ -25,6 +28,9 @@ class SanctumUnifiedOrchestrator:
         self.correlator = ThreatCorrelationEngine()
         self.async_scanner = AsyncEndpointScanner()
         self.port_scanner = AsyncPortScanner()
+        self.signer = SecurityReportSigner()
+        self.mitre = MitreMapperEngine()
+        self.remediation = RemediationPlaybookEngine()
 
     def execute_full_resilience_audit(self, target_domain: str) -> dict:
         audit_id = f"SNC-{hash(target_domain) & 0xFFFF:04X}"
@@ -37,8 +43,10 @@ class SanctumUnifiedOrchestrator:
         # Faza 2: AI Safety Red-Teaming
         shadow_res = self.shadow.evaluate_llm_endpoints(osint_res["subdomains"])
         
-        # Faza 3: Korelacja Threat Intel
+        # Faza 3: Korelacja Threat Intel & MITRE Mapping
         correlation = self.correlator.correlate_findings(open_ports, shadow_res["vulnerabilities"])
+        mitre_tactics = self.mitre.map_findings(shadow_res["vulnerabilities"], open_ports)
+        playbook = self.remediation.generate_playbook(open_ports, shadow_res["vulnerabilities"])
 
         # Faza 4: Zero-Trust Alert Packaging
         envelope_hash = self.ghost.secure_alert_dispatch(shadow_res)
@@ -49,9 +57,6 @@ class SanctumUnifiedOrchestrator:
 
         # Zapis w bazach danych
         self.db.save_audit(audit_id, target_domain, final_score, risk.value)
-        self.analytics.record_event(
-            f"EVT-CORR-{audit_id}", audit_id, target_domain, "CORRELATION-ENGINE", final_score, f"Chains found: {correlation['chain_count']}"
-        )
 
         audit_summary = {
             "audit_id": audit_id,
@@ -64,13 +69,19 @@ class SanctumUnifiedOrchestrator:
             "open_ports": open_ports,
             "shadow_summary": shadow_res,
             "correlation": correlation,
+            "mitre_tactics": mitre_tactics,
+            "playbook": playbook,
         }
 
-        # Generowanie raportów HTML i PDF
+        # Generowanie raportów
         report_path_html = self.reporter.generate_html_report(audit_summary, f"report_{audit_id}.html")
         report_path_pdf = self.pdf_reporter.generate_pdf_report(audit_summary, f"report_{audit_id}.pdf")
 
+        # Kryptograficzne podpisanie pliku PDF
+        pdf_signature = self.signer.sign_file(report_path_pdf)
+
         audit_summary["report_path_html"] = report_path_html
         audit_summary["report_path_pdf"] = report_path_pdf
+        audit_summary["pdf_signature"] = pdf_signature
 
         return audit_summary
