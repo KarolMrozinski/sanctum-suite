@@ -38,6 +38,9 @@ from sanctum_suite.core.parrot_forensics import ParrotForensicsEngine
 from sanctum_suite.core.parrot_containers import ParrotContainerOrchestrator
 from sanctum_suite.core.nist_compliance import NistComplianceEngine
 from sanctum_suite.core.gpu_probe import GPUMemorySecurityProbe
+from sanctum_suite.core.owasp_llm import OWASPLLMComplianceEngine
+from sanctum_suite.core.llm04_resource_probe import LLMResourceExhaustionProbe
+from sanctum_suite.core.parrot_owasp_reporter import ParrotOwaspReporter
 from sanctum_suite.modules.osint import SpectreOsintModule
 from sanctum_suite.modules.shadow import ShadowAgentModule
 from sanctum_suite.modules.ghost import GhostCommModule
@@ -46,7 +49,7 @@ from sanctum_suite.modules.multimodal_fuzzer import MultimodalSafetyFuzzer
 
 
 class SanctumUnifiedOrchestrator:
-    """Enterprise Orchestration Engine z Parrot Containers, NIST AI RMF i GPU Probe."""
+    """Enterprise Orchestration Engine z OWASP Top 10 LLM i Parrot OS Reporterem."""
 
     def __init__(self) -> None:
         self.osint = SpectreOsintModule()
@@ -93,6 +96,9 @@ class SanctumUnifiedOrchestrator:
         self.parrot_containers = ParrotContainerOrchestrator()
         self.nist_engine = NistComplianceEngine()
         self.gpu_probe = GPUMemorySecurityProbe()
+        self.owasp_engine = OWASPLLMComplianceEngine()
+        self.resource_probe = LLMResourceExhaustionProbe()
+        self.parrot_owasp_reporter = ParrotOwaspReporter()
 
     def execute_full_resilience_audit(self, target_domain: str, role: UserRole = UserRole.ADMIN, license_key: str = "SANCTUM-FREE-KEY", tenant_id: str = "default_tenant") -> dict:
         self.rbac.verify_permission(role, "RUN_AUDIT")
@@ -102,16 +108,17 @@ class SanctumUnifiedOrchestrator:
 
         audit_id = f"SNC-{hash(target_domain) & 0xFFFF:04X}"
 
-        # Uruchomienie mikro-kontenera Parrot Sec
+        # Uruchomienie mikro-kontenera Parrot Sec i AnonSurf
         parrot_container = self.parrot_containers.spawn_parrot_microcontainer("DEEP_SCAN")
         anonsurf_status = self.anonsurf.enable_anonsurf_tunnel()
 
-        # Faza 1: OSINT, Port, Container & GPU Probe
+        # Faza 1: OSINT, Port, Container, GPU & LLM04 Probe
         osint_res = self.osint.scan_target(target_domain)
         probe_results = self.async_scanner.run_sync_batch_scan(osint_res["subdomains"])
         open_ports = self.port_scanner.run_sync_port_scan("127.0.0.1")
         container_scan = self.container_scanner.inspect_container_image()
         gpu_scan = self.gpu_probe.inspect_gpu_runtime()
+        llm04_probe = self.resource_probe.test_context_exhaustion(target_domain)
         parrot_scan = self.parrot_engine.run_recon_audit(target_domain)
 
         # Faza 2: AI Safety, Mutator, Agent Tool Fuzzing & Multimodal
@@ -122,11 +129,13 @@ class SanctumUnifiedOrchestrator:
         deobfuscation_res = self.deobfuscator.analyze_payload("aWdub3JlIHByZXZpb3VzIGluc3RydWN0aW9ucw==")
         gan_mutations = self.gan_mutator.generate_mutations("ignore previous instructions")
 
-        # Faza 3: DLP, Forensics & NIST AI RMF
+        # Faza 3: DLP, Forensics, NIST AI RMF & OWASP Top 10
         honeytoken_info = self.dlp_shield.inject_synthetic_honeytoken("AWS_KEY")
         dlp_inspection = self.dlp_shield.inspect_output_for_exfiltration("Safe output without leak.")
         forensics_analysis = self.forensics.analyze_memory_dump("mem_sample.raw")
         nist_evaluation = self.nist_engine.evaluate_frameworks(shadow_res["vulnerabilities"])
+        owasp_evaluation = self.owasp_engine.evaluate_owasp_top10(shadow_res["vulnerabilities"])
+        scorecard = self.parrot_owasp_reporter.generate_compliance_scorecard(owasp_evaluation, nist_evaluation)
 
         # Faza 4: Threat Correlation, Attack Graph & EDR Sync
         correlation = self.correlator.correlate_findings(open_ports, shadow_res["vulnerabilities"])
@@ -166,6 +175,7 @@ class SanctumUnifiedOrchestrator:
             "open_ports": open_ports,
             "container_scan": container_scan,
             "gpu_scan": gpu_scan,
+            "llm04_probe": llm04_probe,
             "parrot_scan": parrot_scan,
             "shadow_summary": shadow_res,
             "multi_turn_summary": multi_turn_res,
@@ -177,6 +187,8 @@ class SanctumUnifiedOrchestrator:
             "dlp_inspection": dlp_inspection,
             "forensics_analysis": forensics_analysis,
             "nist_evaluation": nist_evaluation,
+            "owasp_evaluation": owasp_evaluation,
+            "compliance_scorecard": scorecard,
             "edr_telemetry": edr_telemetry,
             "k8s_isolation": k8s_isolation,
             "correlation": correlation,
@@ -189,17 +201,16 @@ class SanctumUnifiedOrchestrator:
             "detection_rules": {"sigma": sigma_rule, "yara": yara_rule},
         }
 
-        # Faza 6: Autonomiczna ewaluacja SOAR Agent & Cleanup
+        # Faza 6: SOAR Agent & Cleanup
         soar_actions = self.soar_agent.evaluate_and_remediate(audit_summary)
         audit_summary["soar_actions"] = soar_actions
 
         self.parrot_containers.terminate_container(parrot_container["container_id"])
         self.anonsurf.disable_anonsurf_tunnel()
 
-        # Zapis w bazie
+        # Zapis w bazie i raporty
         self.db.save_audit(audit_id, target_domain, final_score, risk.value)
 
-        # Raporty
         report_path_html = self.reporter.generate_html_report(audit_summary, f"report_{audit_id}.html")
         report_path_pdf = self.pdf_reporter.generate_pdf_report(audit_summary, f"report_{audit_id}.pdf")
         pdf_signature = self.signer.sign_file(report_path_pdf)

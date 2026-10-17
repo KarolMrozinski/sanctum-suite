@@ -35,6 +35,9 @@ from sanctum_suite.core.parrot_forensics import ParrotForensicsEngine
 from sanctum_suite.core.parrot_containers import ParrotContainerOrchestrator
 from sanctum_suite.core.nist_compliance import NistComplianceEngine
 from sanctum_suite.core.gpu_probe import GPUMemorySecurityProbe
+from sanctum_suite.core.owasp_llm import OWASPLLMComplianceEngine
+from sanctum_suite.core.llm04_resource_probe import LLMResourceExhaustionProbe
+from sanctum_suite.core.parrot_owasp_reporter import ParrotOwaspReporter
 
 def test_mitre_mapping():
     mitre = MitreMapperEngine()
@@ -313,3 +316,25 @@ def test_gpu_memory_security_probe():
     gpu_info = probe.inspect_gpu_runtime()
     assert gpu_info["vram_status"] == "SECURE"
     assert gpu_info["isolation_verified"] is True     
+
+def test_owasp_llm_compliance_engine():
+    engine = OWASPLLMComplianceEngine()
+    mock_vulns = [{"vulnerability_type": "PROMPT_INJECTION"}, {"vulnerability_type": "EXCESSIVE_AGENCY"}]
+    res = engine.evaluate_owasp_top10(mock_vulns)
+    assert res["standard"] == "OWASP Top 10 for LLM Applications"
+    assert res["category_breakdown"]["LLM01"] == 1
+    assert res["category_breakdown"]["LLM06"] == 1
+
+
+def test_llm04_resource_probe():
+    probe = LLMResourceExhaustionProbe()
+    res = probe.test_context_exhaustion("http://127.0.0.1:11434")
+    assert res["probe_type"] == "CONTEXT_WINDOW_SATURATION_LLM04"
+    assert res["status"] == "PASS"
+
+
+def test_parrot_owasp_reporter():
+    reporter = ParrotOwaspReporter()
+    card = reporter.generate_compliance_scorecard({"compliance_status": "PASSED"}, {"overall_compliance": "PASS"})
+    assert card["certified_for_production"] is True
+    assert "Parrot Security OS 6.x" in card["environment"]    
