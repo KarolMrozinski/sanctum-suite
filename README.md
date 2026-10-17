@@ -2,27 +2,31 @@
 
 [![Architecture](https://img.shields.io/badge/architecture-Modular%20%7C%20Enterprise%20Grade-darkblue)](#)
 [![Python](https://img.shields.io/badge/python-3.11%2B-blue)](#)
+[![SDK](https://img.shields.io/badge/SDK-Python%20Client-teal)](#)
+[![Compliance](https://img.shields.io/badge/compliance-EU%20AI%20Act%20%7C%20NIS2%20%7C%20ISO%2027001-gold)](#)
+[![Attack Graph](https://img.shields.io/badge/graph-NetworkX%20Attack%20Paths-orange)](#)
 [![Frontend](https://img.shields.io/badge/frontend-Next.js%2014%20%7C%20React-black)](#)
 [![AI Security](https://img.shields.io/badge/AI%20Red--Teaming-Multi--Turn%20%26%20Multimodal-purple)](#)
 [![GitHub API](https://img.shields.io/badge/GitHub-Automated%20PRs-black)](#)
-[![RBAC](https://img.shields.io/badge/security-RBAC%20%7C%20Multi--Tenancy-gold)](#)
 [![Detection](https://img.shields.io/badge/rules-Sigma%20%7C%20YARA-red)](#)
 [![Self-Healing](https://img.shields.io/badge/remediation-Automated%20Patching-emerald)](#)
 [![Framework](https://img.shields.io/badge/framework-MITRE%20ATT%26CK%20%7C%20ATLAS-orange)](#)
-[![SIEM](https://img.shields.io/badge/SIEM-CEF%20%7C%20Webhooks-purple)](#)
 [![Docker](https://img.shields.io/badge/docker-Ready-blue)](#)
 [![API](https://img.shields.io/badge/API-FastAPI%20%7C%20Secured-teal)](#)
 [![CI/CD](https://img.shields.io/badge/CI%2FCD-GitHub%20Actions-green)](#)
 [![License](https://img.shields.io/badge/license-View--Only-orange)](#)
 
-> **SANCTUM-SUITE** to zintegrowana, wielomodułowa platforma bezpieczeństwa klasy Enterprise. Łączy rozpoznanie powierzchni ataku (**SPECTRE-OSINT**), wielostopniowy oraz multimodalny Red-Teaming modeli LLM/Vision (**Multimodal & Multi-Turn Adaptive Fuzzer** / **SHADOW-AGENT**), samoleczącą się sieć P2P Zero-Trust (**GHOST-COMM**), automatyczne otwieranie Pull Requestów na GitHubie (**GitHub Auto-PR Publisher**), zarządcze uprawnienia **RBAC & Multi-Tenancy**, rozproszoną szynę zdarzeń (**Distributed Event Bus**), automatyczne generowanie poprawek kodu (**Self-Healing Code PRs**), asynchroniczny skaner portów/usług, silnik korelacji zagrożeń z mapowaniem **MITRE ATT&CK/ATLAS**, automatyczne scenariusze naprawcze (Playbooks), generator reguł detekcyjnych **Sigma & YARA**, silnik detekcji anomalii oparty o heurystykę i entropię tekstu (**ML Anomaly Detection**), ochronne middleware **LLM Guardrail Proxy**, integrację **SIEM/CEF**, pasywny **Honeypot Sensor**, dedykowany pulpit webowy w **Next.js / React**, kryptograficzne podpisywanie raportów RSA oraz serwer **REST API / WebSockets** (`FastAPI` + `X-API-Key`).
+> **SANCTUM-SUITE** to zintegrowana, wielomodułowa platforma bezpieczeństwa klasy Enterprise. Łączy rozpoznanie powierzchni ataku (**SPECTRE-OSINT**), wielostopniowy oraz multimodalny Red-Teaming modeli LLM/Vision (**Multimodal & Multi-Turn Adaptive Fuzzer** / **SHADOW-AGENT**), silnik audytu zgodności (**EU AI Act, NIS2 & ISO 27001 Compliance Engine**), modelowanie grafów relacji ataków (**Attack Graph Engine**), dedykowane **Python Client SDK (`sanctum-client`)**, samoleczącą się sieć P2P Zero-Trust (**GHOST-COMM**), automatyczne otwieranie Pull Requestów na GitHubie (**GitHub Auto-PR Publisher**), zarządcze uprawnienia **RBAC & Multi-Tenancy**, rozproszoną szynę zdarzeń (**Distributed Event Bus**), automatyczne generowanie poprawek kodu (**Self-Healing Code PRs**), asynchroniczny skaner portów/usług, silnik korelacji zagrożeń z mapowaniem **MITRE ATT&CK/ATLAS**, automatyczne scenariusze naprawcze (Playbooks), generator reguł detekcyjnych **Sigma & YARA**, silnik detekcji anomalii oparty o heurystykę i entropię tekstu (**ML Anomaly Detection**), ochronne middleware **LLM Guardrail Proxy**, integrację **SIEM/CEF**, pasywny **Honeypot Sensor**, dedykowany pulpit webowy w **Next.js / React**, kryptograficzne podpisywanie raportów RSA oraz serwer **REST API / WebSockets** (`FastAPI` + `X-API-Key`).
 
 ---
 
 ## ⚡ Kluczowe Moduły i Funkcjonalności Systemu
 
+- **Regulatory Compliance Engine (EU AI Act, NIS2, ISO 27001):** Automatyczna ewaluacja wymogów bezpieczeństwa sztucznej inteligencji, zarządzania ryzykiem i kontroli technicznych.
+- **Attack Graph Modeling Engine:** Strukturalne generowanie skierowanych grafów acyklicznych przedstawiających wektory i ścieżki infiltracji sieciowej i zasobów AI.
+- **Python Client SDK (`sanctum-client`):** Lekki pakiet kliencki pozwalający na łatwą integrację dowolnej aplikacji zewnętrznej z serwerem API SANCTUM-SUITE dwoma linijkami kodu.
 - **SPECTRE-OSINT & Async Probing:** Pasywna agregacja aktywów cyfrowych, asynchroniczne sondowanie nagłówków i certyfikatów (`httpx` + `asyncio`).
-- **Async Port & Service Scanner:** Błyskawiczny, wielowiątkowy skaner otwartych portów TCP (SSH, HTTP, HTTPS, DB, Ollama API).
+- **Async Port & Service Scanner:** Błyskawiczny, wielowątkowy skaner otwartych portów TCP (SSH, HTTP, HTTPS, DB, Ollama API).
 - **Multimodal & Multi-Turn AI Red-Teaming:** Fuzzer symulujący ukryte wstrzyknięcia w obrazach (*Visual Prompt Injection*) oraz wielostopniowe ataki konwersacyjne.
 - **GitHub Automated Pull Request Publisher:** Automatyczne zakładanie gałęzi i zgłaszanie Pull Requestów naprawczych na GitHubie po wykryciu podatności.
 - **RBAC & Multi-Tenancy Layer:** Zarządzanie kontrolą dostępów (`ADMIN`, `AUDITOR`, `VIEWER`) i izolacją danych wielu organizacji.
@@ -54,6 +58,7 @@ graph TD
 
     Orchestrator["SANCTUM Unified Orchestrator"]
     API["FastAPI Secured API (X-API-Key)"]
+    SDK["Sanctum Python Client SDK"]
     RBAC["RBAC & Multi-Tenancy Manager"]
     WebDash["Next.js Web Dashboard"]
     Guardrail["LLM Guardrail Proxy & ML Anomaly"]
@@ -63,6 +68,8 @@ graph TD
     RedTeam["Multimodal & Multi-Turn Fuzzer / SHADOW-AGENT"]
     Correlator["Threat Correlation Engine"]
     Mitre["MITRE ATT&CK / ATLAS Mapper"]
+    Compliance["EU AI Act / NIS2 / ISO 27001 Engine"]
+    AttackGraph["Attack Graph Engine (NetworkX)"]
     Playbook["Remediation Playbook Engine"]
     AutoPatch["Automated Code Patcher (Self-Healing)"]
     GitHubPR["GitHub Automated PR Publisher"]
@@ -74,6 +81,7 @@ graph TD
     DuckDB["DuckDB OLAP Analytics"]
     Reports["Signed Reports (PDF / HTML / .sig)"]
 
+    SDK -->|API Calls| API
     API -->|Secured REST Trigger / WS Stream| RBAC --> Orchestrator
     WebDash -->|Connect via WebSockets & REST| API
     Guardrail -->|Filter & Inspect Prompts| Orchestrator
@@ -81,13 +89,13 @@ graph TD
     Orchestrator -->|2. Active TCP Port Scan| PortScan
     Orchestrator -->|3. Monitor Decoy Traps| Honeypot
     OSINT & PortScan -->|4. Feed Targets| RedTeam
-    RedTeam & PortScan -->|5. Attack Chain & MITRE Mapping| Correlator & Mitre
+    RedTeam & PortScan -->|5. Attack Chain, Graph & Compliance Mapping| Correlator & Mitre & Compliance & AttackGraph
     Correlator & RedTeam -->|6. Generate Hardening Playbooks, Patches & Rules| Playbook & AutoPatch & SigmaYara
     AutoPatch -->|7. Publish PR to GitHub| GitHubPR
     Correlator -->|8. Export Telemetry & Dispatch Events| SIEM & EventBus & GhostMesh
     Orchestrator -->|9. Persist Security Events| DuckDB
     Orchestrator -->|10. Generate & Sign Artifacts| Reports & Signer
 
-    class Orchestrator,API,RBAC,WebDash core;
-    class Guardrail,OSINT,PortScan,Honeypot,RedTeam,Correlator,Mitre,Playbook,AutoPatch,GitHubPR,SigmaYara,SIEM,EventBus,GhostMesh module;
+    class Orchestrator,API,SDK,RBAC,WebDash core;
+    class Guardrail,OSINT,PortScan,Honeypot,RedTeam,Correlator,Mitre,Compliance,AttackGraph,Playbook,AutoPatch,GitHubPR,SigmaYara,SIEM,EventBus,GhostMesh module;
     class DuckDB,Reports,Signer output;
