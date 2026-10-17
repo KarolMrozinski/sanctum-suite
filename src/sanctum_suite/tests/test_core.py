@@ -14,6 +14,9 @@ from sanctum_suite.modules.multimodal_fuzzer import MultimodalSafetyFuzzer
 from sanctum_suite.core.github_integration import GitHubAutomatedPRPublisher
 from sanctum_suite.core.rbac import RBACPermissionManager, UserRole
 from fastapi import HTTPException
+from sanctum_suite.core.compliance import RegulatoryComplianceEngine
+from sanctum_suite.core.attack_graph import AttackGraphEngine
+from sanctum_client.client import SanctumSuiteClient
 
 def test_mitre_mapping():
     mitre = MitreMapperEngine()
@@ -125,3 +128,27 @@ def test_rbac_permissions():
 
     with pytest.raises(HTTPException):
         RBACPermissionManager.verify_permission(UserRole.VIEWER, "RUN_AUDIT")
+
+def test_compliance_engine():
+    engine = RegulatoryComplianceEngine()
+    shadow_vulns = [{"issue": "PROMPT_INJECTION_RISK"}]
+    open_ports = [{"port": 11434}]
+
+    res = engine.evaluate_compliance(shadow_vulns, open_ports)
+    assert res["eu_ai_act"]["article_15_cybersecurity"] == "NON_COMPLIANT"
+    assert res["iso_27001"]["control_A_8_8_technical_vulnerabilities"] == "FAIL"
+
+
+def test_attack_graph_engine():
+    graph_engine = AttackGraphEngine()
+    shadow_vulns = [{"issue": "PROMPT_INJECTION_RISK"}]
+    open_ports = [{"port": 11434, "service": "Ollama LLM API"}]
+
+    res = graph_engine.build_attack_graph("enterprise-core.com", open_ports, shadow_vulns)
+    assert res["nodes_count"] >= 3
+    assert res["edges_count"] >= 2
+
+
+def test_client_sdk_instantiation():
+    client = SanctumSuiteClient(base_url="http://127.0.0.1:8000")
+    assert client.headers["X-API-Key"] == "sanctum-secret-key-2026"        

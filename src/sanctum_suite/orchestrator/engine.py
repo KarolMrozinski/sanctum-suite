@@ -18,6 +18,8 @@ from sanctum_suite.core.event_bus import DistributedEventBus
 from sanctum_suite.core.auto_patcher import AutomatedPatchEngine
 from sanctum_suite.core.github_integration import GitHubAutomatedPRPublisher
 from sanctum_suite.core.rbac import RBACPermissionManager, UserRole
+from sanctum_suite.core.compliance import RegulatoryComplianceEngine
+from sanctum_suite.core.attack_graph import AttackGraphEngine
 from sanctum_suite.modules.osint import SpectreOsintModule
 from sanctum_suite.modules.shadow import ShadowAgentModule
 from sanctum_suite.modules.ghost import GhostCommModule
@@ -26,7 +28,7 @@ from sanctum_suite.modules.multimodal_fuzzer import MultimodalSafetyFuzzer
 
 
 class SanctumUnifiedOrchestrator:
-    """Enterprise Orchestration Engine z Multimodal Fuzzerem, GitHub PR Integration i RBAC."""
+    """Enterprise Orchestration Engine z EU AI Act compliance, Attack Graph i Client SDK."""
 
     def __init__(self) -> None:
         self.osint = SpectreOsintModule()
@@ -53,6 +55,8 @@ class SanctumUnifiedOrchestrator:
         self.rbac = RBACPermissionManager()
         self.multi_turn_fuzzer = MultiTurnJailbreakFuzzer()
         self.multimodal_fuzzer = MultimodalSafetyFuzzer()
+        self.compliance_engine = RegulatoryComplianceEngine()
+        self.attack_graph_engine = AttackGraphEngine()
 
     def execute_full_resilience_audit(self, target_domain: str, role: UserRole = UserRole.ADMIN) -> dict:
         self.rbac.verify_permission(role, "RUN_AUDIT")
@@ -68,11 +72,13 @@ class SanctumUnifiedOrchestrator:
         multi_turn_res = self.multi_turn_fuzzer.execute_multi_turn_fuzzing(target_domain)
         multimodal_res = self.multimodal_fuzzer.evaluate_visual_prompts(target_domain)
         
-        # Faza 3: Threat Correlation, MITRE Mapping & Auto-Patching
+        # Faza 3: Threat Correlation, MITRE Mapping, Attack Graph & Compliance
         correlation = self.correlator.correlate_findings(open_ports, shadow_res["vulnerabilities"])
         mitre_tactics = self.mitre.map_findings(shadow_res["vulnerabilities"], open_ports)
         playbook = self.remediation.generate_playbook(open_ports, shadow_res["vulnerabilities"])
         auto_patch = self.auto_patcher.generate_remediation_patch(shadow_res["vulnerabilities"])
+        compliance_eval = self.compliance_engine.evaluate_compliance(shadow_res["vulnerabilities"], open_ports)
+        attack_graph = self.attack_graph_engine.build_attack_graph(target_domain, open_ports, shadow_res["vulnerabilities"])
 
         # Faza 4: Zero-Trust Alert Packaging & SIEM Format
         envelope_hash = self.ghost.secure_alert_dispatch(shadow_res)
@@ -102,6 +108,8 @@ class SanctumUnifiedOrchestrator:
             "multimodal_summary": multimodal_res,
             "correlation": correlation,
             "mitre_tactics": mitre_tactics,
+            "compliance_evaluation": compliance_eval,
+            "attack_graph": attack_graph,
             "playbook": playbook,
             "auto_patch": auto_patch,
             "cef_log": cef_log,
