@@ -41,6 +41,9 @@ from sanctum_suite.core.parrot_owasp_reporter import ParrotOwaspReporter
 from sanctum_suite.core.threat_actors import SovereignThreatActorEngine
 from sanctum_suite.core.global_regulatory import GlobalRegulatoryEngine
 from sanctum_suite.core.lowlevel_resilience import LowLevelResilienceEngine
+from sanctum_suite.core.exploit_lab import ExploitLabEngine
+from sanctum_suite.core.cyber_plumber import CyberPlumberNetworkEngine
+from sanctum_suite.core.spider_graph import SpiderGraphOsintEngine
 
 def test_mitre_mapping():
     mitre = MitreMapperEngine()
@@ -365,3 +368,27 @@ def test_lowlevel_resilience_engine():
     assert res["owasp_asvs_level"] == "LEVEL_3_ADVANCED"
     assert res["ebpf_kernel_probe"]["tracing_status"] == "ACTIVE_BPF_EVENTS"
     assert res["osstmm_security_metrics"]["raven_score"] > 90.0    
+
+def test_exploit_lab_engine():
+    lab = ExploitLabEngine()
+    res = lab.inspect_kernel_mitigations()
+    assert res["kernel_hardening_score"] > 90.0
+    assert res["status"] == "HARDENED"
+
+
+def test_cyber_plumber_network_engine():
+    plumber = CyberPlumberNetworkEngine()
+    tunnel = plumber.establish_multihop_tunnel("entry", "exit")
+    assert tunnel["status"] == "ESTABLISHED"
+    assert tunnel["encapsulation"] == "eBPF_SSH_SOCKS5"
+
+    td = plumber.teardown_tunnel(tunnel["tunnel_id"])
+    assert td["status"] == "CLOSED_AND_PURGED"
+
+
+def test_spider_graph_osint_engine():
+    spider = SpiderGraphOsintEngine()
+    graph = spider.build_infrastructure_graph("target.internal")
+    assert graph["nodes_count"] >= 4
+    assert graph["edges_count"] >= 3
+    assert graph["format"] == "GraphML / JSON-LD"    

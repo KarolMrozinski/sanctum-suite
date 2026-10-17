@@ -44,6 +44,9 @@ from sanctum_suite.core.parrot_owasp_reporter import ParrotOwaspReporter
 from sanctum_suite.core.threat_actors import SovereignThreatActorEngine
 from sanctum_suite.core.global_regulatory import GlobalRegulatoryEngine
 from sanctum_suite.core.lowlevel_resilience import LowLevelResilienceEngine
+from sanctum_suite.core.exploit_lab import ExploitLabEngine
+from sanctum_suite.core.cyber_plumber import CyberPlumberNetworkEngine
+from sanctum_suite.core.spider_graph import SpiderGraphOsintEngine
 from sanctum_suite.modules.osint import SpectreOsintModule
 from sanctum_suite.modules.shadow import ShadowAgentModule
 from sanctum_suite.modules.ghost import GhostCommModule
@@ -52,7 +55,7 @@ from sanctum_suite.modules.multimodal_fuzzer import MultimodalSafetyFuzzer
 
 
 class SanctumUnifiedOrchestrator:
-    """Sovereign Enterprise Orchestration Engine z APT Emulation, DORA/NIS2/ISO42001 i eBPF Tracing."""
+    """Sovereign Enterprise Orchestration Engine z Exploit Lab, Cyber Plumber Network i Spider Graph OSINT."""
 
     def __init__(self) -> None:
         self.osint = SpectreOsintModule()
@@ -105,6 +108,9 @@ class SanctumUnifiedOrchestrator:
         self.threat_actors = SovereignThreatActorEngine()
         self.global_regulatory = GlobalRegulatoryEngine()
         self.lowlevel_resilience = LowLevelResilienceEngine()
+        self.exploit_lab = ExploitLabEngine()
+        self.cyber_plumber = CyberPlumberNetworkEngine()
+        self.spider_graph = SpiderGraphOsintEngine()
 
     def execute_full_resilience_audit(self, target_domain: str, role: UserRole = UserRole.ADMIN, license_key: str = "SANCTUM-FREE-KEY", tenant_id: str = "default_tenant") -> dict:
         self.rbac.verify_permission(role, "RUN_AUDIT")
@@ -114,11 +120,12 @@ class SanctumUnifiedOrchestrator:
 
         audit_id = f"SNC-{hash(target_domain) & 0xFFFF:04X}"
 
-        # Uruchomienie mikro-kontenera Parrot Sec i AnonSurf
+        # Uruchomienie tunelu Cyber Plumber, mikro-kontenera Parrot Sec i AnonSurf
+        plumber_tunnel = self.cyber_plumber.establish_multihop_tunnel("entry-node.proxy", "exit-node.proxy")
         parrot_container = self.parrot_containers.spawn_parrot_microcontainer("DEEP_SCAN")
         anonsurf_status = self.anonsurf.enable_anonsurf_tunnel()
 
-        # Faza 1: OSINT, Port, Container, GPU, Low-Level eBPF & SpiderFoot Probe
+        # Faza 1: OSINT, Port, Container, GPU, Kernel Exploit Lab & Spider Graph Probe
         osint_res = self.osint.scan_target(target_domain)
         probe_results = self.async_scanner.run_sync_batch_scan(osint_res["subdomains"])
         open_ports = self.port_scanner.run_sync_port_scan("127.0.0.1")
@@ -127,6 +134,8 @@ class SanctumUnifiedOrchestrator:
         llm04_probe = self.resource_probe.test_context_exhaustion(target_domain)
         parrot_scan = self.parrot_engine.run_recon_audit(target_domain)
         lowlevel_res = self.lowlevel_resilience.execute_low_level_audit(target_domain)
+        kernel_exploit_audit = self.exploit_lab.inspect_kernel_mitigations()
+        spider_graph_res = self.spider_graph.build_infrastructure_graph(target_domain)
 
         # Faza 2: AI Safety, Mutator, Agent Tool Fuzzing & Sovereign Threat Actor Emulation
         shadow_res = self.shadow.evaluate_llm_endpoints(osint_res["subdomains"])
@@ -175,11 +184,13 @@ class SanctumUnifiedOrchestrator:
             "license_tier": lic_info["tier"].value,
             "overall_score": final_score,
             "risk_level": risk.value,
+            "plumber_tunnel": plumber_tunnel,
             "anonsurf_tunnel": anonsurf_status,
             "parrot_container": parrot_container,
             "envelope_hash": envelope_hash,
             "kms_envelope": encrypted_kms_payload,
             "osint_summary": osint_res,
+            "spider_graph": spider_graph_res,
             "probed_endpoints": probe_results,
             "open_ports": open_ports,
             "container_scan": container_scan,
@@ -187,6 +198,7 @@ class SanctumUnifiedOrchestrator:
             "llm04_probe": llm04_probe,
             "parrot_scan": parrot_scan,
             "lowlevel_resilience": lowlevel_res,
+            "kernel_exploit_audit": kernel_exploit_audit,
             "shadow_summary": shadow_res,
             "multi_turn_summary": multi_turn_res,
             "multimodal_summary": multimodal_res,
@@ -217,6 +229,7 @@ class SanctumUnifiedOrchestrator:
         soar_actions = self.soar_agent.evaluate_and_remediate(audit_summary)
         audit_summary["soar_actions"] = soar_actions
 
+        self.cyber_plumber.teardown_tunnel(plumber_tunnel["tunnel_id"])
         self.parrot_containers.terminate_container(parrot_container["container_id"])
         self.anonsurf.disable_anonsurf_tunnel()
 
