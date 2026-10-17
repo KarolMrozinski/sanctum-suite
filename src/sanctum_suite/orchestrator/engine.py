@@ -22,8 +22,10 @@ from sanctum_suite.core.compliance import RegulatoryComplianceEngine
 from sanctum_suite.core.attack_graph import AttackGraphEngine
 from sanctum_suite.core.task_queue import AsyncTaskQueueManager
 from sanctum_suite.core.container_scanner import DockerContainerCVEAnalyzer
-from sanctum_suite.core.billing import CommercialLicenseManager, LicenseTier
+from sanctum_suite.core.billing import CommercialLicenseManager
 from sanctum_suite.core.tenant_manager import TenantProvisioningManager
+from sanctum_suite.core.soar_agents import AutonomousSOARAgent
+from sanctum_suite.core.kms_vault import ZeroTrustKMSVault
 from sanctum_suite.modules.osint import SpectreOsintModule
 from sanctum_suite.modules.shadow import ShadowAgentModule
 from sanctum_suite.modules.ghost import GhostCommModule
@@ -32,7 +34,7 @@ from sanctum_suite.modules.multimodal_fuzzer import MultimodalSafetyFuzzer
 
 
 class SanctumUnifiedOrchestrator:
-    """Enterprise Orchestration Engine z Bilingiem, Multi-Tenant Provisioning i CI/CD Gate."""
+    """Enterprise Orchestration Engine z SOAR Agents, KMS Vault i 3D Matrix."""
 
     def __init__(self) -> None:
         self.osint = SpectreOsintModule()
@@ -65,11 +67,12 @@ class SanctumUnifiedOrchestrator:
         self.container_scanner = DockerContainerCVEAnalyzer()
         self.license_manager = CommercialLicenseManager()
         self.tenant_manager = TenantProvisioningManager()
+        self.soar_agent = AutonomousSOARAgent()
+        self.kms_vault = ZeroTrustKMSVault()
 
     def execute_full_resilience_audit(self, target_domain: str, role: UserRole = UserRole.ADMIN, license_key: str = "SANCTUM-FREE-KEY", tenant_id: str = "default_tenant") -> dict:
         self.rbac.verify_permission(role, "RUN_AUDIT")
         
-        # Weryfikacja licencji i limitów bilingowych
         lic_info = self.license_manager.validate_license_key(license_key)
         self.license_manager.check_and_increment_usage(tenant_id, lic_info["tier"], "audits")
 
@@ -86,7 +89,7 @@ class SanctumUnifiedOrchestrator:
         multi_turn_res = self.multi_turn_fuzzer.execute_multi_turn_fuzzing(target_domain)
         multimodal_res = self.multimodal_fuzzer.evaluate_visual_prompts(target_domain)
         
-        # Faza 3: Threat Correlation, MITRE Mapping, Attack Graph & Compliance
+        # Faza 3: Threat Correlation, Attack Graph & Compliance
         correlation = self.correlator.correlate_findings(open_ports, shadow_res["vulnerabilities"])
         mitre_tactics = self.mitre.map_findings(shadow_res["vulnerabilities"], open_ports)
         playbook = self.remediation.generate_playbook(open_ports, shadow_res["vulnerabilities"])
@@ -94,8 +97,9 @@ class SanctumUnifiedOrchestrator:
         compliance_eval = self.compliance_engine.evaluate_compliance(shadow_res["vulnerabilities"], open_ports)
         attack_graph = self.attack_graph_engine.build_attack_graph(target_domain, open_ports, shadow_res["vulnerabilities"])
 
-        # Faza 4: Zero-Trust Alert Packaging & SIEM Format
+        # Faza 4: Zero-Trust Alert Packaging & Envelope Encryption
         envelope_hash = self.ghost.secure_alert_dispatch(shadow_res)
+        encrypted_kms_payload = self.kms_vault.encrypt_payload(str(shadow_res))
 
         base_score = min(100.0, len(shadow_res["vulnerabilities"]) * 40.0 + len(open_ports) * 10.0 + 10.0)
         final_score = min(100.0, base_score * correlation["risk_multiplier"])
@@ -105,9 +109,6 @@ class SanctumUnifiedOrchestrator:
         sigma_rule = self.rules_gen.generate_sigma_rule(audit_id, target_domain, shadow_res["vulnerabilities"])
         yara_rule = self.rules_gen.generate_yara_rule(audit_id)
 
-        # Zapis w bazach danych
-        self.db.save_audit(audit_id, target_domain, final_score, risk.value)
-
         audit_summary = {
             "audit_id": audit_id,
             "target": target_domain,
@@ -116,6 +117,7 @@ class SanctumUnifiedOrchestrator:
             "overall_score": final_score,
             "risk_level": risk.value,
             "envelope_hash": envelope_hash,
+            "kms_envelope": encrypted_kms_payload,
             "osint_summary": osint_res,
             "probed_endpoints": probe_results,
             "open_ports": open_ports,
@@ -130,17 +132,19 @@ class SanctumUnifiedOrchestrator:
             "playbook": playbook,
             "auto_patch": auto_patch,
             "cef_log": cef_log,
-            "detection_rules": {
-                "sigma": sigma_rule,
-                "yara": yara_rule,
-            },
+            "detection_rules": {"sigma": sigma_rule, "yara": yara_rule},
         }
 
-        # Generowanie raportów
+        # Faza 5: Autonomiczna ewaluacja SOAR Agent
+        soar_actions = self.soar_agent.evaluate_and_remediate(audit_summary)
+        audit_summary["soar_actions"] = soar_actions
+
+        # Zapis w bazie
+        self.db.save_audit(audit_id, target_domain, final_score, risk.value)
+
+        # Raporty
         report_path_html = self.reporter.generate_html_report(audit_summary, f"report_{audit_id}.html")
         report_path_pdf = self.pdf_reporter.generate_pdf_report(audit_summary, f"report_{audit_id}.pdf")
-
-        # Kryptograficzne podpisanie pliku PDF
         pdf_signature = self.signer.sign_file(report_path_pdf)
 
         audit_summary["report_path_html"] = report_path_html

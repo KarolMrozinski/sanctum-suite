@@ -21,6 +21,8 @@ from sanctum_suite.core.task_queue import AsyncTaskQueueManager
 from sanctum_suite.core.container_scanner import DockerContainerCVEAnalyzer
 from sanctum_suite.core.billing import CommercialLicenseManager, LicenseTier
 from sanctum_suite.core.tenant_manager import TenantProvisioningManager
+from sanctum_suite.core.soar_agents import AutonomousSOARAgent
+from sanctum_suite.core.kms_vault import ZeroTrustKMSVault
 
 def test_mitre_mapping():
     mitre = MitreMapperEngine()
@@ -187,4 +189,26 @@ def test_tenant_provisioning_manager():
     tenant = mgr.register_tenant("tenant-01", "Acme Cyber Corp", "SNC-ENT-999")
 
     assert tenant["tenant_id"] == "tenant-01"
-    assert tenant["db_schema"] == "tenant_tenant_01"    
+    assert tenant["db_schema"] == "tenant_tenant_01" 
+
+def test_soar_agent_execution():
+    agent = AutonomousSOARAgent()
+    mock_audit = {
+        "overall_score": 75.0,
+        "open_ports": [{"port": 11434}],
+    }
+    res = agent.evaluate_and_remediate(mock_audit)
+    assert res["status"] == "REMEDIATION_EXECUTED"
+    assert res["actions_count"] >= 2
+
+
+def test_kms_vault_envelope_encryption():
+    kms = ZeroTrustKMSVault()
+    secret_text = "CONFIDENTIAL_LLM_TOKEN_2026"
+    
+    envelope = kms.encrypt_payload(secret_text)
+    assert "ciphertext" in envelope
+    assert "encrypted_dek" in envelope
+
+    decrypted = kms.decrypt_payload(envelope)
+    assert decrypted == secret_text       
