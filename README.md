@@ -2,6 +2,7 @@
 
 [![Architecture](https://img.shields.io/badge/architecture-Modular%20%7C%20Enterprise%20Grade-darkblue)](#)
 [![Python](https://img.shields.io/badge/python-3.11%2B-blue)](#)
+[![Frontend](https://img.shields.io/badge/frontend-Next.js%2014%20%7C%20React-black)](#)
 [![Detection](https://img.shields.io/badge/rules-Sigma%20%7C%20YARA-red)](#)
 [![AI Security](https://img.shields.io/badge/AI%20Security-ML%20Anomaly%20Detection-purple)](#)
 [![Framework](https://img.shields.io/badge/framework-MITRE%20ATT%26CK%20%7C%20ATLAS-orange)](#)
@@ -11,7 +12,7 @@
 [![CI/CD](https://img.shields.io/badge/CI%2FCD-GitHub%20Actions-green)](#)
 [![License](https://img.shields.io/badge/license-View--Only-orange)](#)
 
-> **SANCTUM-SUITE** to zintegrowana, wielomodułowa platforma bezpieczeństwa klasy Enterprise. Łączy rozpoznanie powierzchni ataku (**SPECTRE-OSINT**), automatyczny Red-Teaming modeli LLM (**SHADOW-AGENT**), samoleczącą się sieć P2P Zero-Trust (**GHOST-COMM**), asynchroniczny skaner portów/usług, silnik korelacji zagrożeń z mapowaniem **MITRE ATT&CK/ATLAS**, automatyczne scenariusze naprawcze (Playbooks), generator reguł detekcyjnych **Sigma & YARA**, silnik detekcji anomalii oparty o heurystykę i entropię tekstu (**ML Anomaly Detection**), ochronne middleware **LLM Guardrail Proxy**, integrację **SIEM/CEF**, pasywny **Honeypot Sensor**, kryptograficzne podpisywanie raportów RSA oraz serwer **REST API / WebSockets** (`FastAPI` + `X-API-Key`).
+> **SANCTUM-SUITE** to zintegrowana, wielomodułowa platforma bezpieczeństwa klasy Enterprise. Łączy rozpoznanie powierzchni ataku (**SPECTRE-OSINT**), automatyczny Red-Teaming modeli LLM (**SHADOW-AGENT**), samoleczącą się sieć P2P Zero-Trust (**GHOST-COMM**), asynchroniczny skaner portów/usług, silnik korelacji zagrożeń z mapowaniem **MITRE ATT&CK/ATLAS**, automatyczne scenariusze naprawcze (Playbooks), generator reguł detekcyjnych **Sigma & YARA**, silnik detekcji anomalii oparty o heurystykę i entropię tekstu (**ML Anomaly Detection**), ochronne middleware **LLM Guardrail Proxy**, integrację **SIEM/CEF**, pasywny **Honeypot Sensor**, dedykowany pulpit webowy w **Next.js / React**, kryptograficzne podpisywanie raportów RSA oraz serwer **REST API / WebSockets** (`FastAPI` + `X-API-Key`).
 
 ---
 
@@ -20,6 +21,7 @@
 - **SPECTRE-OSINT & Async Probing:** Pasywna agregacja aktywów cyfrowych, asynchroniczne sondowanie nagłówków i certyfikatów (`httpx` + `asyncio`).
 - **Async Port & Service Scanner:** Błyskawiczny, wielowątkowy skaner otwartych portów TCP (SSH, HTTP, HTTPS, DB, Ollama API).
 - **SHADOW-AGENT AI Red-Teaming:** Automatyczny fuzzing modeli LLM pod kątem *Prompt Injection*, wycieków instrukcji i złamań guardraili.
+- **Enterprise Web Dashboard (Next.js / React):** Nowoczesny pulpit nawigacyjny SOC Workbench wizualizujący metryki ryzyka oraz żywy strumień telemetrii przez WebSockets.
 - **LLM Guardrail Proxy & ML Anomaly Detection:** Inspection proxy filtrujące złośliwe prompty z analizą entropii tekstu i oceną anomalii w czasie rzeczywistym.
 - **Detection Rules Generator (Sigma & YARA):** Automatyczna synteza natywnych reguł **Sigma** (dla SIEM) i **YARA** (dla skanowania logów/pamięci) na podstawie wykrytych podatności.
 - **SIEM / SOAR Exporter:** Formatowanie telemetryczne w standardzie **CEF (Common Event Format)** oraz powiadomienia HTTP Webhook.
@@ -45,6 +47,7 @@ graph TD
 
     Orchestrator["SANCTUM Unified Orchestrator"]
     API["FastAPI Secured API (X-API-Key)"]
+    WebDash["Next.js Web Dashboard"]
     Guardrail["LLM Guardrail Proxy & ML Anomaly"]
     OSINT["SPECTRE-OSINT / Async Probe"]
     PortScan["Async Port Scanner"]
@@ -61,6 +64,7 @@ graph TD
     Reports["Signed Reports (PDF / HTML / .sig)"]
 
     API -->|Secured REST Trigger / WS Stream| Orchestrator
+    WebDash -->|Connect via WebSockets & REST| API
     Guardrail -->|Filter & Inspect Prompts| Orchestrator
     Orchestrator -->|1. Network & Footprint Discovery| OSINT
     Orchestrator -->|2. Active TCP Port Scan| PortScan
@@ -72,6 +76,6 @@ graph TD
     Orchestrator -->|8. Persist Security Events| DuckDB
     Orchestrator -->|9. Generate & Sign Artifacts| Reports & Signer
 
-    class Orchestrator,API core;
+    class Orchestrator,API,WebDash core;
     class Guardrail,OSINT,PortScan,Honeypot,RedTeam,Correlator,Mitre,Playbook,SigmaYara,SIEM,GhostMesh module;
     class DuckDB,Reports,Signer output;
