@@ -26,6 +26,9 @@ from sanctum_suite.core.kms_vault import ZeroTrustKMSVault
 from sanctum_suite.core.deobfuscator import PayloadDeobfuscatorEngine
 from sanctum_suite.core.plugin_fuzzer import AgentToolPluginFuzzer
 from sanctum_suite.core.xdr_sync import EDRTelemetrySyncEngine
+from sanctum_suite.core.gan_mutator import GANMutatorEngine
+from sanctum_suite.core.k8s_operator import K8sCiliumOperator
+from sanctum_suite.core.dlp_shield import DLPShieldEngine
 
 def test_mitre_mapping():
     mitre = MitreMapperEngine()
@@ -235,3 +238,26 @@ def test_xdr_telemetry_sync():
     res = sync.sync_endpoint_telemetry("SNC-1234")
     assert res["edr_status"] == "CONNECTED"
     assert res["correlated_events_count"] >= 1  
+
+def test_gan_mutator_engine():
+    mutator = GANMutatorEngine()
+    res = mutator.generate_mutations("override rules", generations=2)
+    assert res["total_generated"] == 2
+    assert len(res["variants"]) == 2
+
+
+def test_k8s_cilium_operator():
+    op = K8sCiliumOperator()
+    res = op.enforce_pod_quarantine("test-pod")
+    assert res["status"] == "QUARANTINE_POLICY_APPLIED"
+    assert res["applied_policy"]["kind"] == "CiliumNetworkPolicy"
+
+
+def test_dlp_shield_engine():
+    dlp = DLPShieldEngine()
+    token_data = dlp.inject_synthetic_honeytoken("AWS_KEY")
+    assert "honeytoken" in token_data
+
+    # Test wykrywania wycieku
+    leak_check = dlp.inspect_output_for_exfiltration(f"Here is the token: {token_data['honeytoken']}")
+    assert leak_check["exfiltration_detected"] is True    
