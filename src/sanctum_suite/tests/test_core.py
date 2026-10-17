@@ -10,6 +10,10 @@ from sanctum_suite.core.anomaly import MLAnomalyDetector
 from sanctum_suite.modules.multi_turn_fuzzer import MultiTurnJailbreakFuzzer
 from sanctum_suite.core.event_bus import DistributedEventBus
 from sanctum_suite.core.auto_patcher import AutomatedPatchEngine
+from sanctum_suite.modules.multimodal_fuzzer import MultimodalSafetyFuzzer
+from sanctum_suite.core.github_integration import GitHubAutomatedPRPublisher
+from sanctum_suite.core.rbac import RBACPermissionManager, UserRole
+from fastapi import HTTPException
 
 def test_mitre_mapping():
     mitre = MitreMapperEngine()
@@ -101,3 +105,23 @@ def test_auto_patcher():
     res = patcher.generate_remediation_patch([{"issue": "PROMPT_INJECTION_RISK"}])
     assert res["patch_applied"] is True
     assert "Unified Diff" in res["recommendation"] or len(res["unified_diff"]) > 0    
+
+def test_multimodal_fuzzer():
+    fuzzer = MultimodalSafetyFuzzer()
+    res = fuzzer.evaluate_visual_prompts("test.com")
+    assert res["images_scanned"] == 5
+    assert len(res["vulnerabilities"]) > 0
+
+
+@pytest.mark.asyncio
+async def test_github_integration():
+    gh = GitHubAutomatedPRPublisher()
+    res = await gh.create_auto_fix_pr("auto-fix-branch", "diff_patch", "Fix Prompt Injection")
+    assert "pr_url" in res
+
+
+def test_rbac_permissions():
+    RBACPermissionManager.verify_permission(UserRole.ADMIN, "RUN_AUDIT")
+
+    with pytest.raises(HTTPException):
+        RBACPermissionManager.verify_permission(UserRole.VIEWER, "RUN_AUDIT")

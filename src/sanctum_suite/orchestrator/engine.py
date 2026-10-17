@@ -16,14 +16,17 @@ from sanctum_suite.core.sigma_yara import DetectionRuleGenerator
 from sanctum_suite.core.anomaly import MLAnomalyDetector
 from sanctum_suite.core.event_bus import DistributedEventBus
 from sanctum_suite.core.auto_patcher import AutomatedPatchEngine
+from sanctum_suite.core.github_integration import GitHubAutomatedPRPublisher
+from sanctum_suite.core.rbac import RBACPermissionManager, UserRole
 from sanctum_suite.modules.osint import SpectreOsintModule
 from sanctum_suite.modules.shadow import ShadowAgentModule
 from sanctum_suite.modules.ghost import GhostCommModule
 from sanctum_suite.modules.multi_turn_fuzzer import MultiTurnJailbreakFuzzer
+from sanctum_suite.modules.multimodal_fuzzer import MultimodalSafetyFuzzer
 
 
 class SanctumUnifiedOrchestrator:
-    """Enterprise Orchestration Engine z Multi-Turn Fuzzerem, Event Busem i Auto-Patcherem."""
+    """Enterprise Orchestration Engine z Multimodal Fuzzerem, GitHub PR Integration i RBAC."""
 
     def __init__(self) -> None:
         self.osint = SpectreOsintModule()
@@ -46,9 +49,13 @@ class SanctumUnifiedOrchestrator:
         self.anomaly_detector = MLAnomalyDetector()
         self.event_bus = DistributedEventBus()
         self.auto_patcher = AutomatedPatchEngine()
+        self.github_pr = GitHubAutomatedPRPublisher()
+        self.rbac = RBACPermissionManager()
         self.multi_turn_fuzzer = MultiTurnJailbreakFuzzer()
+        self.multimodal_fuzzer = MultimodalSafetyFuzzer()
 
-    def execute_full_resilience_audit(self, target_domain: str) -> dict:
+    def execute_full_resilience_audit(self, target_domain: str, role: UserRole = UserRole.ADMIN) -> dict:
+        self.rbac.verify_permission(role, "RUN_AUDIT")
         audit_id = f"SNC-{hash(target_domain) & 0xFFFF:04X}"
 
         # Faza 1: OSINT & Network Probing
@@ -56,9 +63,10 @@ class SanctumUnifiedOrchestrator:
         probe_results = self.async_scanner.run_sync_batch_scan(osint_res["subdomains"])
         open_ports = self.port_scanner.run_sync_port_scan("127.0.0.1")
 
-        # Faza 2: AI Safety Red-Teaming & Multi-Turn Fuzzing
+        # Faza 2: AI Safety Red-Teaming, Multi-Turn & Multimodal Fuzzing
         shadow_res = self.shadow.evaluate_llm_endpoints(osint_res["subdomains"])
         multi_turn_res = self.multi_turn_fuzzer.execute_multi_turn_fuzzing(target_domain)
+        multimodal_res = self.multimodal_fuzzer.evaluate_visual_prompts(target_domain)
         
         # Faza 3: Threat Correlation, MITRE Mapping & Auto-Patching
         correlation = self.correlator.correlate_findings(open_ports, shadow_res["vulnerabilities"])
@@ -91,6 +99,7 @@ class SanctumUnifiedOrchestrator:
             "open_ports": open_ports,
             "shadow_summary": shadow_res,
             "multi_turn_summary": multi_turn_res,
+            "multimodal_summary": multimodal_res,
             "correlation": correlation,
             "mitre_tactics": mitre_tactics,
             "playbook": playbook,
