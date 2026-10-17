@@ -11,7 +11,7 @@
 
 *Jednolita platforma klasy Enterprise łącząca pasywne rozpoznanie infrastruktury, adaptacyjny Red-Teaming modeli LLM/Vision, automatyczną naprawę kodu (Self-Healing) oraz audyty zgodności regulacyjnej.*
 
-[Cechy Systemu](#cechy-systemu) • [Architektura](#architektura) • [Szybki Start](#szybki-start) • [Integracja CI/CD](#integracja-cicd) • [Licencja](#licencja)
+[Cechy Systemu](#cechy-systemu) • [Architektura](#architektura-systemu) • [Szybki Start](#szybki-start) • [Integracja CI/CD](#integracja-cicd) • [Licencja](#licencja-systemu)
 
 ---
 
@@ -62,7 +62,7 @@ Dzięki automatyzacji opartej o silnik korelacji zagrożeń, SANCTUM zmniejsza c
 
 ---
 
-## Architektura
+## Architektura Systemu
 
 Below logic outlines the automated audit execution pipeline within **SANCTUM-SUITE**:
 
