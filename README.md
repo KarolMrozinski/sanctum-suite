@@ -5,7 +5,7 @@
   <p><b>Next-Generation AI Safety & Autonomous Cyber Resilience Platform</b></p>
 
   <p>
-    <i>Zintegrowana platforma państwowej cyber-odporności łącząca pasywne rozpoznanie infrastruktury, ewolucyjny Red-Teaming (GAN Mutation & APT Emulation), profiling jądra eBPF Cilium, orkiestrację Parrot OS, audyt pamięci CUDA GPU, proxy L7 Guardrail, tunelowanie Cyber Plumber, grafowy OSINT oraz certyfikację z normami DORA, NIS2, ISO/IEC 42001 i OWASP ASVS.</i>
+    <i>Platforma państwowej cyber-odporności łącząca pasywne rozpoznanie infrastruktury, ewolucyjny Red-Teaming (GAN Mutation & APT Emulation), profiling jądra eBPF Cilium, orkiestrację Parrot OS, audyt pamięci CUDA GPU, proxy L7 Guardrail, tunelowanie Cyber Plumber, grafowy OSINT oraz certyfikację z normami DORA, NIS2, ISO/IEC 42001 i OWASP ASVS.</i>
   </p>
 
   <p>
@@ -33,7 +33,7 @@
 
 ## Cechy Systemu
 
-**SANCTUM-SUITE** to zintegrowana platforma cyber-odporności stworzona z myślą o nowoczesnych zespołach Security, SOC i rządowych agencjach cyberbezpieczeństwa. Platforma zabezpiecza całe środowisko aplikacyjne – od niskopoziomowego jądra Linuksa (eBPF Cilium), kontenerów i pamięci VRAM GPU, aż po agenty LLM oraz infrastrukturę krytyczną.
+**SANCTUM-SUITE** to platforma cyber-odporności stworzona z myślą o nowoczesnych zespołach Security, SOC i rządowych agencjach cyberbezpieczeństwa. Platforma zabezpiecza całe środowisko aplikacyjne – od niskopoziomowego jądra Linuksa (eBPF Cilium), kontenerów i pamięci VRAM GPU, aż po agenty LLM oraz infrastrukturę krytyczną.
 
 Dzięki automatyzacji opartej o profilowanie eBPF, sanitację L7 Guardrail, matryce DORA/NIS2/ISO42001 oraz autonomicznych agentów SOAR, SANCTUM drastycznie skraca czas reakcji na incydenty (MTTR) i samoczynnie wdraża łatki bezpieczeństwa (Self-Healing PRs).
 
