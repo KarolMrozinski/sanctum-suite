@@ -17,16 +17,13 @@
 
 </div>
 
-<a id="cechy-systemu"></a>
-## 📌 O Platformie
+## Cechy Systemu
 
 **SANCTUM-SUITE** to zintegrowany SOC Workbench nowej generacji stworzony z myślą o nowoczesnych zespołach Security & DevOps. Platforma zabezpiecza całe środowisko aplikacyjne – od warstwy sieciowej i kontenerowej, aż po punkty końcowe sztucznej inteligencji.
 
 Dzięki automatyzacji opartej o silnik korelacji zagrożeń, SANCTUM zmniejsza czas reakcji na incydenty (MTTR) i automatycznie zgłasza łatki bezpieczeństwa (Self-Healing PRs) do repozytoriów programistycznych.
 
----
-
-## ⚡ Kluczowe Filary Systemu
+### Kluczowe Filary Systemu
 
 <table>
   <tr>
@@ -65,8 +62,7 @@ Dzięki automatyzacji opartej o silnik korelacji zagrożeń, SANCTUM zmniejsza c
 
 ---
 
-<a id="architektura"></a>
-## 🏗️ Architektura Systemu
+## Architektura
 
 Below logic outlines the automated audit execution pipeline within **SANCTUM-SUITE**:
 
