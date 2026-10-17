@@ -1,0 +1,12 @@
+__pycache__/
+*.pyc
+.venv/
+venv/
+*.log
+*.sqlite3
+*.duckdb
+.vscode/
+dist/
+build/
+*.egg-info/
+reports/

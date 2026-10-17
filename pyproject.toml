@@ -1,0 +1,25 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "sanctum-suite"
+version = "0.1.0"
+description = "Enterprise Cyber Resilience & AI Safety Platform"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "pydantic>=2.0.0",
+    "networkx>=3.0",
+    "rich>=13.0.0",
+    "typer>=0.9.0",
+    "cryptography>=41.0.0",
+    "sqlalchemy>=2.0.0",
+    "httpx>=0.25.0",
+]
+
+[project.scripts]
+sanctum = "sanctum_suite.main:app"
+
+[tool.setuptools.packages.find]
+where = ["src"]
