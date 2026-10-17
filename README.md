@@ -9,7 +9,7 @@
 [![Compliance](https://img.shields.io/badge/compliance-EU_AI_Act_%7C_NIS2_%7C_ISO_27001-gold.svg)](#)
 [![CI/CD](https://img.shields.io/badge/CI%2FCD-GitHub_Actions-green.svg)](#)
 
-*Jednolita platforma klasy Enterprise łącząca pasywne rozpoznanie infrastruktury, adaptacyjny Red-Teaming modeli LLM/Vision, deobfuskację ładunków, audyt agentów, integrację EDR/XDR, automatyczną naprawę kodu (Self-Healing) oraz audyty zgodności regulacyjnej.*
+*Jednolita platforma klasy Enterprise łącząca pasywne rozpoznanie infrastruktury, ewolucyjny Red-Teaming (GAN Mutation), deobfuskację ładunków, audyt agentów, mikrosegmentację eBPF K8s, ochronę DLP (Honeytokens), samoleczenie kodu (Self-Healing) oraz audyty zgodności regulacyjnej.*
 
 [Cechy Systemu](#cechy-systemu) • [Architektura Systemu](#architektura-systemu) • [Szybki Start](#szybki-start) • [Integracja CI/CD](#integracja-cicd) • [Licencja Systemu](#licencja-systemu)
 
@@ -19,27 +19,27 @@
 
 ## Cechy Systemu
 
-**SANCTUM-SUITE** to zintegrowany SOC Workbench nowej generacji stworzony z myślą o nowoczesnych zespołach Security & DevOps. Platforma zabezpiecza całe środowisko aplikacyjne – od warstwy sieciowej i kontenerowej, aż po punkty końcowe i narzędzia sztucznej inteligencji.
+**SANCTUM-SUITE** to zintegrowany SOC Workbench nowej generacji stworzony z myślą o nowoczesnych zespołach Security & DevOps. Platforma zabezpiecza całe środowisko aplikacyjne – od warstwy sieciowej i kontenerowej, aż po punkty końcowe i autonomiczne narzędzia sztucznej inteligencji.
 
-Dzięki automatyzacji opartej o silnik korelacji zagrożeń i autonomicznych agentów SOAR, SANCTUM zmniejsza czas reakcji na incydenty (MTTR) i automatycznie zgłasza łatki bezpieczeństwa (Self-Healing PRs) do repozytoriów programistycznych.
+Dzięki automatyzacji opartej o silnik korelacji zagrożeń, mutacje genetyczne i autonomicznych agentów SOAR, SANCTUM zmniejsza czas reakcji na incydenty (MTTR) i automatycznie zgłasza łatki bezpieczeństwa (Self-Healing PRs) do repozytoriów programistycznych.
 
 ### Kluczowe Filary Systemu
 
 <table>
   <tr>
     <td width="50%">
-      <h3>🛡️ AI Safety, Deobfuscation & Agent Fuzzing</h3>
+      <h3>🛡️ AI Safety, GAN Mutator & DLP Shield</h3>
       <ul>
-        <li><b>Multimodal & Multi-Turn Fuzzing:</b> Skanowanie podatności w modelach tekstowych i wizyjnych (Crescendo & Visual Prompt Injection).</li>
-        <li><b>Payload Deobfuscator Engine:</b> Wielowarstwowa deobfuskacja zakodowanych promptów (Base64, Unicode, zniekształcenia składniowe).</li>
+        <li><b>Adversarial GAN Mutator:</b> Ewolucyjne syntezowanie i parafrazowanie nieznanych wariantów ataków (Zero-Day Prompt Injections).</li>
+        <li><b>DLP & Synthetic Honeytokens:</b> Wstrzykiwanie syntetycznych pułapek do baz wiedzy RAG i detekcja wycieku danych (PII, API Keys).</li>
         <li><b>Agent Tool & Plugin Fuzzer:</b> Audyt wywołań funkcji (Function Calling) i wykrywanie ataków Indirect Prompt Injection.</li>
       </ul>
     </td>
     <td width="50%">
-      <h3>🏛️ Zgodność, Governance & EDR Sync</h3>
+      <h3>🏛️ Zgodność, Governance & K8s eBPF</h3>
       <ul>
         <li><b>Regulatory Engine:</b> Automatyczna ocena wymogów <b>EU AI Act (Art. 15)</b>, dyrektywy <b>NIS2</b> oraz normy <b>ISO/IEC 27001</b>.</li>
-        <li><b>MITRE ATT&CK & ATLAS:</b> Taksonomia i korelacja łańcuchów ataków w czasie rzeczywistym.</li>
+        <li><b>K8s Cilium eBPF Operator:</b> Dynamiczna izolacja (sandboxing) zagrożonych podów na poziomie jądra Linuksa.</li>
         <li><b>EDR/XDR Telemetry Sync:</b> Dwukierunkowa korelacja incydentów z agentami ochrony punktów końcowych.</li>
       </ul>
     </td>
@@ -76,8 +76,8 @@ graph LR
     classDef output fill:#1e3a8a,stroke:#60a5fa,stroke-width:1px,color:#fff;
 
     Target["🎯 Domain / LLM Endpoint"] --> OSINT["🔍 OSINT, Port & CVE Probe"]
-    OSINT --> RedTeam["🎭 Deobfuscator & Agent Tool Fuzzer"]
-    RedTeam --> Correlator["🧠 Threat Correlator & EDR/XDR Sync"]
+    OSINT --> RedTeam["🎭 GAN Mutator, DLP & Agent Fuzzer"]
+    RedTeam --> Correlator["🧠 Threat Correlator, EDR & K8s eBPF"]
     Correlator --> Graph["🕸️ Attack Graph & Compliance (EU AI Act)"]
     Graph --> SOAR["🤖 Autonomous SOAR Agent & KMS Vault"]
     SOAR --> Patch["🩹 Self-Healing Auto-Patcher & GitHub PR"]
