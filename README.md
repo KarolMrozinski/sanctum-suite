@@ -3,7 +3,9 @@
 [![Architecture](https://img.shields.io/badge/architecture-Modular%20%7C%20Enterprise%20Grade-darkblue)](#)
 [![Python](https://img.shields.io/badge/python-3.11%2B-blue)](#)
 [![Frontend](https://img.shields.io/badge/frontend-Next.js%2014%20%7C%20React-black)](#)
-[![AI Security](https://img.shields.io/badge/AI%20Red--Teaming-Multi--Turn%20Adaptive-purple)](#)
+[![AI Security](https://img.shields.io/badge/AI%20Red--Teaming-Multi--Turn%20%26%20Multimodal-purple)](#)
+[![GitHub API](https://img.shields.io/badge/GitHub-Automated%20PRs-black)](#)
+[![RBAC](https://img.shields.io/badge/security-RBAC%20%7C%20Multi--Tenancy-gold)](#)
 [![Detection](https://img.shields.io/badge/rules-Sigma%20%7C%20YARA-red)](#)
 [![Self-Healing](https://img.shields.io/badge/remediation-Automated%20Patching-emerald)](#)
 [![Framework](https://img.shields.io/badge/framework-MITRE%20ATT%26CK%20%7C%20ATLAS-orange)](#)
@@ -13,7 +15,7 @@
 [![CI/CD](https://img.shields.io/badge/CI%2FCD-GitHub%20Actions-green)](#)
 [![License](https://img.shields.io/badge/license-View--Only-orange)](#)
 
-> **SANCTUM-SUITE** to zintegrowana, wielomodułowa platforma bezpieczeństwa klasy Enterprise. Łączy rozpoznanie powierzchni ataku (**SPECTRE-OSINT**), automatyczny wielostopniowy Red-Teaming modeli LLM (**Multi-Turn Adaptive Jailbreak Fuzzer** / **SHADOW-AGENT**), samoleczącą się sieć P2P Zero-Trust (**GHOST-COMM**), rozproszoną szynę zdarzeń (**Distributed Event Bus**), automatyczne generowanie poprawek kodu (**Self-Healing Code PRs**), asynchroniczny skaner portów/usług, silnik korelacji zagrożeń z mapowaniem **MITRE ATT&CK/ATLAS**, automatyczne scenariusze naprawcze (Playbooks), generator reguł detekcyjnych **Sigma & YARA**, silnik detekcji anomalii oparty o heurystykę i entropię tekstu (**ML Anomaly Detection**), ochronne middleware **LLM Guardrail Proxy**, integrację **SIEM/CEF**, pasywny **Honeypot Sensor**, dedykowany pulpit webowy w **Next.js / React**, kryptograficzne podpisywanie raportów RSA oraz serwer **REST API / WebSockets** (`FastAPI` + `X-API-Key`).
+> **SANCTUM-SUITE** to zintegrowana, wielomodułowa platforma bezpieczeństwa klasy Enterprise. Łączy rozpoznanie powierzchni ataku (**SPECTRE-OSINT**), wielostopniowy oraz multimodalny Red-Teaming modeli LLM/Vision (**Multimodal & Multi-Turn Adaptive Fuzzer** / **SHADOW-AGENT**), samoleczącą się sieć P2P Zero-Trust (**GHOST-COMM**), automatyczne otwieranie Pull Requestów na GitHubie (**GitHub Auto-PR Publisher**), zarządcze uprawnienia **RBAC & Multi-Tenancy**, rozproszoną szynę zdarzeń (**Distributed Event Bus**), automatyczne generowanie poprawek kodu (**Self-Healing Code PRs**), asynchroniczny skaner portów/usług, silnik korelacji zagrożeń z mapowaniem **MITRE ATT&CK/ATLAS**, automatyczne scenariusze naprawcze (Playbooks), generator reguł detekcyjnych **Sigma & YARA**, silnik detekcji anomalii oparty o heurystykę i entropię tekstu (**ML Anomaly Detection**), ochronne middleware **LLM Guardrail Proxy**, integrację **SIEM/CEF**, pasywny **Honeypot Sensor**, dedykowany pulpit webowy w **Next.js / React**, kryptograficzne podpisywanie raportów RSA oraz serwer **REST API / WebSockets** (`FastAPI` + `X-API-Key`).
 
 ---
 
@@ -21,7 +23,9 @@
 
 - **SPECTRE-OSINT & Async Probing:** Pasywna agregacja aktywów cyfrowych, asynchroniczne sondowanie nagłówków i certyfikatów (`httpx` + `asyncio`).
 - **Async Port & Service Scanner:** Błyskawiczny, wielowiątkowy skaner otwartych portów TCP (SSH, HTTP, HTTPS, DB, Ollama API).
-- **Multi-Turn Adaptive AI Red-Teaming:** Zaawansowany fuzzer symulujący wielostopniowe, konwersacyjne ataki socjotechniczne (np. *Crescendo Jailbreaks*) w celu testowania odporności modeli LLM.
+- **Multimodal & Multi-Turn AI Red-Teaming:** Fuzzer symulujący ukryte wstrzyknięcia w obrazach (*Visual Prompt Injection*) oraz wielostopniowe ataki konwersacyjne.
+- **GitHub Automated Pull Request Publisher:** Automatyczne zakładanie gałęzi i zgłaszanie Pull Requestów naprawczych na GitHubie po wykryciu podatności.
+- **RBAC & Multi-Tenancy Layer:** Zarządzanie kontrolą dostępów (`ADMIN`, `AUDITOR`, `VIEWER`) i izolacją danych wielu organizacji.
 - **Automated Self-Healing Code Patcher:** Silnik generujący gotowe łatki kodu (Unified Diffs) oraz propozycje Pull Requestów naprawiających zidentyfikowane podatności.
 - **Distributed Telemetry Event Bus:** Rozproszona magistrala zdarzeń (kompatybilna z wzorcem Kafka/RabbitMQ) umożliwiająca asynchroniczną komunikację klastrów skanujących.
 - **Enterprise Web Dashboard (Next.js / React):** Nowoczesny pulpit nawigacyjny SOC Workbench wizualizujący metryki ryzyka oraz żywy strumień telemetrii przez WebSockets.
@@ -40,7 +44,7 @@
 
 ---
 
-## 🏗️ Pełna Architettura Przepływu Audytowego
+## 🏗️ Pełna Architektura Przepływu Audytowego
 
 ```mermaid
 graph TD
@@ -50,16 +54,18 @@ graph TD
 
     Orchestrator["SANCTUM Unified Orchestrator"]
     API["FastAPI Secured API (X-API-Key)"]
+    RBAC["RBAC & Multi-Tenancy Manager"]
     WebDash["Next.js Web Dashboard"]
     Guardrail["LLM Guardrail Proxy & ML Anomaly"]
     OSINT["SPECTRE-OSINT / Async Probe"]
     PortScan["Async Port Scanner"]
     Honeypot["Decoy Honeypot Sensor"]
-    RedTeam["Multi-Turn Adaptive Fuzzer / SHADOW-AGENT"]
+    RedTeam["Multimodal & Multi-Turn Fuzzer / SHADOW-AGENT"]
     Correlator["Threat Correlation Engine"]
     Mitre["MITRE ATT&CK / ATLAS Mapper"]
     Playbook["Remediation Playbook Engine"]
     AutoPatch["Automated Code Patcher (Self-Healing)"]
+    GitHubPR["GitHub Automated PR Publisher"]
     SigmaYara["Sigma & YARA Rule Generator"]
     SIEM["SIEM Exporter (CEF / Webhook)"]
     EventBus["Distributed Event Bus"]
@@ -68,7 +74,7 @@ graph TD
     DuckDB["DuckDB OLAP Analytics"]
     Reports["Signed Reports (PDF / HTML / .sig)"]
 
-    API -->|Secured REST Trigger / WS Stream| Orchestrator
+    API -->|Secured REST Trigger / WS Stream| RBAC --> Orchestrator
     WebDash -->|Connect via WebSockets & REST| API
     Guardrail -->|Filter & Inspect Prompts| Orchestrator
     Orchestrator -->|1. Network & Footprint Discovery| OSINT
@@ -77,10 +83,11 @@ graph TD
     OSINT & PortScan -->|4. Feed Targets| RedTeam
     RedTeam & PortScan -->|5. Attack Chain & MITRE Mapping| Correlator & Mitre
     Correlator & RedTeam -->|6. Generate Hardening Playbooks, Patches & Rules| Playbook & AutoPatch & SigmaYara
-    Correlator -->|7. Export Telemetry & Dispatch Events| SIEM & EventBus & GhostMesh
-    Orchestrator -->|8. Persist Security Events| DuckDB
-    Orchestrator -->|9. Generate & Sign Artifacts| Reports & Signer
+    AutoPatch -->|7. Publish PR to GitHub| GitHubPR
+    Correlator -->|8. Export Telemetry & Dispatch Events| SIEM & EventBus & GhostMesh
+    Orchestrator -->|9. Persist Security Events| DuckDB
+    Orchestrator -->|10. Generate & Sign Artifacts| Reports & Signer
 
-    class Orchestrator,API,WebDash core;
-    class Guardrail,OSINT,PortScan,Honeypot,RedTeam,Correlator,Mitre,Playbook,AutoPatch,SigmaYara,SIEM,EventBus,GhostMesh module;
+    class Orchestrator,API,RBAC,WebDash core;
+    class Guardrail,OSINT,PortScan,Honeypot,RedTeam,Correlator,Mitre,Playbook,AutoPatch,GitHubPR,SigmaYara,SIEM,EventBus,GhostMesh module;
     class DuckDB,Reports,Signer output;
