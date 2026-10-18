@@ -1,3 +1,6 @@
+import io
+import sys
+
 import typer
 import uvicorn
 from rich.console import Console
@@ -10,19 +13,62 @@ from sanctum_suite.core.analytics import AnalyticsStoreEngine
 from sanctum_suite.core.tui import SanctumInteractiveDashboard
 from sanctum_suite.core.port_scanner import AsyncPortScanner
 
-app = typer.Typer(help="SANCTUM-SUITE: Enterprise Cyber Resilience Platform")
-console = Console()
+_ASCII_TRANSLATION = {
+    ord("ą"): "a",
+    ord("Ą"): "A",
+    ord("ć"): "c",
+    ord("Ć"): "C",
+    ord("ę"): "e",
+    ord("Ę"): "E",
+    ord("ł"): "l",
+    ord("Ł"): "L",
+    ord("ń"): "n",
+    ord("Ń"): "N",
+    ord("ó"): "o",
+    ord("Ó"): "O",
+    ord("ś"): "s",
+    ord("Ś"): "S",
+    ord("ż"): "z",
+    ord("Ż"): "Z",
+    ord("ź"): "z",
+    ord("Ź"): "Z",
+}
+
+
+def _safe_text(value: str) -> str:
+    """Replace non-ASCII characters to keep Rich output working on legacy Windows terminals."""
+    if value is None:
+        return ""
+    text = str(value)
+    encoding = (getattr(sys.stdout, "encoding", "") or "").lower()
+    if "utf" in encoding:
+        return text
+    return text.translate(_ASCII_TRANSLATION).encode("ascii", "ignore").decode("ascii")
+
+
+def _build_console() -> Console:
+    stream = sys.stdout
+    encoding = (getattr(stream, "encoding", "") or "").lower()
+    if "utf" not in encoding:
+        try:
+            stream = io.TextIOWrapper(stream.buffer, encoding="utf-8", errors="replace")
+        except (AttributeError, ValueError):
+            stream = sys.stdout
+    return Console(file=stream, emoji=False, legacy_windows=False)
+
+
+app = typer.Typer(help=_safe_text("SANCTUM-SUITE: Enterprise Cyber Resilience Platform"))
+console = _build_console()
 
 
 @app.command(name="run-audit")
 def run_full_audit(
-    target: str = typer.Option("enterprise-core.com", help="Domena docelowa do przeprowadzenia pełnego audytu"),
+    target: str = typer.Option("enterprise-core.com", help=_safe_text("Domena docelowa do przeprowadzenia pelnego audytu")),
 ) -> None:
-    """Uruchamia pełną sekwencję audytową (Async Probe + OSINT + Red-Teaming + DuckDB + PDF/HTML Reports)."""
+    """Runs the full audit workflow (Async Probe + OSINT + Red-Teaming + DuckDB + PDF/HTML reports)."""
     console.print(
         Panel.fit(
-            f"[bold cyan]🏛️ SANCTUM-SUITE UNIFIED ORCHESTRATOR[/bold cyan]\n"
-            f"Executing Enterprise Resilience Audit for: [yellow]{target}[/yellow]",
+            _safe_text(f"[bold cyan]SANCTUM-SUITE UNIFIED ORCHESTRATOR[/bold cyan]\nExecuting Enterprise Resilience Audit for: [yellow]{target}[/yellow]"),
             border_style="cyan",
         )
     )
@@ -57,18 +103,20 @@ def run_full_audit(
 
 @app.command(name="analytics")
 def view_analytics(
-    target: str = typer.Option("enterprise-core.com", help="Domena do analityki DuckDB"),
+    target: str = typer.Option("enterprise-core.com", help=_safe_text("Domena do analityki DuckDB")),
 ) -> None:
-    """Wyświetla zbiorcze wskaźniki analityczne zebrane w bazie DuckDB."""
+    """Displays aggregated analytics collected in the DuckDB store."""
     analytics = AnalyticsStoreEngine()
     metrics = analytics.get_target_threat_metrics(target)
 
     console.print(
         Panel.fit(
-            f"[bold green]📊 DUCKDB ANALYTICS SUMMARY ({target})[/bold green]\n"
-            f"Total Recorded Events: [cyan]{metrics['total_events']}[/cyan]\n"
-            f"Average Risk Score: [yellow]{metrics['avg_risk_score']}[/yellow]\n"
-            f"Max Risk Score: [red]{metrics['max_risk_score']}[/red]",
+            _safe_text(
+                f"[bold green]DUCKDB ANALYTICS SUMMARY ({target})[/bold green]\n"
+                f"Total Recorded Events: [cyan]{metrics['total_events']}[/cyan]\n"
+                f"Average Risk Score: [yellow]{metrics['avg_risk_score']}[/yellow]\n"
+                f"Max Risk Score: [red]{metrics['max_risk_score']}[/red]"
+            ),
             border_style="green",
         )
     )
@@ -76,27 +124,27 @@ def view_analytics(
 
 @app.command(name="dashboard")
 def run_tui_dashboard(
-    target: str = typer.Option("enterprise-core.com", help="Domena docelowa dla podglądu TUI Live"),
+    target: str = typer.Option("enterprise-core.com", help=_safe_text("Domena docelowa dla podgladu TUI Live")),
 ) -> None:
-    """Uruchamia interaktywny, pełnoekranowy pulpit TUI w czasie rzeczywistym."""
+    """Runs the interactive full-screen TUI dashboard in real time."""
     dashboard = SanctumInteractiveDashboard()
     dashboard.render_live_session(target, duration_seconds=5)
 
 
 @app.command(name="scan-ports")
 def scan_ports_cmd(
-    host: str = typer.Option("127.0.0.1", help="Adres IP lub domena do przeskanowania portów"),
+    host: str = typer.Option("127.0.0.1", help=_safe_text("Adres IP lub domena do przeskanowania portow")),
 ) -> None:
-    """Uruchamia szybki, asynchroniczny skan otwartych portów i usług."""
+    """Runs a fast asynchronous TCP port scan and service detection."""
     console.print(
         Panel.fit(
-            f"[bold magenta]🔌 SANCTUM ASYNC PORT SCANNER[/bold magenta]\nTarget Host: [cyan]{host}[/cyan]",
+            _safe_text(f"[bold magenta]SANCTUM ASYNC PORT SCANNER[/bold magenta]\nTarget Host: [cyan]{host}[/cyan]"),
             border_style="magenta",
         )
     )
 
     scanner = AsyncPortScanner()
-    with console.status("[bold green]Skanowanie otwartych portów TCP..."):
+    with console.status(_safe_text("[bold green]Skanowanie otwartych portow TCP...")):
         open_ports = scanner.run_sync_port_scan(host)
 
     table = Table(title=f"Open Ports on {host}", header_style="bold cyan")
@@ -111,19 +159,22 @@ def scan_ports_cmd(
     if open_ports:
         console.print(table)
     else:
-        console.print("[dim yellow]Nie znaleziono otwartych portów w standardowym zakresie.[/dim yellow]")
+        console.print(_safe_text("[dim yellow]Nie znaleziono otwartych portow w standardowym zakresie.[/dim yellow]"))
+
 
 @app.command(name="serve")
 def start_api_server(
-    host: str = typer.Option("127.0.0.1", help="Adres IP interfejsu serwera API"),
-    port: int = typer.Option(8000, help="Port sieciowy serwera HTTP/WebSocket"),
+    host: str = typer.Option("127.0.0.1", help=_safe_text("Adres IP interfejsu serwera API")),
+    port: int = typer.Option(8000, help=_safe_text("Port sieciowy serwera HTTP/WebSocket")),
 ) -> None:
-    """Uruchamia serwer REST API i WebSockets (FastAPI + Uvicorn)."""
+    """Runs the REST API and WebSockets server (FastAPI + Uvicorn)."""
     console.print(
         Panel.fit(
-            f"[bold cyan]🌐 SANCTUM-SUITE REST & WEBSOCKET API SERVER[/bold cyan]\n"
-            f"Endpoint: [yellow]http://{host}:{port}[/yellow]\n"
-            f"Swagger Docs: [green]http://{host}:{port}/docs[/green]",
+            _safe_text(
+                f"[bold cyan]SANCTUM-SUITE REST & WEBSOCKET API SERVER[/bold cyan]\n"
+                f"Endpoint: [yellow]http://{host}:{port}[/yellow]\n"
+                f"Swagger Docs: [green]http://{host}:{port}/docs[/green]"
+            ),
             border_style="cyan",
         )
     )
