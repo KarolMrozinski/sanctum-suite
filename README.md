@@ -1,110 +1,137 @@
 <div align="center">
 
-  <br />
-  <h1>🏛️ SANCTUM-SUITE</h1>
-  <p><b>Modular security engineering toolkit for audit workflows, AI safety experiments, and operational reporting</b></p>
+# SANCTUM-SUITE
 
-  <p>
-    <i>Repozytorium zawiera moduły do audytów, analiz bezpieczeństwa, eksperymentów AI safety, raportowania i integracji infrastrukturalnych. Dostępność, dojrzałość, wymagania oraz skuteczność zależą od konkretnego modułu i środowiska; wymienione standardy nie oznaczają certyfikacji ani zgodności.</i>
-  </p>
+### Modułowy zestaw narzędzi do inżynierii bezpieczeństwa
 
-  <p>
-    <a href="#cechy-systemu">Cechy Systemu</a> •
-    <a href="#architektura-systemu">Architektura</a> •
-    <a href="./docs/INSTALLATION.md">Instalacja</a> •
-    <a href="./docs/CONTROL_CATALOG.md">Katalog kontroli</a> •
-    <a href="./docs/RELEASE_CHECKLIST.md">Checklist wydania</a> •
-    <a href="./LICENSE">Licencja</a>
-  </p>
+Narzędzia CLI, API i dashboard wspierające wybrane procesy audytowe, analizę danych oraz eksperymenty z AI safety.
 
-  <p>
-    <a href="https://github.com/KarolMrozinski/sanctum-suite"><img src="https://img.shields.io/badge/Version-6.0.0-38bdf8?style=for-the-badge&logo=github" alt="Version"></a>
-    <a href="https://python.org"><img src="https://img.shields.io/badge/Python-3.11%2B-blue?style=for-the-badge&logo=python&logoColor=white" alt="Python"></a>
-    <a href="https://nextjs.org"><img src="https://img.shields.io/badge/Dashboard-Next.js_16-000000?style=for-the-badge&logo=nextdotjs&logoColor=white" alt="Next.js"></a>
-    <img src="https://img.shields.io/badge/License-Source--available-64748b?style=for-the-badge&logo=security&logoColor=white" alt="Source available">
-  </p>
+<p>
+  <img src="https://img.shields.io/badge/wersja-6.0.0-2563eb?style=flat-square" alt="Wersja 6.0.0">
+  <img src="https://img.shields.io/badge/Python-3.11%2B-3776ab?style=flat-square&logo=python&logoColor=white" alt="Python 3.11+">
+  <img src="https://img.shields.io/badge/dashboard-Next.js-111827?style=flat-square&logo=nextdotjs&logoColor=white" alt="Dashboard Next.js">
+  <img src="https://img.shields.io/badge/status-beta-f59e0b?style=flat-square" alt="Status beta">
+  <img src="https://img.shields.io/badge/licencja-source--available-64748b?style=flat-square" alt="Licencja source-available">
+</p>
 
-  <br />
+[Instalacja](./docs/INSTALLATION.md) ·
+[Katalog kontroli](./docs/CONTROL_CATALOG.md) ·
+[Bezpieczeństwo](./SECURITY.md) ·
+[Licencja](./LICENSE)
 
 </div>
 
 ---
 
-## Cechy Systemu
+## O projekcie
 
-**SANCTUM-SUITE** to zestaw modułów programistycznych do eksperymentów i wsparcia procesów bezpieczeństwa. Nie jest certyfikowanym produktem ani gwarancją ochrony środowiska.
+SANCTUM-SUITE to rozwijany zestaw modułów programistycznych przeznaczonych do pracy w kontrolowanych, zatwierdzonych środowiskach. Repozytorium łączy narzędzia wiersza poleceń, API, funkcje analityczne i opcjonalny dashboard.
 
-Moduły opisane poniżej należy traktować jako funkcje repozytorium wymagające osobnej weryfikacji, konfiguracji i testów. Nie należy interpretować ich nazw jako niezależnej certyfikacji, pełnej implementacji standardu ani gwarancji skuteczności.
+Projekt ma status **beta**. Zakres, dojrzałość i wymagania zależą od konkretnego modułu. Obecność funkcji w repozytorium nie oznacza, że została niezależnie zweryfikowana, jest gotowa do wdrożenia produkcyjnego ani zapewnia zgodność z określonym standardem.
 
-### Główne obszary kodu
+## Możliwości
 
-- autoryzowane, dokładnie allowlistowane testy HTTPS/TCP oraz rejestrowanie zakresu (bez automatycznego odkrywania subdomen)
-- analiza promptów, guardraile i narzędzia testów AI
-- korelacja zdarzeń, generowanie reguł i raportowanie
-- mapowanie kontroli zgodności oraz moduły infrastrukturalne
+- **Audyt i testy** — wybrane, jawnie autoryzowane testy HTTPS/TCP z kontrolą dozwolonych celów.
+- **Analiza i korelacja** — przetwarzanie zdarzeń, analityka oraz pomocnicze narzędzia do raportowania.
+- **AI safety** — moduły do analizy promptów i eksperymentów z zabezpieczeniami modeli.
+- **Interfejsy** — CLI w Pythonie, REST API i WebSocket oraz osobny dashboard oparty na Next.js.
+- **Kontrole i entitlementy** — mapowanie kontroli oraz weryfikacja podpisanych uprawnień do użycia.
 
-Repozytorium zawiera również eksperymentalne i platformowo zależne moduły dotyczące kontenerów, kryptografii, eBPF, ICS/SCADA i firmware. Sama obecność modułu nie potwierdza działania sprzętowego, produkcyjnej jakości ani zgodności z wymienionym standardem. Przed użyciem należy przejrzeć implementację oraz zweryfikować zachowanie w kontrolowanym środowisku.
+### Ważne ograniczenia
 
-Niepodłączone silniki skanowania kontenerów/SBOM, analizy firmware i pamięci, kampanii red-team, testów modeli, telemetrii EDR/XDR oraz inspekcji GPU raportują brak wykonanej oceny zamiast syntetycznych wyników. Moduły C2/covert-channel, spoofingu satelitarnego, biometrii, automatycznego naprawiania i dead-man switch nie wykonują tych działań. Moduły enklaw VRAM, pamięci kwantowo-odpornej i składowania informacji niejawnych nie zapewniają izolacji, atestacji ani magazynu danych. Szyfrowanie kopertowe `ZeroTrustKMSVault` używa klucza efemerycznego w pamięci procesu i nie zastępuje produkcyjnego KMS.
+Część modułów jest eksperymentalna, zależna od platformy lub stanowi jedynie punkt integracji. Repozytorium nie dostarcza działających integracji dla skanowania kontenerów/SBOM, analizy firmware i pamięci, telemetrii EDR/XDR, inspekcji GPU, sprzętowych enklaw ani magazynowania danych niejawnych. Funkcje kampanii red-team, C2/covert-channel, spoofingu satelitarnego, biometrii, hot-patchingu i dead-man switch nie wykonują opisanych działań. Brak integracji jest raportowany jako brak oceny, a nie jako pozytywny wynik.
 
----
+Dashboard nie otrzymuje obecnie rzeczywistej telemetrii z endpointu workbench. Pomocnicze szyfrowanie kopertowe `ZeroTrustKMSVault` wykorzystuje klucz efemeryczny przechowywany w pamięci procesu i **nie zastępuje produkcyjnego KMS**.
 
-## Architektura Systemu
+## Szybki start
 
-Poniższy schemat jest poglądową mapą grup modułów w repozytorium. Nie jest potwierdzonym przepływem danych, diagramem wdrożonej infrastruktury ani dowodem działania wszystkich komponentów:
+> **Uwaga licencyjna:** przed instalacją, uruchomieniem, modyfikacją lub wdrożeniem uzyskaj wymaganą pisemną zgodę właściciela praw. Licencja repozytorium pozwala na wgląd w kod w celach oceny, edukacyjnych lub code review; nie przyznaje ogólnego prawa do jego wykonywania ani użycia komercyjnego.
 
-```mermaid
-graph LR
-    classDef target fill:#0f172a,stroke:#38bdf8,stroke-width:2px,color:#fff;
-    classDef process fill:#1e293b,stroke:#cbd5e1,stroke-width:1px,color:#fff;
-    classDef core fill:#312e81,stroke:#818cf8,stroke-width:2px,color:#fff;
-    classDef output fill:#064e3b,stroke:#34d399,stroke-width:1px,color:#fff;
+### Wymagania
 
-    Target["Authorized test environment"] --> Scanning["Scanning and OSINT modules"]
-    Target --> Analysis["AI safety and prompt analysis"]
-    Scanning --> Correlation["Correlation and graph utilities"]
-    Analysis --> Reporting["Analytics and reports"]
-    Correlation --> Reporting
-    Platform["Optional platform-specific modules"] --> Reporting
+- Python 3.11 lub nowszy
+- Node.js i npm — tylko jeśli instalujesz dashboard
+- Pisemna zgoda na użycie programu oraz osobna autoryzacja każdego testowanego celu
 
-    class Target target;
-    class Scanning,Analysis,Platform process;
-    class Correlation core;
-    class Reporting output;
+### Instalacja pakietu Python
+
+Po uzyskaniu wymaganej zgody, w katalogu głównym repozytorium:
+
+```powershell
+py -3.11 -m venv .venv
+.\.venv\Scripts\Activate.ps1
+python -m pip install --upgrade pip
+python -m pip install -e .
 ```
 
----
+Sprawdzenie dostępnych poleceń i testy:
 
-## Wersja produkcyjna i monetyzacja
+```powershell
+sanctum --help
+python -m pytest -q
+```
 
-Repozytorium ma przygotowane materiały do wydania, instalacji i wstępnej rozmowy handlowej. To nie oznacza jeszcze zgody prawnej na sprzedaż ani potwierdzenia gotowości do wdrożeń produkcyjnych. Zweryfikowane elementy:
+### Dashboard (opcjonalnie)
 
-- build pakietu Python i dashboardu
-- testy regresyjne oraz komendy CLI
-- dokumentacja instalacji, polityki bezpieczeństwa i wstępnej strategii cenowej
-- strona produktu i formularz kontaktowy wymagający konfiguracji webhooka
+```powershell
+Set-Location .\sanctum-dashboard
+npm ci
+Copy-Item .env.example .env.local
+npm run build
+npm run start
+```
 
-Dodatkowe materiały:
+Szczegóły konfiguracji API, TLS, sekretów i dashboardu opisuje [przewodnik instalacji](./docs/INSTALLATION.md).
 
-- [CHANGELOG.md](./CHANGELOG.md)
-- [SECURITY.md](./SECURITY.md)
-- [docs/RELEASE_CHECKLIST.md](./docs/RELEASE_CHECKLIST.md)
-- [docs/MONETIZATION.md](./docs/MONETIZATION.md)
-- [docs/INSTALLATION.md](./docs/INSTALLATION.md)
-- [docs/CONTROL_CATALOG.md](./docs/CONTROL_CATALOG.md)
-- [docs/COMMERCIAL_ENTITLEMENTS.md](./docs/COMMERCIAL_ENTITLEMENTS.md)
-- [docs/RELEASE_PACK.md](./docs/RELEASE_PACK.md)
-- [docs/SANCTUM-SUITE-Release-Overview.pdf](./docs/SANCTUM-SUITE-Release-Overview.pdf)
-- [docs/RELEASE_NOTES_v6.0.0.md](./docs/RELEASE_NOTES_v6.0.0.md)
-- [docs/AWS_DEPLOYMENT.md](./docs/AWS_DEPLOYMENT.md)
+## Użycie aktywnych testów
 
-> Build i testy nie stanowią certyfikacji bezpieczeństwa ani gwarancji gotowości produkcyjnej. Licencja repozytorium ogranicza uruchamianie i użycie komercyjne bez pisemnej zgody właściciela praw.
+Aktywne audyty i skanowanie portów są blokowane, dopóki operator nie skonfiguruje wszystkich wymaganych elementów:
 
-Aktywne testy są blokowane, jeśli cel nie występuje dokładnie na liście `SANCTUM_AUTHORIZED_TARGETS`, brakuje identyfikatora pisemnej zgody lub nie skonfigurowano ważnego, podpisanego entitlementu. Szczegóły i limity znajdują się w [docs/COMMERCIAL_ENTITLEMENTS.md](./docs/COMMERCIAL_ENTITLEMENTS.md).
+1. dokładnej listy dozwolonych celów w `SANCTUM_AUTHORIZED_TARGETS` — bez wildcardów;
+2. identyfikatora pisemnej zgody przekazywanego przy uruchomieniu;
+3. ważnego, podpisanego entitlementu oraz klucza publicznego do jego weryfikacji.
 
-### Blokery przed sprzedażą i wdrożeniem
+Przykładowe polecenie dla celu znajdującego się na skonfigurowanej liście i objętego ważną zgodą:
 
-- obecna licencja nie zezwala na komercyjne użycie bez odrębnej pisemnej zgody; wymagany przegląd prawny i umowa komercyjna
-- podpisane entitlementy Ed25519, lokalne liczniki użycia i ręczne wystawianie licencji z offlineowego CLI są dostępne; brak integracji płatności, unieważniania online, powiązania klucza API z tenantem, izolacji danych klientów i wdrożonego SLA; ceny na stronie są jedynie propozycją do omówienia
-- formularz leadów wymaga webhooka, kontroli rate limitu po stronie operatora oraz finalnej polityki prywatności
-- bezpieczeństwo, prawa dostępu i zachowanie każdego modułu trzeba zweryfikować dla docelowego środowiska przed uruchomieniem produkcyjnym
+```powershell
+sanctum run-audit --target zatwierdzony.example --authorization-reference "identyfikator-zgody"
+```
+
+Wartość `--authorization-reference` służy operatorowi do prowadzenia śladu audytowego — sama w sobie nie potwierdza zgody. Nie uruchamiaj testów wobec systemów spoza zatwierdzonego zakresu. Więcej informacji o uprawnieniach znajduje się w [dokumentacji entitlementów](./docs/COMMERCIAL_ENTITLEMENTS.md).
+
+## Architektura
+
+Diagram przedstawia orientacyjny podział obszarów repozytorium, a nie gwarantowany przepływ danych ani wdrożony układ infrastruktury.
+
+```mermaid
+flowchart LR
+    T["Zatwierdzone środowisko testowe"] --> A["Moduły audytowe"]
+    A --> C["Korelacja i analityka"]
+    AI["Analiza AI safety"] --> C
+    C --> R["Raporty"]
+    P["Moduły zależne od platformy"] -. opcjonalnie .-> C
+    API["REST API / WebSocket"] --> D["Dashboard Next.js"]
+```
+
+## Dokumentacja
+
+| Dokument | Opis |
+|---|---|
+| [Instalacja i wdrożenie](./docs/INSTALLATION.md) | Konfiguracja środowiska, API, dashboardu i wymagania wdrożeniowe |
+| [Katalog kontroli](./docs/CONTROL_CATALOG.md) | Opis mapowanych kontroli |
+| [Entitlementy komercyjne](./docs/COMMERCIAL_ENTITLEMENTS.md) | Podpisane uprawnienia, zakres i limity |
+| [Polityka bezpieczeństwa](./SECURITY.md) | Zgłaszanie problemów bezpieczeństwa |
+| [Lista kontrolna wydania](./docs/RELEASE_CHECKLIST.md) | Czynności przed wydaniem |
+| [Informacje o wydaniu 6.0.0](./docs/RELEASE_NOTES_v6.0.0.md) | Zmiany w bieżącej wersji |
+| [Changelog](./CHANGELOG.md) | Historia zmian |
+| [Licencja](./LICENSE) | Warunki dostępu i użycia |
+
+## Status wdrożeniowy
+
+Repozytorium zawiera materiały do instalacji i wydania, ale **nie jest to potwierdzenie gotowości produkcyjnej**. Przed wdrożeniem należy zweryfikować zachowanie, uprawnienia i zależności każdego używanego modułu oraz przygotować właściwe zabezpieczenia środowiska.
+
+Licencja nie zezwala na komercyjne użycie bez odrębnej pisemnej zgody. W repozytorium nie ma gotowej integracji płatności, unieważniania entitlementów online, izolacji danych klientów ani wdrożonego SLA. Formularz kontaktowy wymaga skonfigurowania zatwierdzonego webhooka. Build, testy i dokumentacja nie stanowią certyfikacji bezpieczeństwa, zgodności ani gwarancji skuteczności.
+
+## Licencja
+
+SANCTUM-SUITE jest udostępniany na warunkach ograniczonej licencji source-available. Przed jakimkolwiek użyciem zapoznaj się z pełnym tekstem pliku [LICENSE](./LICENSE) i uzyskaj pisemną zgodę, jeśli jest wymagana.
