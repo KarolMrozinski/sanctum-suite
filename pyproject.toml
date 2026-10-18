@@ -29,4 +29,4 @@ sanctum = "sanctum_suite.main:app"
 
 [tool.setuptools.packages.find]
 where = ["src"]
-include = ["sanctum_suite*"]
+include = ["sanctum_suite", "sanctum_suite.*"]
