@@ -153,6 +153,13 @@ async def test_event_bus():
     assert len(received) == 1
     assert received[0]["event"] == "TEST_INCIDENT"
 
+    async def async_handler(msg):
+        received.append(msg)
+
+    bus.subscribe("incidents", async_handler)
+    await bus.publish("incidents", {"event": "ASYNC_TEST_INCIDENT"})
+    assert received[-1]["event"] == "ASYNC_TEST_INCIDENT"
+
 
 def test_auto_patcher():
     patcher = AutomatedPatchEngine()
@@ -201,8 +208,38 @@ def test_attack_graph_engine():
 
 
 def test_client_sdk_instantiation():
-    client = SanctumSuiteClient(base_url="http://127.0.0.1:8000")
-    assert client.headers["X-API-Key"] == "sanctum-secret-key-2026"        
+    client = SanctumSuiteClient(base_url="http://127.0.0.1:8000", api_key="a" * 32)
+    assert client.headers["X-API-Key"] == "a" * 32
+
+
+def test_client_sdk_requires_a_configured_api_key(monkeypatch):
+    monkeypatch.delenv("SANCTUM_API_KEY", raising=False)
+    with pytest.raises(ValueError, match="SANCTUM_API_KEY"):
+        SanctumSuiteClient()
+
+
+def test_client_sdk_requires_tls_for_remote_api():
+    with pytest.raises(ValueError, match="HTTPS"):
+        SanctumSuiteClient(base_url="http://api.example.com", api_key="a" * 32)
+    secure_client = SanctumSuiteClient(base_url="https://api.example.com", api_key="a" * 32)
+    assert secure_client.base_url == "https://api.example.com"
+
+
+@pytest.mark.asyncio
+async def test_api_key_verification_fails_closed(monkeypatch):
+    from sanctum_suite.api.server import verify_api_key
+
+    monkeypatch.delenv("SANCTUM_API_KEY", raising=False)
+    with pytest.raises(HTTPException) as missing_config:
+        await verify_api_key("a" * 32)
+    assert missing_config.value.status_code == 503
+
+    monkeypatch.setenv("SANCTUM_API_KEY", "b" * 32)
+    with pytest.raises(HTTPException) as incorrect_key:
+        await verify_api_key("a" * 32)
+    assert incorrect_key.value.status_code == 401
+
+    assert await verify_api_key("b" * 32) == "b" * 32
 
 def test_task_queue_manager():
     queue = AsyncTaskQueueManager()

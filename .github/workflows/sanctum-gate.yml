@@ -1,15 +1,23 @@
 name: SANCTUM AI Resilience & Compliance Gate
 
 on:
-  push:
-    branches: [ main, master ]
-  pull_request:
-    branches: [ main, master ]
+  workflow_dispatch:
+    inputs:
+      target_domain:
+        description: "Target domain you are explicitly authorized to test"
+        required: true
+        type: string
+      authorization:
+        description: "Type I_HAVE_AUTHORIZATION to confirm written permission for this target"
+        required: true
+        type: string
 
 jobs:
   sanctum-audit:
     name: Execute SANCTUM Resilience Audit
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
 
     steps:
       - name: Checkout Repository
@@ -19,6 +27,15 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: '3.11'
+
+      - name: Verify target authorization
+        env:
+          AUTHORIZATION: ${{ inputs.authorization }}
+        run: |
+          if [ "$AUTHORIZATION" != "I_HAVE_AUTHORIZATION" ]; then
+            echo "Explicit authorization confirmation is required."
+            exit 1
+          fi
 
       - name: Install Dependencies & SANCTUM-SUITE
         run: |
@@ -30,8 +47,8 @@ jobs:
         run: |
           pytest
 
-      - name: Execute SANCTUM Compliance & Resilience Audit Gate
+      - name: Execute authorized SANCTUM audit
         env:
-          SANCTUM_LICENSE_KEY: ${{ secrets.SANCTUM_LICENSE_KEY }}
+          TARGET_DOMAIN: ${{ inputs.target_domain }}
         run: |
-          sanctum run-audit --target "127.0.0.1"
+          sanctum run-audit --target "$TARGET_DOMAIN"

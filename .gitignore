@@ -16,3 +16,6 @@ build/
 report_*.pdf
 report_*.html
 reports/
+.env
+.env.*
+!.env.example

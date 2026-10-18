@@ -1,10 +1,11 @@
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Security, HTTPException, status, Query
+from fastapi import FastAPI, WebSocket, Security, HTTPException, status, Query
 from fastapi.security import APIKeyHeader
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from typing import Dict, Any
 from fastapi import Response
-import asyncio
-import json
+import hmac
+import os
+from starlette.concurrency import run_in_threadpool
 
 from sanctum_suite.orchestrator.engine import SanctumUnifiedOrchestrator
 from sanctum_suite.core.analytics import AnalyticsStoreEngine
@@ -12,17 +13,24 @@ from sanctum_suite.core.sigma_yara import DetectionRuleGenerator
 from sanctum_suite.core.anomaly import MLAnomalyDetector
 
 app = FastAPI(
-    title="SANCTUM-SUITE Enterprise API",
-    description="Secured REST & WebSocket API for Enterprise Cyber Resilience Platform",
-    version="0.1.0",
+    title="SANCTUM-SUITE API",
+    description="API for audit workflows, analytics, prompt inspection, and detection rules.",
+    version="6.0.0",
 )
 
-API_KEY = "sanctum-secret-key-2026"
 api_key_header = APIKeyHeader(name="X-API-Key", auto_error=False)
 
 
 async def verify_api_key(api_key: str = Security(api_key_header)):
-    if api_key != API_KEY:
+    expected_key = os.environ.get("SANCTUM_API_KEY", "")
+    if len(expected_key.encode("utf-8")) < 32:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="API authentication is not configured",
+        )
+    if not api_key or not hmac.compare_digest(
+        api_key.encode("utf-8"), expected_key.encode("utf-8")
+    ):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid or missing X-API-Key header",
@@ -34,13 +42,14 @@ orchestrator = SanctumUnifiedOrchestrator()
 analytics = AnalyticsStoreEngine()
 rules_gen = DetectionRuleGenerator()
 anomaly_detector = MLAnomalyDetector()
+audits_total = 0
 
 
 class AuditRequest(BaseModel):
-    target_domain: str
+    target_domain: str = Field(min_length=1, max_length=253)
 
 class PromptInspectRequest(BaseModel):
-    prompt: str
+    prompt: str = Field(min_length=1, max_length=32_768)
 
 
 @app.get("/")
@@ -51,7 +60,11 @@ async def root() -> Dict[str, str]:
 @app.post("/api/v1/audit", dependencies=[Security(verify_api_key)])
 async def trigger_audit(payload: AuditRequest) -> Dict[str, Any]:
     """Wyzwala pełen audyt odporności cyfrowej (Wymaga nagłówka X-API-Key)."""
-    result = orchestrator.execute_full_resilience_audit(payload.target_domain)
+    global audits_total
+    result = await run_in_threadpool(
+        orchestrator.execute_full_resilience_audit, payload.target_domain
+    )
+    audits_total += 1
     return {
         "status": "COMPLETED",
         "audit_id": result["audit_id"],
@@ -71,20 +84,9 @@ async def get_analytics(target: str = Query(..., description="Domena docelowa"))
 
 @app.websocket("/ws/incidents")
 async def websocket_incident_stream(websocket: WebSocket) -> None:
-    """Strumieniowanie żywych incydentów i alertów przez WebSocket."""
+    """Rejects the endpoint until a real, authenticated event source is configured."""
     await websocket.accept()
-    try:
-        while True:
-            sample_event = {
-                "event": "INCIDENT_DETECTED",
-                "source": "SHADOW-AGENT",
-                "severity": "HIGH",
-                "details": "Validated Prompt Injection vulnerability detected",
-            }
-            await websocket.send_text(json.dumps(sample_event))
-            await asyncio.sleep(3)
-    except WebSocketDisconnect:
-        pass
+    await websocket.close(code=1013, reason="Incident telemetry is not configured")
 
 @app.post("/api/v1/inspect-prompt", dependencies=[Security(verify_api_key)])
 async def inspect_prompt_endpoint(payload: PromptInspectRequest) -> Dict[str, Any]:
@@ -119,22 +121,21 @@ async def healthz():
 
 @app.get("/readyz", status_code=200)
 async def readyz():
-    """Readiness probe weryfikujący dostępność połączeń z bazami danych DuckDB i SQLite."""
-    try:
-        # Szybki test dostępności komponentów bazodanowych
-        return {"status": "READY", "db_connected": True}
-    except Exception as e:
-        return Response(content=f"NOT_READY: {str(e)}", status_code=503)
+    """Readiness probe checks that API authentication is configured."""
+    if len(os.environ.get("SANCTUM_API_KEY", "").encode("utf-8")) < 32:
+        return Response(
+            content='{"status":"NOT_READY","reason":"API authentication is not configured"}',
+            status_code=503,
+            media_type="application/json",
+        )
+    return {"status": "READY", "api_auth_configured": True}
 
 @app.get("/metrics")
 async def metrics():
     """Endpoint eksportu metryk w formacie Prometheus."""
     metrics_data = (
-        "# HELP sanctum_audits_total Total number of executed resilience audits.\n"
+        "# HELP sanctum_audits_total Audits completed by this API process.\n"
         "# TYPE sanctum_audits_total counter\n"
-        "sanctum_audits_total 42\n\n"
-        "# HELP sanctum_active_guardrails Active LLM proxy guardrails status.\n"
-        "# TYPE sanctum_active_guardrails gauge\n"
-        "sanctum_active_guardrails 1\n"
+        f"sanctum_audits_total {audits_total}\n"
     )
     return Response(content=metrics_data, media_type="text/plain")
