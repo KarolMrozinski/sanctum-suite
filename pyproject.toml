@@ -25,18 +25,6 @@ dependencies = [
     "pytest-asyncio>=0.21.0",
 ]
 
-[tool.setuptools]
-packages = [
-    "sanctum_suite",
-    "sanctum_suite.core",
-    "sanctum_suite.orchestrator",
-    "sanctum_suite.dlc",
-    "sanctum_suite.dlc.cicada3301",
-    "sanctum_suite.dlc.ghost_net",
-    "sanctum_suite.dlc.satcom_spoof",
-    "sanctum_suite.dlc.neural_decoder"
-]
-
 [project.scripts]
 sanctum = "sanctum_suite.main:app"
 
