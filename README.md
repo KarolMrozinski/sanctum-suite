@@ -5,7 +5,7 @@
   <p><b>Next-Generation AI Safety & Autonomous Cyber Resilience Platform</b></p>
 
   <p>
-    <i>Platforma państwowej cyber-odporności łącząca pasywne rozpoznanie infrastruktury, ewolucyjny Red-Teaming (GAN Mutation & APT Emulation), profiling jądra eBPF Cilium, orkiestrację Parrot OS, audyt pamięci CUDA GPU, proxy L7 Guardrail, tunelowanie Cyber Plumber, grafowy OSINT oraz certyfikację z normami DORA, NIS2, ISO/IEC 42001 i OWASP ASVS.</i>
+    <i>Platforma państwowej cyber-odporności łącząca pasywne rozpoznanie infrastruktury, ewolucyjny Red-Teaming (Polymorphic Fuzzing & APT Emulation), profiling jądra eBPF Cilium, orkiestrację Parrot OS, audyt pamięci CUDA GPU, proxy L7 Guardrail, sieć pułapek Deception Mesh, audyt SBOM łańcucha dostaw oraz certyfikację z normami DORA, NIS2, ISO/IEC 42001 i OWASP ASVS.</i>
   </p>
 
   <p>
@@ -35,36 +35,36 @@
 
 **SANCTUM-SUITE** to platforma cyber-odporności stworzona z myślą o nowoczesnych zespołach Security, SOC i rządowych agencjach cyberbezpieczeństwa. Platforma zabezpiecza całe środowisko aplikacyjne – od niskopoziomowego jądra Linuksa (eBPF Cilium), kontenerów i pamięci VRAM GPU, aż po agenty LLM oraz infrastrukturę krytyczną.
 
-Dzięki automatyzacji opartej o profilowanie eBPF, sanitację L7 Guardrail, matryce DORA/NIS2/ISO42001 oraz autonomicznych agentów SOAR, SANCTUM drastycznie skraca czas reakcji na incydenty (MTTR) i samoczynnie wdraża łatki bezpieczeństwa (Self-Healing PRs).
+Dzięki automatyzacji opartej o profilowanie eBPF, polimorficzny fuzzing, sieć pułapek Deception Mesh, audyty łańcucha dostaw SBOM oraz autonomicznych agentów SOAR, SANCTUM drastycznie skraca czas reakcji na incydenty (MTTR) i samoczynnie wdraża łatki bezpieczeństwa (Self-Healing PRs).
 
 ### Kluczowe Filary Systemu
 
 <table>
   <tr>
     <td width="50%">
-      <h3>🛡️ eBPF Cilium Profiler & L7 Guardrail Proxy</h3>
+      <h3>🛡️ eBPF Cilium & Polymorphic Fuzzer</h3>
       <ul>
-        <li><b>Cilium Security Profile Engine:</b> Automatyczna generacja reguł <i>CiliumNetworkPolicy</i> L3/L4/L7 w oparciu o profilowanie wywołań jądra (eBPF).</li>
-        <li><b>L7 Guardrail Sanitizer Proxy:</b> Filtrująca sanityzacja wejścia i wyjścia (Input/Output Sanitization) w komunikacji z modelami LLM/RAG.</li>
-        <li><b>Kernel Exploit Lab:</b> Testowanie mitygacji jądra (KASLR, SMEP, SMAP), ucieczek z kontenerów i hiperwizorów.</li>
+        <li><b>Polymorphic Fuzzing Engine:</b> Ewolucyjna synteza i mutacja wektorów testowych omijająca statyczne sygnatury heurystyczne.</li>
+        <li><b>Cilium Security Profile Engine:</b> Automatyczna generacja reguł <i>CiliumNetworkPolicy</i> L3/L4/L7 w oparciu o profilowanie jądra (eBPF).</li>
+        <li><b>L7 Guardrail Sanitizer Proxy:</b> Filtrująca sanityzacja wejścia i wyjścia w komunikacji z modelami LLM/RAG.</li>
       </ul>
     </td>
     <td width="50%">
-      <h3>🏛️ DORA, ISO/IEC 42001 & TIBER-EU Certification</h3>
+      <h3>🏛️ DORA, ISO/IEC 42001 & Supply Chain SBOM</h3>
       <ul>
-        <li><b>DORA & ISO 42001 Compliance Reporter:</b> Sformalizowane karty zgodności i audyty gotowości produkcyjnej dla regulacji finansowych i AI.</li>
-        <li><b>Global Regulatory Engine:</b> Automatyczna certyfikacja wymogów <b>DORA</b>, <b>NIS2</b>, <b>ISO/IEC 42001</b>, <b>NIST CSF 2.0</b> oraz <b>CIS Controls v8.1</b>.</li>
-        <li><b>TIBER-EU Red Teaming:</b> Testowanie zorientowane na zagrożenia dla sektora bankowego i infrastruktury krytycznej.</li>
+        <li><b>Supply Chain SBOM Audit:</b> Automatyczna dekonstrukcja zależności oprogramowania pod kątem podatności i norm NIS2/DORA.</li>
+        <li><b>Deception Mesh Orchestrator:</b> Wdrążanie sieci pułapek (Honeytokens, Canary Credentials) w chmurze i środowiskach agentów LLM.</li>
+        <li><b>Global Regulatory Engine:</b> Automatyczna certyfikacja wymogów <b>DORA</b>, <b>NIS2</b>, <b>ISO/IEC 42001</b> oraz <b>NIST CSF 2.0</b>.</li>
       </ul>
     </td>
   </tr>
   <tr>
     <td width="50%">
-      <h3>⚔️ Sovereign Threat Actors & Cyber Plumber</h3>
+      <h3>⚔️ Sovereign Threat Actors & Exploit Lab</h3>
       <ul>
-        <li><b>Sovereign Threat Actor Engine:</b> Emulacja zaawansowanych wektorów ataku grup APT29, Sandworm, NSA TAO, Equation Group oraz wariantów Vx-Underground.</li>
-        <li><b>Cyber Plumber & SpiderGraph OSINT:</b> Wieloskokowe tunelowanie eBPF/SSH oraz grafy powiązań infrastruktury (Maltego/SpiderFoot).</li>
-        <li><b>Parrot Container Orchestrator:</b> Dynamiczne tworzenie i sandboxing mikro-kontenerów Parrot OS do głębokiej inspekcji.</li>
+        <li><b>Sovereign Threat Actor Engine:</b> Emulacja zaawansowanych wektorów ataku grup APT29, Sandworm, NSA TAO i Equation Group.</li>
+        <li><b>Kernel Exploit Lab:</b> Testowanie mitygacji jądra (KASLR, SMEP, SMAP) oraz ucieczek z kontenerów/hiperwizorów.</li>
+        <li><b>Parrot Container Orchestrator:</b> Dynamiczne tworzenie i sandboxing mikro-kontenerów Parrot OS do inspekcji.</li>
       </ul>
     </td>
     <td width="50%">
@@ -91,16 +91,16 @@ graph LR
     classDef core fill:#312e81,stroke:#818cf8,stroke-width:2px,color:#fff;
     classDef output fill:#064e3b,stroke:#34d399,stroke-width:1px,color:#fff;
 
-    Target["🎯 Domain / Infrastructure"] --> Sanitizer["🛡️ L7 Sanitizer & eBPF Cilium"]
-    Sanitizer --> OSINT["🔍 SpiderGraph OSINT, Parrot & GPU Probe"]
-    OSINT --> RedTeam["🎭 APT Emulation, Kernel Exploit Lab & OWASP"]
-    RedTeam --> Correlator["🧠 Threat Correlator, DORA, NIS2 & TIBER-EU"]
-    Correlator --> Graph["🕸️ Attack Graph & ISO/IEC 42001 Scorecard"]
+    Target["🎯 Domain / Infrastructure"] --> Mesh["🛡️ Deception Mesh & L7 Sanitizer"]
+    Mesh --> OSINT["🔍 SBOM Audit, Parrot & GPU Probe"]
+    OSINT --> RedTeam["🎭 Polymorphic Fuzzer, APT & Kernel Lab"]
+    RedTeam --> Correlator["🧠 Threat Correlator, DORA & ISO 42001"]
+    Correlator --> Graph["🕸️ Attack Graph & Compliance Scorecard"]
     Graph --> SOAR["🤖 Autonomous SOAR Agent & K8s eBPF"]
     SOAR --> Patch["🩹 Self-Healing Auto-Patcher & GitHub PR"]
     Correlator --> Reports["📄 Signed RSA-2048 PDF/HTML Reports"]
 
     class Target target;
-    class Sanitizer,OSINT process;
+    class Mesh,OSINT process;
     class RedTeam,Correlator,Graph core;
     class SOAR,Patch,Reports output;
