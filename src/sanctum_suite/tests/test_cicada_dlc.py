@@ -35,7 +35,7 @@ def test_complete_cicada_dlc_suite():
 
     # Test stenografii LSB
     stego = LsbSteganographyEngine()
-    carrier = bytearray(b"\x00" * 200) # BUfor nośny
+    carrier = bytearray(b"\x00" * 2000) # Zwiększony bufor nośny
     payload = b"CLASSIFIED_PAYLOAD_3301"
     
     embedded = stego.hide_payload(carrier, payload)
