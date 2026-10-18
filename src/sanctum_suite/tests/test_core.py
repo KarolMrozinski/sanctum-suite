@@ -53,6 +53,9 @@ from sanctum_suite.core.supply_chain_sbom import SupplyChainSbomAuditEngine
 from sanctum_suite.core.xdr_correlator import RealtimeXdrMeshCorrelator
 from sanctum_suite.core.trust_chain import SovereignTrustChainVerifier
 from sanctum_suite.core.bas_simulator import ContinuousBasSimulator
+from sanctum_suite.core.industrial_scada import IndustrialScadaTelemetryAuditor
+from sanctum_suite.core.binary_reversing import ProjectZeroBinaryReversingEngine
+from sanctum_suite.core.opsec_auditor import OpSecFootprintAuditor
 
 def test_mitre_mapping():
     mitre = MitreMapperEngine()
@@ -464,3 +467,23 @@ def test_continuous_bas_simulator():
     res = sim.execute_lateral_movement_simulation("test-zone")
     assert res["lateral_movement_blocked"] is True
     assert res["status"] == "SIMULATION_COMPLETED_SUCCESS"    
+
+def test_industrial_scada_telemetry_auditor():
+    auditor = IndustrialScadaTelemetryAuditor()
+    res = auditor.audit_industrial_protocols("192.168.1.50")
+    assert res["status"] == "SCADA_SECURE"
+    assert res["industrial_hardening_score"] > 90.0
+
+
+def test_project_zero_binary_reversing_engine():
+    engine = ProjectZeroBinaryReversingEngine()
+    res = engine.analyze_firmware_binary("sample.bin")
+    assert res["status"] == "BINARY_ANALYSIS_PASSED"
+    assert res["backdoors_detected"] == 0
+
+
+def test_opsec_footprint_auditor():
+    auditor = OpSecFootprintAuditor()
+    res = auditor.evaluate_operational_footprint("target.internal")
+    assert res["status"] == "OPSEC_VERIFIED"
+    assert res["dns_sec_enabled"] is True    

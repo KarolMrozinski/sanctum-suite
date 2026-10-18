@@ -56,6 +56,9 @@ from sanctum_suite.core.supply_chain_sbom import SupplyChainSbomAuditEngine
 from sanctum_suite.core.xdr_correlator import RealtimeXdrMeshCorrelator
 from sanctum_suite.core.trust_chain import SovereignTrustChainVerifier
 from sanctum_suite.core.bas_simulator import ContinuousBasSimulator
+from sanctum_suite.core.industrial_scada import IndustrialScadaTelemetryAuditor
+from sanctum_suite.core.binary_reversing import ProjectZeroBinaryReversingEngine
+from sanctum_suite.core.opsec_auditor import OpSecFootprintAuditor
 from sanctum_suite.modules.osint import SpectreOsintModule
 from sanctum_suite.modules.shadow import ShadowAgentModule
 from sanctum_suite.modules.ghost import GhostCommModule
@@ -64,7 +67,7 @@ from sanctum_suite.modules.multimodal_fuzzer import MultimodalSafetyFuzzer
 
 
 class SanctumUnifiedOrchestrator:
-    """Sovereign Enterprise Orchestration Engine z XDR Correlator, Trust Chain Verifier i BAS Simulator."""
+    """Sovereign Enterprise Orchestration Engine z ICS/SCADA, Project Zero Reversing i OpSec Auditor."""
 
     def __init__(self) -> None:
         self.osint = SpectreOsintModule()
@@ -129,6 +132,9 @@ class SanctumUnifiedOrchestrator:
         self.xdr_correlator = RealtimeXdrMeshCorrelator()
         self.trust_chain = SovereignTrustChainVerifier()
         self.bas_simulator = ContinuousBasSimulator()
+        self.scada_auditor = IndustrialScadaTelemetryAuditor()
+        self.binary_reversing = ProjectZeroBinaryReversingEngine()
+        self.opsec_auditor = OpSecFootprintAuditor()
 
     def execute_full_resilience_audit(self, target_domain: str, role: UserRole = UserRole.ADMIN, license_key: str = "SANCTUM-FREE-KEY", tenant_id: str = "default_tenant") -> dict:
         self.rbac.verify_permission(role, "RUN_AUDIT")
@@ -137,6 +143,11 @@ class SanctumUnifiedOrchestrator:
         self.license_manager.check_and_increment_usage(tenant_id, lic_info["tier"], "audits")
 
         audit_id = f"SNC-{hash(target_domain) & 0xFFFF:04X}"
+
+        # Wykonanie audytów SCADA, Binary Reversing oraz OpSec
+        scada_audit = self.scada_auditor.audit_industrial_protocols(target_domain)
+        binary_audit = self.binary_reversing.analyze_firmware_binary("firmware_sample.bin")
+        opsec_audit = self.opsec_auditor.evaluate_operational_footprint(target_domain)
 
         # Weryfikacja łańcucha zaufania i inicjalizacja XDR/BAS
         trust_check = self.trust_chain.verify_module_integrity("SanctumOrchestratorCore", b"sanctum_core_binary_v1")
@@ -215,6 +226,9 @@ class SanctumUnifiedOrchestrator:
             "license_tier": lic_info["tier"].value,
             "overall_score": final_score,
             "risk_level": risk.value,
+            "scada_audit": scada_audit,
+            "binary_audit": binary_audit,
+            "opsec_audit": opsec_audit,
             "trust_check": trust_check,
             "xdr_stream": xdr_stream,
             "bas_simulation": bas_sim,
