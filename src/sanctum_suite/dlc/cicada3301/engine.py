@@ -3,14 +3,47 @@ import hashlib
 import base64
 import zlib
 from typing import Dict, Any, List
+from sanctum_suite.dlc.cicada3301.crypto_pipeline import CryptoPipelineEngine
+from sanctum_suite.dlc.cicada3301.steganography import LsbSteganographyEngine
+from sanctum_suite.dlc.cicada3301.book_cipher import BookCipherEngine
+from sanctum_suite.dlc.cicada3301.state_machine import IsolatedChallengeStateMachine
 
 
 class Cicada3301ChallengeAddon:
-    """Ostateczny silnik DLC v5.0 (Cicada 3301, Notpron, The Primroses, CcRU & APT Attribution ARGs)."""
+    """Ostateczny silnik DLC v6.0 z pełnym wsparciem dla pipeline crypto, steganografii, book cipher i state machine."""
 
     def __init__(self) -> None:
         self.addon_name = "SANCTUM-DLC-CICADA-3301"
-        self.version = "5.0.0-OMEGA-HYPERSTITION"
+        self.version = "6.0.0-MILITARY-CRYPT-DLC"
+        self.crypto = CryptoPipelineEngine()
+        self.stego = LsbSteganographyEngine()
+        self.state_machine = IsolatedChallengeStateMachine()
+        
+        # Manifest tekstowy dla Book Cipher
+        self.manifest = (
+            "The quick brown fox jumps over the lazy dog in the secure enclave.\n"
+            "Cyber resilience requires absolute mathematical certainty and rigorous defense.\n"
+            "Cicada whispers through prime numbers and hidden binary channels."
+        )
+        self.book_cipher = BookCipherEngine(self.manifest)
+
+    def initialize_challenge_session(self, operator_callsign: str) -> Dict[str, Any]:
+        session_id = f"SNC-CICADA-{uuid.uuid4().hex[:8].upper()}"
+        self.state_machine.create_session(session_id, operator_callsign)
+
+        return {
+            "addon": self.addon_name,
+            "version": self.version,
+            "session_id": session_id,
+            "operator": operator_callsign,
+            "status": "SECURE_SESSION_INITIALIZED"
+        }
+
+    def verify_solution(self, session_id: str, candidate_key: str, expected_key: str) -> bool:
+        is_valid = self.crypto.secure_compare(candidate_key, expected_key)
+        if is_valid:
+            self.state_machine.update_stage(session_id, 2, f"Key verified securely for session {session_id}")
+        return is_valid
 
     def initialize_arg_rabbit_hole(self, operator_callsign: str, apt_signature_target: str = "EQUATION_GROUP") -> Dict[str, Any]:
         """Inicjalizuje zamkniętą enklawę ARG o najwyższym stopniu złożomości kognitywnej i kryptograficznej."""

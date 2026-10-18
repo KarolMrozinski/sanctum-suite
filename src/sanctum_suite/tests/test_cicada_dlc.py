@@ -1,5 +1,8 @@
 import pytest
 from sanctum_suite.dlc.cicada3301.engine import Cicada3301ChallengeAddon
+from sanctum_suite.dlc.cicada3301.engine import Cicada3301ChallengeAddon
+from sanctum_suite.dlc.cicada3301.steganography import LsbSteganographyEngine
+from sanctum_suite.dlc.cicada3301.book_cipher import BookCipherEngine
 
 
 def test_cicada_3301_dlc_omega_engine():
@@ -20,3 +23,28 @@ def test_cicada_3301_dlc_omega_engine():
     assert step_res["solution_accepted"] is True
     assert step_res["next_active_stage"] == "PRIMROSES_MODULAR_FACTORIZATION"
     assert step_res["status"] == "STEP_EVALUATED_SUCCESS"
+
+def test_complete_cicada_dlc_suite():
+    addon = Cicada3301ChallengeAddon()
+    session = addon.initialize_challenge_session("Operator-Delta")
+    assert session["status"] == "SECURE_SESSION_INITIALIZED"
+
+    # Test bezpiecznego porównania odpornego na timing attacks
+    assert addon.verify_solution(session["session_id"], "Secret3301", "Secret3301") is True
+    assert addon.verify_solution(session["session_id"], "WrongKey", "Secret3301") is False
+
+    # Test stenografii LSB
+    stego = LsbSteganographyEngine()
+    carrier = bytearray(b"\x00" * 200) # BUfor nośny
+    payload = b"CLASSIFIED_PAYLOAD_3301"
+    
+    embedded = stego.hide_payload(carrier, payload)
+    extracted = stego.extract_payload(embedded)
+    assert extracted == payload
+
+    # Test Book Cipher
+    bc = BookCipherEngine("alpha beta gamma delta alpha")
+    indices = bc.encrypt_to_indices("alpha")
+    assert len(indices) == 2
+    resolved = bc.decrypt_from_indices(indices)
+    assert "alpha" in resolved    
