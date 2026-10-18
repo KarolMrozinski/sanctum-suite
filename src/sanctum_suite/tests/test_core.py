@@ -65,6 +65,9 @@ from sanctum_suite.core.nist_sp800_53 import NistSp80053ControlAssurance
 from sanctum_suite.core.purple_team import PurpleTeamEmulationCoordinator
 from sanctum_suite.core.tempest_auditor import TempestSdip27EmissionsAuditor
 from sanctum_suite.core.threat_intel import SovereignThreatIntelAggregator
+from sanctum_suite.core.zero_trust_mesh import ZeroTrustMeshProtocolEngine
+from sanctum_suite.core.self_healing import SelfHealingBinaryEngine
+from sanctum_suite.core.vram_guard import VramEnclaveGuardEngine
 
 def test_mitre_mapping():
     mitre = MitreMapperEngine()
@@ -556,3 +559,23 @@ def test_sovereign_threat_intel_aggregator():
     res = aggregator.aggregate_threat_feeds()
     assert res["status"] == "THREAT_INTEL_SYNCHRONIZED"
     assert "APT29" in res["apt_groups_tracked"]    
+
+def test_zero_trust_mesh_protocol():
+    engine = ZeroTrustMeshProtocolEngine()
+    res = engine.establish_secure_mesh_link("node-1", "node-2")
+    assert res["status"] == "ZERO_TRUST_MESH_SECURED"
+    assert res["crypto_handshake"] == "KYBER-1024 / DILITHIUM-V3"
+
+
+def test_self_healing_binary_engine():
+    engine = SelfHealingBinaryEngine()
+    res = engine.evaluate_and_patch_memory_anomaly("test-pid")
+    assert res["status"] == "SELF_HEALING_APPLIED_SUCCESS"
+    assert res["downtime_seconds"] == 0.0
+
+
+def test_vram_enclave_guard_engine():
+    engine = VramEnclaveGuardEngine()
+    res = engine.secure_gpu_memory_space("GPU-0")
+    assert res["status"] == "VRAM_ENCLAVE_PROTECTED"
+    assert res["aes_gcm_vram_encryption"] == "ENABLED"    

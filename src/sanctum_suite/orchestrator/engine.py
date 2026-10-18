@@ -73,6 +73,9 @@ from sanctum_suite.core.nist_sp800_53 import NistSp80053ControlAssurance
 from sanctum_suite.core.purple_team import PurpleTeamEmulationCoordinator
 from sanctum_suite.core.tempest_auditor import TempestSdip27EmissionsAuditor
 from sanctum_suite.core.threat_intel import SovereignThreatIntelAggregator
+from sanctum_suite.core.zero_trust_mesh import ZeroTrustMeshProtocolEngine
+from sanctum_suite.core.self_healing import SelfHealingBinaryEngine
+from sanctum_suite.core.vram_guard import VramEnclaveGuardEngine
 
 class SanctumUnifiedOrchestrator:
     """Sovereign Enterprise Orchestration Engine z eBPF In-Kernel Enforcement, Autonomous Red-Team i PQC Assurance."""
@@ -152,6 +155,9 @@ class SanctumUnifiedOrchestrator:
         self.purple_team = PurpleTeamEmulationCoordinator()
         self.tempest_auditor = TempestSdip27EmissionsAuditor()
         self.threat_intel = SovereignThreatIntelAggregator()
+        self.zt_mesh = ZeroTrustMeshProtocolEngine()
+        self.self_healing = SelfHealingBinaryEngine()
+        self.vram_guard = VramEnclaveGuardEngine()
 
     def execute_full_resilience_audit(self, target_domain: str, role: UserRole = UserRole.ADMIN, license_key: str = "SANCTUM-FREE-KEY", tenant_id: str = "default_tenant") -> dict:
         self.rbac.verify_permission(role, "RUN_AUDIT")
@@ -249,6 +255,10 @@ class SanctumUnifiedOrchestrator:
         tempest_audit = self.tempest_auditor.audit_enclave_emissions("Enclave-Alpha-Room")
         threat_intel_sync = self.threat_intel.aggregate_threat_feeds()
 
+        zt_mesh_link = self.zt_mesh.establish_secure_mesh_link("enclave-alpha", "enclave-beta")
+        self_healing_res = self.self_healing.evaluate_and_patch_memory_anomaly("inference-cluster-pid")
+        vram_guard_res = self.vram_guard.secure_gpu_memory_space("NVIDIA_RTX_4070_TI")
+
         audit_summary = {
             "audit_id": audit_id,
             "target": target_domain,
@@ -316,6 +326,9 @@ class SanctumUnifiedOrchestrator:
             "purple_sync": purple_sync,
             "tempest_audit": tempest_audit,
             "threat_intel_sync": threat_intel_sync,
+            "zt_mesh_link": zt_mesh_link,
+            "self_healing_res": self_healing_res,
+            "vram_guard_res": vram_guard_res,
         }
 
         # Faza 6: SOAR Agent & Cleanup
