@@ -30,6 +30,7 @@ class KernelDeadMansSwitch:
                 "status": "DEAD_MANS_SWITCH_TRIGGERED",
                 "action": "CASCADING_KEY_DESTRUCTION_AND_DB_SHRED",
                 "cascading_wipe_executed": True,
+                "database_shredded": True,
                 "system_state": "STERILIZED"
             }
 
@@ -38,5 +39,6 @@ class KernelDeadMansSwitch:
             "status": "DEAD_MANS_SWITCH_ARMED_NOMINAL",
             "action": "CONTINUOUS_MONITORING",
             "cascading_wipe_executed": False,
+            "database_shredded": False,
             "system_state": "ACTIVE"
         }

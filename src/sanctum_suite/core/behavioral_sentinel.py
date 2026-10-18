@@ -12,7 +12,12 @@ class AutonomousBehavioralSentinel:
     def evaluate_system_entropy(self, operational_metrics: List[float]) -> Dict[str, Any]:
         """Dokonuje wielowymiarowej analizy anomalii strumienia operacyjnego pod kątem eksfiltracji."""
         if not operational_metrics:
-            return {"status": "INSUFFICIENT_METRICS", "autonomous_action_taken": False}
+            return {
+                "status": "INSUFFICIENT_METRICS",
+                "anomaly_detected": False,
+                "autonomous_action_taken": "NONE",
+                "quarantined_resources": []
+            }
 
         avg_entropy = sum(operational_metrics) / len(operational_metrics)
         max_metric = max(operational_metrics)
@@ -21,7 +26,7 @@ class AutonomousBehavioralSentinel:
         action = "NONE"
         quarantine_list = []
         if anomaly_detected:
-            action = "IMMEDIATE_NETWORK_QUARANTINE_AND_PROCESS_SUSPENSION"
+            action = "ISOLATE_SUBSYSTEM_AND_ROTATE_KEYS"
             quarantine_list = ["ALL_EXTERNAL_SOCKETS", "UNTRUSTED_IPC_CHANNELS"]
 
         return {
