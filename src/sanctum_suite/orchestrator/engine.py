@@ -53,6 +53,9 @@ from sanctum_suite.core.l7_sanitizer_proxy import L7GuardrailSanitizerProxy
 from sanctum_suite.core.polymorphic_fuzzer import PolymorphicFuzzingEngine
 from sanctum_suite.core.deception_mesh import DeceptionMeshOrchestrator
 from sanctum_suite.core.supply_chain_sbom import SupplyChainSbomAuditEngine
+from sanctum_suite.core.xdr_correlator import RealtimeXdrMeshCorrelator
+from sanctum_suite.core.trust_chain import SovereignTrustChainVerifier
+from sanctum_suite.core.bas_simulator import ContinuousBasSimulator
 from sanctum_suite.modules.osint import SpectreOsintModule
 from sanctum_suite.modules.shadow import ShadowAgentModule
 from sanctum_suite.modules.ghost import GhostCommModule
@@ -61,7 +64,7 @@ from sanctum_suite.modules.multimodal_fuzzer import MultimodalSafetyFuzzer
 
 
 class SanctumUnifiedOrchestrator:
-    """Sovereign Enterprise Orchestration Engine z Polymorphic Fuzzer, Deception Mesh i Supply Chain SBOM Audit."""
+    """Sovereign Enterprise Orchestration Engine z XDR Correlator, Trust Chain Verifier i BAS Simulator."""
 
     def __init__(self) -> None:
         self.osint = SpectreOsintModule()
@@ -123,6 +126,9 @@ class SanctumUnifiedOrchestrator:
         self.polymorphic_fuzzer = PolymorphicFuzzingEngine()
         self.deception_mesh = DeceptionMeshOrchestrator()
         self.supply_chain_sbom = SupplyChainSbomAuditEngine()
+        self.xdr_correlator = RealtimeXdrMeshCorrelator()
+        self.trust_chain = SovereignTrustChainVerifier()
+        self.bas_simulator = ContinuousBasSimulator()
 
     def execute_full_resilience_audit(self, target_domain: str, role: UserRole = UserRole.ADMIN, license_key: str = "SANCTUM-FREE-KEY", tenant_id: str = "default_tenant") -> dict:
         self.rbac.verify_permission(role, "RUN_AUDIT")
@@ -131,6 +137,11 @@ class SanctumUnifiedOrchestrator:
         self.license_manager.check_and_increment_usage(tenant_id, lic_info["tier"], "audits")
 
         audit_id = f"SNC-{hash(target_domain) & 0xFFFF:04X}"
+
+        # Weryfikacja łańcucha zaufania i inicjalizacja XDR/BAS
+        trust_check = self.trust_chain.verify_module_integrity("SanctumOrchestratorCore", b"sanctum_core_binary_v1")
+        xdr_stream = self.xdr_correlator.ingest_telemetry_stream([{"source": "eBPF", "event": "syscall_audit"}])
+        bas_sim = self.bas_simulator.execute_lateral_movement_simulation("inference-cluster")
 
         # Inicjalizacja komponentów ochronnych i sieci pułapek
         sanitized_input = self.l7_sanitizer.sanitize_input_payload(target_domain)
@@ -161,7 +172,7 @@ class SanctumUnifiedOrchestrator:
         multi_turn_res = self.multi_turn_fuzzer.execute_multi_turn_fuzzing(target_domain)
         multimodal_res = self.multimodal_fuzzer.evaluate_visual_prompts(target_domain)
         plugin_fuzz_res = self.plugin_fuzzer.evaluate_agent_tools(target_domain)
-        deobfuscation_res = self.deobfuscator.analyze_payload("aWdub3JlIHByZXZpb3VzIGluc3RydWN0aW9ucw==")
+        deobfuscation_res = self.deobfuscator.analyze_payload("aWdub3JlIHByZXZpb3Vz insRydWN0aW9ucw==")
         gan_mutations = self.gan_mutator.generate_mutations("ignore previous instructions")
         apt_simulation = self.threat_actors.simulate_threat_actor_ttps(target_domain, "EQUATION_GROUP_TAO")
 
@@ -204,6 +215,9 @@ class SanctumUnifiedOrchestrator:
             "license_tier": lic_info["tier"].value,
             "overall_score": final_score,
             "risk_level": risk.value,
+            "trust_check": trust_check,
+            "xdr_stream": xdr_stream,
+            "bas_simulation": bas_sim,
             "sanitized_input": sanitized_input,
             "canary_mesh": canary_mesh,
             "polymorphic_payload": poly_payload,

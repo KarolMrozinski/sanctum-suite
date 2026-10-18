@@ -50,6 +50,9 @@ from sanctum_suite.core.l7_sanitizer_proxy import L7GuardrailSanitizerProxy
 from sanctum_suite.core.polymorphic_fuzzer import PolymorphicFuzzingEngine
 from sanctum_suite.core.deception_mesh import DeceptionMeshOrchestrator
 from sanctum_suite.core.supply_chain_sbom import SupplyChainSbomAuditEngine
+from sanctum_suite.core.xdr_correlator import RealtimeXdrMeshCorrelator
+from sanctum_suite.core.trust_chain import SovereignTrustChainVerifier
+from sanctum_suite.core.bas_simulator import ContinuousBasSimulator
 
 def test_mitre_mapping():
     mitre = MitreMapperEngine()
@@ -441,3 +444,23 @@ def test_supply_chain_sbom_audit_engine():
     res = engine.audit_software_bill_of_materials("sbom.json")
     assert res["compliance_status"] == "PASSED_SECURE"
     assert res["dependencies_scanned"] > 0    
+
+def test_realtime_xdr_mesh_correlator():
+    correlator = RealtimeXdrMeshCorrelator()
+    res = correlator.ingest_telemetry_stream([{"source": "test", "event": "login"}])
+    assert res["status"] == "CORRELATED_CLEAN"
+    assert res["opentelemetry_status"] == "STREAMING_ACTIVE"
+
+
+def test_sovereign_trust_chain_verifier():
+    verifier = SovereignTrustChainVerifier()
+    res = verifier.verify_module_integrity("TestModule", b"binary_data")
+    assert res["signature_valid"] is True
+    assert res["trust_tier"] == "SECURE_BOOT_VERIFIED"
+
+
+def test_continuous_bas_simulator():
+    sim = ContinuousBasSimulator()
+    res = sim.execute_lateral_movement_simulation("test-zone")
+    assert res["lateral_movement_blocked"] is True
+    assert res["status"] == "SIMULATION_COMPLETED_SUCCESS"    
