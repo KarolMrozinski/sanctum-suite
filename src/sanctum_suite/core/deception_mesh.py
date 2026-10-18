@@ -1,22 +1,25 @@
 import uuid
-from typing import Dict, Any, List
+from typing import Any
 
 
 class DeceptionMeshOrchestrator:
-    """Orkiestrator sieci pułapek (Deception Mesh), fałszywych poświadczeń i Canary Tokens."""
+    """Plans a canary deployment without creating or injecting secrets into systems."""
 
     def __init__(self) -> None:
-        self.active_honeytokens: List[str] = []
+        self.active_honeytokens: list[str] = []
 
-    def deploy_canary_mesh(self, environment_scope: str = "k8s-cluster") -> Dict[str, Any]:
-        """Wstrzykuje zaawansowane pułapki i canary tokeny do środowiska wykonawczego."""
-        token_id = f"CANARY-{uuid.uuid4().hex[:8].upper()}"
-        self.active_honeytokens.append(token_id)
-
+    def deploy_canary_mesh(self, environment_scope: str = "k8s-cluster") -> dict[str, Any]:
+        scope = environment_scope.strip()
+        if not scope:
+            raise ValueError("An authorized deployment scope is required")
         return {
-            "scope": environment_scope,
-            "deployed_canary_token": token_id,
-            "honey_api_endpoints": ["/api/v1/internal/admin-vault", "/api/v2/debug/dump"],
-            "alert_trigger_ready": True,
-            "status": "DECEPTION_MESH_ACTIVE",
+            "scope": scope,
+            "deployment_plan_id": f"CANARY-PLAN-{uuid.uuid4().hex[:8].upper()}",
+            "status": "NOT_DEPLOYED",
+            "secrets_created": False,
+            "alert_trigger_ready": False,
+            "limitations": (
+                "No canary credentials, endpoints, Kubernetes resources, or alert integrations "
+                "are created by this planner."
+            ),
         }

@@ -1,37 +1,33 @@
-from typing import Dict, Any, List
+from typing import Any
 
 
 class AutonomousSOARAgent:
-    """Autonomiczny Agent SOC/SOAR podejmujący akcje zaradcze w czasie rzeczywistym."""
+    """Produces human-review recommendations; it never performs remediation."""
 
     def __init__(self, agent_name: str = "SANCTUM-SENTINEL-01") -> None:
         self.agent_name = agent_name
 
-    def evaluate_and_remediate(self, audit_summary: Dict[str, Any]) -> Dict[str, Any]:
-        """Analizuje wykryte podatności i wykonuje autonomiczne decyzje naprawcze."""
-        actions_taken: List[Dict[str, str]] = []
-        overall_score = audit_summary.get("overall_score", 0.0)
-
-        # 1. Automatyczna izolacja skompromitowanych portów/usług
-        for port_info in audit_summary.get("open_ports", []):
-            if port_info.get("port") in [11434, 8080]:
-                actions_taken.append({
-                    "action": "FIREWALL_RULE_APPLIED",
-                    "target": f"TCP:{port_info.get('port')}",
-                    "details": "Applied iptables drop rule for unauthenticated LLM API endpoint.",
-                })
-
-        # 2. Automatyczna zmiana polityk Guardraila przy wysokim ryzyku
-        if overall_score > 50.0:
-            actions_taken.append({
-                "action": "GUARDRAIL_STRICT_MODE_ENABLED",
-                "target": "LLMGuardrailProxy",
-                "details": "Lowered anomaly threshold to 0.35 and enabled multi-turn session blocking.",
+    def evaluate_and_remediate(self, audit_summary: dict[str, Any]) -> dict[str, Any]:
+        recommendations: list[dict[str, str]] = []
+        exposed_services = [
+            item for item in audit_summary.get("open_ports", [])
+            if item.get("port") in {11434, 8080}
+        ]
+        for service in exposed_services:
+            recommendations.append({
+                "action": "REVIEW_SERVICE_EXPOSURE",
+                "target": f"TCP:{service['port']}",
+                "details": "Confirm the service is required and restrict access according to policy.",
             })
-
+        if audit_summary.get("overall_score", 0.0) > 50.0:
+            recommendations.append({
+                "action": "REVIEW_HIGH_RISK_FINDINGS",
+                "target": "security-review",
+                "details": "Review findings and approve any mitigation through the normal change process.",
+            })
         return {
             "agent_id": self.agent_name,
-            "status": "REMEDIATION_EXECUTED" if actions_taken else "NO_ACTION_REQUIRED",
-            "actions_count": len(actions_taken),
-            "executed_actions": actions_taken,
+            "status": "RECOMMENDATIONS_READY" if recommendations else "NO_RECOMMENDATIONS",
+            "actions_executed": 0,
+            "recommendations": recommendations,
         }

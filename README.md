@@ -12,6 +12,7 @@
     <a href="#cechy-systemu">Cechy Systemu</a> •
     <a href="#architektura-systemu">Architektura</a> •
     <a href="./docs/INSTALLATION.md">Instalacja</a> •
+    <a href="./docs/CONTROL_CATALOG.md">Katalog kontroli</a> •
     <a href="./docs/RELEASE_CHECKLIST.md">Checklist wydania</a> •
     <a href="./LICENSE">Licencja</a>
   </p>
@@ -37,12 +38,14 @@ Moduły opisane poniżej należy traktować jako funkcje repozytorium wymagając
 
 ### Główne obszary kodu
 
-- orkiestracja audytów, skanowanie i narzędzia OSINT
+- autoryzowane, dokładnie allowlistowane testy HTTPS/TCP oraz rejestrowanie zakresu (bez automatycznego odkrywania subdomen)
 - analiza promptów, guardraile i narzędzia testów AI
 - korelacja zdarzeń, generowanie reguł i raportowanie
 - mapowanie kontroli zgodności oraz moduły infrastrukturalne
 
 Repozytorium zawiera również eksperymentalne i platformowo zależne moduły dotyczące kontenerów, kryptografii, eBPF, ICS/SCADA i firmware. Sama obecność modułu nie potwierdza działania sprzętowego, produkcyjnej jakości ani zgodności z wymienionym standardem. Przed użyciem należy przejrzeć implementację oraz zweryfikować zachowanie w kontrolowanym środowisku.
+
+Niepodłączone silniki skanowania kontenerów/SBOM, analizy firmware i pamięci, kampanii red-team, testów modeli, telemetrii EDR/XDR oraz inspekcji GPU raportują brak wykonanej oceny zamiast syntetycznych wyników. Moduły C2/covert-channel, spoofingu satelitarnego, biometrii, automatycznego naprawiania i dead-man switch nie wykonują tych działań. Moduły enklaw VRAM, pamięci kwantowo-odpornej i składowania informacji niejawnych nie zapewniają izolacji, atestacji ani magazynu danych. Szyfrowanie kopertowe `ZeroTrustKMSVault` używa klucza efemerycznego w pamięci procesu i nie zastępuje produkcyjnego KMS.
 
 ---
 
@@ -88,6 +91,8 @@ Dodatkowe materiały:
 - [docs/RELEASE_CHECKLIST.md](./docs/RELEASE_CHECKLIST.md)
 - [docs/MONETIZATION.md](./docs/MONETIZATION.md)
 - [docs/INSTALLATION.md](./docs/INSTALLATION.md)
+- [docs/CONTROL_CATALOG.md](./docs/CONTROL_CATALOG.md)
+- [docs/COMMERCIAL_ENTITLEMENTS.md](./docs/COMMERCIAL_ENTITLEMENTS.md)
 - [docs/RELEASE_PACK.md](./docs/RELEASE_PACK.md)
 - [docs/SANCTUM-SUITE-Release-Overview.pdf](./docs/SANCTUM-SUITE-Release-Overview.pdf)
 - [docs/RELEASE_NOTES_v6.0.0.md](./docs/RELEASE_NOTES_v6.0.0.md)
@@ -95,9 +100,11 @@ Dodatkowe materiały:
 
 > Build i testy nie stanowią certyfikacji bezpieczeństwa ani gwarancji gotowości produkcyjnej. Licencja repozytorium ogranicza uruchamianie i użycie komercyjne bez pisemnej zgody właściciela praw.
 
+Aktywne testy są blokowane, jeśli cel nie występuje dokładnie na liście `SANCTUM_AUTHORIZED_TARGETS`, brakuje identyfikatora pisemnej zgody lub nie skonfigurowano ważnego, podpisanego entitlementu. Szczegóły i limity znajdują się w [docs/COMMERCIAL_ENTITLEMENTS.md](./docs/COMMERCIAL_ENTITLEMENTS.md).
+
 ### Blokery przed sprzedażą i wdrożeniem
 
 - obecna licencja nie zezwala na komercyjne użycie bez odrębnej pisemnej zgody; wymagany przegląd prawny i umowa komercyjna
-- brak płatności, entitlementów, zarządzania kontami klienta i wdrożonego SLA; ceny na stronie są jedynie propozycją do omówienia
+- podpisane entitlementy Ed25519, lokalne liczniki użycia i ręczne wystawianie licencji z offlineowego CLI są dostępne; brak integracji płatności, unieważniania online, powiązania klucza API z tenantem, izolacji danych klientów i wdrożonego SLA; ceny na stronie są jedynie propozycją do omówienia
 - formularz leadów wymaga webhooka, kontroli rate limitu po stronie operatora oraz finalnej polityki prywatności
 - bezpieczeństwo, prawa dostępu i zachowanie każdego modułu trzeba zweryfikować dla docelowego środowiska przed uruchomieniem produkcyjnym

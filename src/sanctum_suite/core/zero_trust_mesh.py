@@ -1,19 +1,25 @@
 import uuid
-from typing import Dict, Any, List
+from typing import Any
 
 
 class ZeroTrustMeshProtocolEngine:
-    """Własny protokół komunikacyjny enklaw oparty na kwantowo-odpornym handshaku (Kyber/Dilithium) i eBPF."""
+    """Reports a mesh-link plan; it does not establish sockets or cryptographic handshakes."""
 
-    def establish_secure_mesh_link(self, source_enclave: str, target_enclave: str) -> Dict[str, Any]:
-        link_id = f"ZTM-LINK-{uuid.uuid4().hex[:8].upper()}"
-        
+    def establish_secure_mesh_link(self, source_enclave: str, target_enclave: str) -> dict[str, Any]:
+        source = source_enclave.strip()
+        target = target_enclave.strip()
+        if not source or not target:
+            raise ValueError("Source and target enclave identifiers are required")
         return {
-            "link_id": link_id,
-            "source": source_enclave,
-            "target": target_enclave,
-            "crypto_handshake": "KYBER-1024 / DILITHIUM-V3",
-            "ebpf_socket_filtering": "ACTIVE_DROP_UNAUTHENTICATED",
-            "latency_overhead_us": 8.2,
-            "status": "ZERO_TRUST_MESH_SECURED",
+            "link_id": f"ZTM-PLAN-{uuid.uuid4().hex[:8].upper()}",
+            "source": source,
+            "target": target,
+            "status": "NOT_IMPLEMENTED",
+            "connection_established": False,
+            "cryptographic_handshake": "NOT_PERFORMED",
+            "socket_filtering_active": False,
+            "requirements": [
+                "A reviewed transport, identity provider, key lifecycle, and policy enforcement point are required.",
+                "Network isolation and fail-closed behavior must be validated in the deployment environment.",
+            ],
         }

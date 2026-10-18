@@ -12,7 +12,9 @@ def test_classified_vault_access_denied():
         clearance_level="SECRET"
     )
     assert res["access_granted"] is False
-    assert res["status"] == "SECURITY_BREACH_ATTEMPT_LOGGED"
+    assert res["status"] == "ACCESS_DENIED"
+    assert res["audit_recorded"] is False
+    assert res["payload_stored"] is False
 
 
 def test_classified_vault_access_granted():
@@ -25,4 +27,6 @@ def test_classified_vault_access_granted():
         clearance_level="SECRET"
     )
     assert res["access_granted"] is True
-    assert res["status"] == "PAYLOAD_SECURED_COMPARTMENTED_NOMINAL"
+    assert res["status"] == "STORAGE_NOT_IMPLEMENTED"
+    assert res["payload_stored"] is False
+    assert res["encryption_performed"] is False

@@ -37,6 +37,20 @@ sanctum serve --host 127.0.0.1 --port 8000
 
 The API rejects protected requests and fails readiness unless `SANCTUM_API_KEY` is configured with at least 32 bytes. The SDK reads this variable by default; alternatively pass `api_key` explicitly. Do not store a production key in source control or a checked-in `.env` file.
 
+`sanctum serve` permits plain HTTP only on loopback by default. Binding to any other address requires both `SANCTUM_TLS_CERT_FILE` and `SANCTUM_TLS_KEY_FILE` to point to existing TLS files; Uvicorn then serves HTTPS directly. For a TLS-terminating proxy, set `SANCTUM_TRUST_TLS_TERMINATION_PROXY=true` only when network policy prevents direct access to the plaintext backend and allows ingress solely from that proxy.
+
+Active audits and port/HTTPS checks also require an operator-configured exact target allowlist in `SANCTUM_AUTHORIZED_TARGETS`, a written authorization reference, and a valid signed entitlement. Configure `SANCTUM_LICENSE_PUBLIC_KEY` and `SANCTUM_LICENSE_KEY` in the deployment secret manager. With any of these unset, active audit execution is denied. See [COMMERCIAL_ENTITLEMENTS.md](./COMMERCIAL_ENTITLEMENTS.md) for token and scope details.
+
+Example only, after the operator has approved the target and configured a signed license:
+
+```powershell
+$env:SANCTUM_AUTHORIZED_TARGETS = "app.example.test"
+sanctum run-audit --target app.example.test --authorization-reference "change-approval-123"
+sanctum scan-ports --host app.example.test --authorization-reference "change-approval-123"
+```
+
+The reference value is an operator audit trail pointer; it is not proof that authorization exists. The allowlist uses exact host matches and has no wildcard support. Do not run these commands against systems outside the approved scope.
+
 For local Docker Compose evaluation, copy `.env.example` to `.env`, set a newly generated key, then run `Copy-Item .env.example .env
 # Set SANCTUM_API_KEY in .env to a fresh value from:
 # python -c "import secrets; print(secrets.token_urlsafe(48))"
@@ -54,6 +68,8 @@ npm run start
 
 Set `NEXT_PUBLIC_SANCTUM_WS_URL` to the full WebSocket URL for the authorized API. Use `wss://` for deployments served over HTTPS.
 The workbench endpoint currently does not publish live telemetry and will close WebSocket connections until a real authenticated event source is implemented.
+
+The selected telemetry option is vendor-neutral CEF only. To send completed-audit CEF events to an operator-approved HTTPS webhook, set `SANCTUM_SIEM_WEBHOOK_URL` and optionally `SANCTUM_SIEM_WEBHOOK_TOKEN` in the server secret manager. The token is sent as a Bearer credential; URL query strings, fragments, and embedded credentials are rejected. Delivery status is included in the audit report. No Sentinel, Splunk, Elastic, Wazuh, or other vendor-specific adapter is configured.
 
 ## Configure lead capture
 
@@ -78,3 +94,5 @@ Do not place webhook credentials in `NEXT_PUBLIC_*` variables. Do not accept sen
 6. Keep a rollback path and verify that no development credentials or test data are deployed.
 
 This guide does not certify the application as production-safe. Operators remain responsible for validating their deployment and applicable legal obligations.
+
+Several platform-specific modules are placeholders, not operational integrations. Container/SBOM and memory-forensics scanning, firmware analysis, GPU isolation, hardware enclaves, classified-data storage, autonomous red-team, multimodal/multi-turn model testing, EDR/XDR collection, satellite telemetry, covert channels, biometric coercion detection, hot-patching, and dead-man-switch actions are not performed unless a separately validated integration is supplied. The built-in envelope-encryption helper uses an ephemeral process-memory key; do not use it as a production KMS or for durable customer secrets.

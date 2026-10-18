@@ -7,7 +7,8 @@ def test_behavioral_sentinel_normal():
     metrics = [4.2, 5.1, 3.8, 4.9] # Normalny poziom złożoności operacji
     res = sentinel.evaluate_system_entropy(metrics)
     
-    assert res["anomaly_detected"] is False
+    assert res["metric_threshold_exceeded"] is False
+    assert res["anomaly_detected"] is None
     assert res["autonomous_action_taken"] == "NONE"
 
 
@@ -16,5 +17,6 @@ def test_behavioral_sentinel_high_entropy_anomaly():
     metrics = [8.9, 9.1, 8.5] # Podejrzanie wysoka entropia (np. szyfrowanie ransomware / eksfiltracja)
     res = sentinel.evaluate_system_entropy(metrics)
     
-    assert res["anomaly_detected"] is True
-    assert res["autonomous_action_taken"] == "ISOLATE_SUBSYSTEM_AND_ROTATE_KEYS"
+    assert res["metric_threshold_exceeded"] is True
+    assert res["anomaly_detected"] is None
+    assert res["autonomous_action_taken"] == "NONE"

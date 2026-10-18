@@ -29,6 +29,8 @@ class ZeroTrustKMSVault:
             "nonce_data": base64.b64encode(nonce_data).decode("utf-8"),
             "encrypted_dek": base64.b64encode(encrypted_dek).decode("utf-8"),
             "nonce_dek": base64.b64encode(nonce_dek).decode("utf-8"),
+            "key_management": "LOCAL_EPHEMERAL_PROCESS_MEMORY",
+            "production_kms_configured": "false",
         }
 
     def decrypt_payload(self, envelope: Dict[str, str]) -> str:

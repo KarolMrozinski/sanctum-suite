@@ -1,17 +1,20 @@
-from typing import Dict, Any, List
+from typing import Any
 
 
 class IndustrialScadaTelemetryAuditor:
-    """Moduł audytu bezpieczeństwa systemów przemysłowych ICS/SCADA, protokołów Modbus/IEC i logiki PLC (Stuxnet inspired)."""
+    """Creates an authorized ICS assessment scope; it does not probe industrial hosts."""
 
-    def audit_industrial_protocols(self, target_host: str) -> Dict[str, Any]:
-        """Skanuje porty i protokoły przemysłowe (Modbus TCP, OPC UA) pod kątem podatności i anomalii."""
-        scanned_protocols = ["Modbus TCP (Port 502)", "OPC UA (Port 4840)", "IEC 60870-5-104"]
+    def audit_industrial_protocols(self, target_host: str) -> dict[str, Any]:
+        target = target_host.strip()
+        if not target:
+            raise ValueError("An authorized ICS assessment scope is required")
         return {
-            "target_host": target_host,
-            "protocols_analyzed": scanned_protocols,
-            "plc_logic_integrity": "VERIFIED_SECURE",
-            "unauthorized_register_access": False,
-            "industrial_hardening_score": 95.0,
-            "status": "SCADA_SECURE",
+            "target_scope": target,
+            "protocols_analyzed": [],
+            "status": "NOT_ASSESSED",
+            "network_requests_made": False,
+            "limitations": (
+                "No Modbus, OPC UA, IEC 60870-5-104, PLC, or OT traffic is inspected or generated. "
+                "Testing requires a site-approved plan and passive/safe instrumentation."
+            ),
         }

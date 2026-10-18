@@ -1,29 +1,28 @@
-from typing import Dict, Any, List
+from typing import Any
 
 
 class LowLevelResilienceEngine:
-    """Niskopoziomowy silnik analizy eBPF, CWE Top 25, OWASP ASVS, OSSTMM, PTES i SpiderFoot OSINT."""
+    """Describes required assessment scope without probing a live target."""
 
-    CWE_TOP_25_MAP = {
-        "CWE-787": "Out-of-bounds Write",
-        "CWE-79": "Cross-site Scripting",
-        "CWE-89": "SQL Injection",
-        "CWE-416": "Use After Free",
-        "CWE-20": "Improper Input Validation",
-    }
+    FRAMEWORKS = (
+        "OWASP ASVS",
+        "CWE Top 25",
+        "OSSTMM",
+        "PTES",
+        "eBPF",
+    )
 
-    def execute_low_level_audit(self, target: str) -> Dict[str, Any]:
-        """Wykonuje głęboki skan jądra eBPF, rekurencyjny OSINT oraz audyt OWASP ASVS / PTES / OSSTMM."""
+    def execute_low_level_audit(self, target: str) -> dict[str, Any]:
+        target_scope = target.strip()
+        if not target_scope:
+            raise ValueError("An authorized assessment target or scope label is required")
         return {
-            "target": target,
-            "spiderfoot_maltego_nodes_discovered": 142,
-            "ebpf_kernel_probe": {
-                "tracing_status": "ACTIVE_BPF_EVENTS",
-                "syscall_anomalies": 0,
-                "kernel_integrity": "HARDENED",
-            },
-            "owasp_asvs_level": "LEVEL_3_ADVANCED",
-            "osstmm_security_metrics": {"raven_score": 98.2, "operational_security": "MAXIMUM"},
-            "ptes_execution_phase": "POST_EXPLOITATION_CLEANUP",
-            "cwe_top_25_findings": [],
+            "target": target_scope,
+            "status": "NOT_EXECUTED",
+            "discovery_executed": False,
+            "frameworks_available_for_planning": list(self.FRAMEWORKS),
+            "limitations": (
+                "No network, kernel, OSINT, or application tests are performed by this method. "
+                "Detailed methodology editions and authorized test plans must be selected by the operator."
+            ),
         }

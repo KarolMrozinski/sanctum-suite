@@ -1,32 +1,36 @@
-from typing import List, Dict, Any
+from typing import Any
 
 
 class RegulatoryComplianceEngine:
-    """Silnik walidacji zgodności regulacyjnej i normatywnej (EU AI Act, NIS2, ISO 27001)."""
+    """Maps observed technical signals to areas needing evidence-based review."""
 
-    def evaluate_compliance(self, shadow_vulns: List[Dict[str, Any]], open_ports: List[Dict[str, Any]]) -> Dict[str, Any]:
-        has_prompt_injection = any(v.get("issue") == "PROMPT_INJECTION_RISK" for v in shadow_vulns)
-        has_exposed_services = len(open_ports) > 0
-
-        eu_ai_act = {
-            "article_15_cybersecurity": "NON_COMPLIANT" if has_prompt_injection else "COMPLIANT",
-            "article_14_human_oversight": "COMPLIANT",
-            "risk_status": "HIGH_RISK_AI_SYSTEM" if has_prompt_injection else "LOW_RISK",
-        }
-
-        nis2_directive = {
-            "article_21_risk_management": "ACTION_REQUIRED" if has_exposed_services else "OPTIMAL",
-            "supply_chain_security": "VERIFIED",
-        }
-
-        iso_27001 = {
-            "control_A_8_8_technical_vulnerabilities": "FAIL" if (has_prompt_injection or has_exposed_services) else "PASS",
-            "control_A_8_20_network_security": "PASS" if not has_exposed_services else "WARNING",
-        }
+    def evaluate_compliance(
+        self,
+        shadow_vulns: list[dict[str, Any]],
+        open_ports: list[dict[str, Any]],
+    ) -> dict[str, Any]:
+        signals: list[str] = []
+        if any(vulnerability.get("issue") == "PROMPT_INJECTION_RISK" for vulnerability in shadow_vulns):
+            signals.append("PROMPT_INJECTION_RISK_OBSERVED")
+        if open_ports:
+            signals.append("OPEN_SERVICES_OBSERVED")
 
         return {
-            "eu_ai_act": eu_ai_act,
-            "nis2": nis2_directive,
-            "iso_27001": iso_27001,
-            "overall_compliance_grade": "NON_COMPLIANT" if has_prompt_injection else "COMPLIANT",
+            "eu_ai_act": {
+                "status": "NOT_ASSESSED",
+                "review_signals": signals,
+            },
+            "nis2": {
+                "status": "NOT_ASSESSED",
+                "review_signals": signals,
+            },
+            "iso_27001": {
+                "status": "NOT_ASSESSED",
+                "review_signals": signals,
+            },
+            "overall_compliance_grade": "NOT_ASSESSED",
+            "limitations": (
+                "Technical findings alone cannot establish legal applicability, "
+                "management-system effectiveness, or compliance."
+            ),
         }

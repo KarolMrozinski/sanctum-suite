@@ -2,15 +2,18 @@ from typing import Dict, Any
 
 
 class LLMResourceExhaustionProbe:
-    """Skaner podatności LLM04: Unchecked Resource Consumption & Context Saturation."""
+    """Plans a bounded LLM resource test without sending traffic to a target."""
 
     def test_context_exhaustion(self, target_endpoint: str) -> Dict[str, Any]:
-        """Testuje odporność punktu końcowego LLM na ataki wysycenia okna kontekstu."""
+        """Return a test plan; no requests or token-heavy payloads are generated."""
+        target = target_endpoint.strip()
+        if not target:
+            raise ValueError("An authorized test scope is required")
         return {
-            "target": target_endpoint,
-            "probe_type": "CONTEXT_WINDOW_SATURATION_LLM04",
-            "max_tokens_tested": 128000,
-            "latency_degradation_ms": 14.2,
-            "vram_overflow_prevented": True,
-            "status": "PASS",
+            "target_scope": target,
+            "probe_type": "BOUNDED_CONTEXT_RESOURCE_TEST_PLAN",
+            "status": "NOT_EXECUTED",
+            "network_requests_made": False,
+            "tokens_generated": 0,
+            "limitations": "No endpoint is contacted and no resource exhaustion test is performed.",
         }

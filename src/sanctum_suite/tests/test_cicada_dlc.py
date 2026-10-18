@@ -5,14 +5,14 @@ from sanctum_suite.dlc.cicada3301.steganography import LsbSteganographyEngine
 from sanctum_suite.dlc.cicada3301.book_cipher import BookCipherEngine
 
 
-def test_complete_cicada_dlc_suite():
-    addon = Cicada3301ChallengeAddon()
+def test_complete_cicada_arg_suite(tmp_path):
+    addon = Cicada3301ChallengeAddon(state_db_path=str(tmp_path / "cicada-test.db"))
     session = addon.initialize_challenge_session("Operator-Delta")
     res = addon.initialize_arg_rabbit_hole("Operator-Omega", "EQUATION_GROUP")
     
     assert session["addon"] == "SANCTUM-DLC-CICADA-3301"
-    assert session["version"] == "6.0.0-MILITARY-CRYPT-DLC"
-    assert session["status"] == "SECURE_SESSION_INITIALIZED"
+    assert session["version"] == "6.0.0-DEMO"
+    assert session["status"] == "SESSION_INITIALIZED"
     assert res["target_apt"] == "EQUATION_GROUP"
     assert "notpron_sensory_layer" in res
     assert "primroses_arithmetic_trapdoor" in res
@@ -25,10 +25,10 @@ def test_complete_cicada_dlc_suite():
     assert step_res["next_active_stage"] == "PRIMROSES_MODULAR_FACTORIZATION"
     assert step_res["status"] == "STEP_EVALUATED_SUCCESS"
 
-def test_complete_cicada_dlc_suite():
-    addon = Cicada3301ChallengeAddon()
+def test_complete_cicada_crypto_suite(tmp_path):
+    addon = Cicada3301ChallengeAddon(state_db_path=str(tmp_path / "cicada-test.db"))
     session = addon.initialize_challenge_session("Operator-Delta")
-    assert session["status"] == "SECURE_SESSION_INITIALIZED"
+    assert session["status"] == "SESSION_INITIALIZED"
 
     # Test bezpiecznego porównania odpornego na timing attacks
     assert addon.verify_solution(session["session_id"], "Secret3301", "Secret3301") is True

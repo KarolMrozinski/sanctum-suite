@@ -1,16 +1,29 @@
-from typing import Dict, Any, List
+from collections.abc import Mapping, Sequence
+from typing import Any
+
+from sanctum_suite.core.purple_team import PurpleTeamEmulationCoordinator
 
 
 class ContinuousBasSimulator:
-    """Automatyczny symulator ciągłych testów odporności (Breach and Attack Simulation - BAS)."""
+    """Evaluates operator-supplied detection telemetry for a synthetic scenario only."""
 
-    def execute_lateral_movement_simulation(self, target_segment: str) -> Dict[str, Any]:
-        """Symuluje próby rozprzestrzeniania się i testuje skuteczność reguł eBPF Cilium."""
+    def execute_lateral_movement_simulation(
+        self,
+        target_segment: str,
+        expected_rule_id: str = "operator-configured-rule",
+        observed_alerts: Sequence[Mapping[str, Any]] | None = None,
+    ) -> dict[str, Any]:
+        segment = target_segment.strip()
+        if not segment:
+            raise ValueError("An authorized segment label is required")
+        result = PurpleTeamEmulationCoordinator().coordinate_emulation_cycle(
+            red_vector=f"synthetic-lateral-movement:{segment}",
+            blue_detection_rule=expected_rule_id,
+            observed_alerts=observed_alerts,
+        )
         return {
-            "simulated_segment": target_segment,
-            "methodology": "PTES / OSSTMM Automated Framework",
-            "lateral_movement_blocked": True,
-            "ebpf_interception_success": True,
-            "security_posture_rating": "IMPERMEABLE",
-            "status": "SIMULATION_COMPLETED_SUCCESS",
+            **result,
+            "target_segment": segment,
+            "execution_mode": "SYNTHETIC_TELEMETRY_EVALUATION_ONLY",
+            "lateral_movement_executed": False,
         }

@@ -1,16 +1,13 @@
-from typing import Dict, Any
+from typing import Any
 
 
 class NeuralDecoderCore:
-    """Lekki model decyzyjny łączący biometrię i telemetrię sesji enklawy."""
+    """Placeholder; does not authenticate sessions or evaluate an enclave."""
 
-    def evaluate_session_tensor(self, session_metrics: Dict[str, float]) -> Dict[str, Any]:
-        entropy = session_metrics.get("entropy", 0.85)
-        authorized = entropy > 0.5
-
+    def evaluate_session_tensor(self, session_metrics: dict[str, float]) -> dict[str, Any]:
         return {
-            "tensor_entropy": entropy,
-            "neural_confidence": 0.98,
-            "session_authorized": authorized,
-            "status": "NEURAL_DECODER_EVALUATED"
+            "status": "NOT_ASSESSED",
+            "evaluation_performed": False,
+            "session_authorized": None,
+            "neural_confidence": None,
         }

@@ -1,18 +1,15 @@
-import uuid
-from typing import Dict, Any, List
+from typing import Any
 
 
 class VramEnclaveGuardEngine:
-    """Moduł szyfrowania i monitorowania pamięci VRAM akceleratorów GPU przed atakami Side-Channel."""
+    """Reports VRAM isolation as unimplemented without a hardware-backed guard."""
 
-    def secure_gpu_memory_space(self, device_id: str) -> Dict[str, Any]:
-        guard_id = f"VRAM-GUA-{uuid.uuid4().hex[:8].upper()}"
-        
+    def secure_gpu_memory_space(self, device_id: str) -> dict[str, Any]:
         return {
-            "guard_id": guard_id,
             "gpu_device": device_id,
-            "aes_gcm_vram_encryption": "ENABLED",
-            "side_channel_mitigation": "ACTIVE",
-            "prompt_leakage_risk": "ZERO",
-            "status": "VRAM_ENCLAVE_PROTECTED",
+            "status": "NOT_IMPLEMENTED",
+            "encryption_status": "NOT_ASSESSED",
+            "side_channel_mitigation": "NOT_ASSESSED",
+            "prompt_leakage_risk": None,
+            "device_modified": False,
         }

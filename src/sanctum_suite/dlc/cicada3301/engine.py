@@ -12,12 +12,12 @@ from sanctum_suite.dlc.cicada3301.state_machine import IsolatedChallengeStateMac
 class Cicada3301ChallengeAddon:
     """Ostateczny silnik DLC v6.0 z pełnym wsparciem dla pipeline crypto, steganografii, book cipher i state machine."""
 
-    def __init__(self) -> None:
+    def __init__(self, state_db_path: str = "sanctum_cicada_state.db") -> None:
         self.addon_name = "SANCTUM-DLC-CICADA-3301"
-        self.version = "6.0.0-MILITARY-CRYPT-DLC"
+        self.version = "6.0.0-DEMO"
         self.crypto = CryptoPipelineEngine()
         self.stego = LsbSteganographyEngine()
-        self.state_machine = IsolatedChallengeStateMachine()
+        self.state_machine = IsolatedChallengeStateMachine(db_path=state_db_path)
         
         # Manifest tekstowy dla Book Cipher
         self.manifest = (
@@ -36,7 +36,7 @@ class Cicada3301ChallengeAddon:
             "version": self.version,
             "session_id": session_id,
             "operator": operator_callsign,
-            "status": "SECURE_SESSION_INITIALIZED"
+            "status": "SESSION_INITIALIZED"
         }
 
     def verify_solution(self, session_id: str, candidate_key: str, expected_key: str) -> bool:

@@ -1,10 +1,13 @@
 class SpectreOsintModule:
-    """Pasywne rozpoznanie aktywów cyfrowych (SPECTRE-OSINT Integration)."""
+    """Records a supplied authorized scope without fabricating discovered assets."""
 
     def scan_target(self, target: str) -> dict:
-        discovered_subdomains = [f"api.{target}", f"vpn.{target}", f"mail.{target}"]
+        scope = target.strip()
+        if not scope:
+            raise ValueError("An authorized target scope is required")
         return {
-            "target": target,
-            "subdomains": discovered_subdomains,
-            "exposed_assets_count": len(discovered_subdomains),
+            "target": scope,
+            "subdomains": [],
+            "exposed_assets_count": 0,
+            "discovery_performed": False,
         }

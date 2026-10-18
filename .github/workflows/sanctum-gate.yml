@@ -11,6 +11,10 @@ on:
         description: "Type I_HAVE_AUTHORIZATION to confirm written permission for this target"
         required: true
         type: string
+      authorization_reference:
+        description: "Reference to the written authorization record"
+        required: true
+        type: string
 
 jobs:
   sanctum-audit:
@@ -50,5 +54,12 @@ jobs:
       - name: Execute authorized SANCTUM audit
         env:
           TARGET_DOMAIN: ${{ inputs.target_domain }}
+          AUTHORIZATION_REFERENCE: ${{ inputs.authorization_reference }}
+          SANCTUM_AUTHORIZED_TARGETS: ${{ secrets.SANCTUM_AUTHORIZED_TARGETS }}
+          SANCTUM_LICENSE_KEY: ${{ secrets.SANCTUM_LICENSE_KEY }}
+          SANCTUM_LICENSE_PUBLIC_KEY: ${{ secrets.SANCTUM_LICENSE_PUBLIC_KEY }}
         run: |
-          sanctum run-audit --target "$TARGET_DOMAIN"
+            test -n "$SANCTUM_AUTHORIZED_TARGETS"
+            test -n "$SANCTUM_LICENSE_KEY"
+            test -n "$SANCTUM_LICENSE_PUBLIC_KEY"
+            sanctum run-audit --target "$TARGET_DOMAIN" --authorization-reference "$AUTHORIZATION_REFERENCE"

@@ -1,17 +1,16 @@
-from typing import Dict, Any, List
+from typing import Any
 
 
 class GPUMemorySecurityProbe:
-    """Audytor bezpieczeństwa pamięci VRAM oraz stosu wykonawczego NVIDIA CUDA / vLLM."""
+    """Reports GPU security as unassessed until a real device integration is configured."""
 
-    def inspect_gpu_runtime(self) -> Dict[str, Any]:
-        """Skanuje pamięć GPU i sterowniki pod kątem anomalii i podatności."""
-        detected_issues: List[Dict[str, str]] = []
-
+    def inspect_gpu_runtime(self) -> dict[str, Any]:
         return {
-            "cuda_version": "12.2",
-            "vram_status": "SECURE",
-            "vllm_shared_memory_leak": False,
-            "isolation_verified": True,
-            "detected_issues": detected_issues,
+            "status": "NOT_ASSESSED",
+            "cuda_version": None,
+            "vram_status": "NOT_ASSESSED",
+            "vllm_shared_memory_leak": None,
+            "isolation_verified": None,
+            "detected_issues": None,
+            "device_inspected": False,
         }

@@ -1,23 +1,21 @@
-from typing import Dict, Any, List
+from typing import Any
 
 
 class NistComplianceEngine:
-    """Silnik walidacji zgodności z normami NIST AI RMF 1.0, SOC2 Type II oraz HIPAA."""
+    """Reports review signals without inferring framework compliance from findings."""
 
-    def evaluate_frameworks(self, vulnerabilities: List[Dict[str, str]]) -> Dict[str, Any]:
-        """Ocenia stan bezpieczeństwa pod kątem oficjalnych ról i kontroli regulacyjnych."""
-        has_critical = any(v.get("severity") == "HIGH" for v in vulnerabilities)
-
+    def evaluate_frameworks(self, vulnerabilities: list[dict[str, Any]]) -> dict[str, Any]:
+        review_required = bool(vulnerabilities)
         return {
             "nist_ai_rmf": {
-                "govern": "PASS" if not has_critical else "NEEDS_REVIEW",
-                "map": "PASS",
-                "measure": "COMPLIANT",
-                "manage": "ACTION_REQUIRED" if has_critical else "PASS",
+                "status": "NEEDS_REVIEW" if review_required else "NOT_ASSESSED",
             },
             "soc2_type2": {
-                "security_trust_principle": "PASSED" if not has_critical else "FAILED",
-                "confidentiality": "PASSED",
+                "status": "NOT_ASSESSED",
             },
-            "overall_compliance": "PASS" if not has_critical else "ACTION_REQUIRED",
+            "overall_compliance": "NEEDS_REVIEW" if review_required else "NOT_ASSESSED",
+            "limitations": (
+                "A vulnerability list is not sufficient evidence to assess an AI risk "
+                "management system or an independent SOC 2 examination."
+            ),
         }

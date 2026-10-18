@@ -1,50 +1,91 @@
 import asyncio
+from urllib.parse import urlsplit
+from typing import Any
+
 import httpx
-from typing import List, Dict, Any
+
+from sanctum_suite.core.target_authorization import require_authorized_target
 
 
 class AsyncEndpointScanner:
-    """Asynchroniczny silnik o wysokiej wydajności do audytu punktów końcowych i nagłówków bezpieczeństwa."""
+    """Performs bounded HTTPS checks only for explicitly allowlisted targets."""
+
+    MAX_TARGETS = 50
 
     def __init__(self, timeout: float = 3.0) -> None:
+        if timeout <= 0 or timeout > 30:
+            raise ValueError("timeout must be greater than zero and at most 30 seconds")
         self.timeout = timeout
 
-    async def _probe_single_target(self, client: httpx.AsyncClient, target_url: str) -> Dict[str, Any]:
-        """Sondowanie pojedynczego celu pod kątem obecności interfejsu API, certyfikatów i nagłówków security."""
-        try:
-            # Pasywne zapytanie HEAD/GET dla zweryfikowania dostępności
-            response = await client.get(f"https://{target_url}", timeout=self.timeout)
-            headers = response.headers
-            
-            missing_headers = []
-            for h in ["Strict-Transport-Security", "Content-Security-Policy", "X-Frame-Options"]:
-                if h not in headers:
-                    missing_headers.append(h)
+    @staticmethod
+    def _target_url(target: str, authorization_reference: str) -> str:
+        candidate = target.strip()
+        if "://" in candidate:
+            parsed = urlsplit(candidate)
+            if (
+                parsed.scheme != "https"
+                or not parsed.hostname
+                or parsed.username
+                or parsed.password
+                or parsed.port is not None
+                or parsed.path not in ("", "/")
+                or parsed.query
+                or parsed.fragment
+            ):
+                raise ValueError("Endpoint target must be a bare hostname or HTTPS origin")
+            host = parsed.hostname
+        else:
+            host = candidate
+        approved_host = require_authorized_target(host, authorization_reference)
+        host_literal = f"[{approved_host}]" if ":" in approved_host else approved_host
+        return f"https://{host_literal}"
 
-            return {
-                "url": target_url,
-                "status_code": response.status_code,
-                "is_alive": True,
-                "missing_security_headers": missing_headers,
-                "server": headers.get("Server", "UNKNOWN"),
-            }
-        except Exception:
-            # Fallback dla niedostępnego lub zablokowanego punktu
-            return {
-                "url": target_url,
-                "status_code": 0,
-                "is_alive": False,
-                "missing_security_headers": ["ALL"],
-                "server": "UNREACHABLE",
-            }
+    async def _probe_single_target(
+        self,
+        client: httpx.AsyncClient,
+        target_url: str,
+    ) -> dict[str, Any]:
+        response = await client.get(target_url, timeout=self.timeout, follow_redirects=False)
+        expected_headers = (
+            "Strict-Transport-Security",
+            "Content-Security-Policy",
+            "X-Frame-Options",
+        )
+        return {
+            "url": target_url,
+            "status_code": response.status_code,
+            "is_alive": True,
+            "missing_security_headers": [
+                header for header in expected_headers if header not in response.headers
+            ],
+            "server": response.headers.get("Server", "UNKNOWN"),
+            "tls_verified": True,
+        }
 
-    async def scan_endpoints_batch(self, targets: List[str]) -> List[Dict[str, Any]]:
-        """Asynchroniczne skanowanie równoległe całej paczki domen/endpointów."""
-        async with httpx.AsyncClient(verify=False) as client:
-            tasks = [self._probe_single_target(client, target) for target in targets]
-            results = await asyncio.gather(*tasks)
-            return list(results)
+    async def scan_endpoints_batch(
+        self,
+        targets: list[str],
+        authorization_reference: str,
+    ) -> list[dict[str, Any]]:
+        if len(targets) > self.MAX_TARGETS:
+            raise ValueError(f"An endpoint scan is limited to {self.MAX_TARGETS} targets")
+        approved_urls = [
+            self._target_url(target, authorization_reference)
+            for target in targets
+        ]
+        async with httpx.AsyncClient(verify=True, follow_redirects=False) as client:
+            return list(
+                await asyncio.gather(
+                    *(
+                        self._probe_single_target(client, target_url)
+                        for target_url in approved_urls
+                    )
+                )
+            )
 
-    def run_sync_batch_scan(self, targets: List[str]) -> List[Dict[str, Any]]:
-        """Współbieżne wywołanie synchroniczne dla łatwego użycia w orkiestratorze."""
-        return asyncio.run(self.scan_endpoints_batch(targets))
+    def run_sync_batch_scan(
+        self,
+        targets: list[str],
+        authorization_reference: str,
+    ) -> list[dict[str, Any]]:
+        return asyncio.run(self.scan_endpoints_batch(targets, authorization_reference))

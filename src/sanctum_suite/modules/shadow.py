@@ -1,9 +1,11 @@
 class ShadowAgentModule:
-    """Fuzzing modeli LLM i testy bezpieczeństwa AI (SHADOW-AGENT Integration)."""
+    """Reports LLM endpoint assessment as unperformed without a model test harness."""
 
     def evaluate_llm_endpoints(self, endpoints: list[str]) -> dict:
-        vulnerabilities = []
-        for ep in endpoints:
-            if "api" in ep:
-                vulnerabilities.append({"endpoint": ep, "issue": "PROMPT_INJECTION_RISK", "score": 85.0})
-        return {"scanned": len(endpoints), "vulnerabilities": vulnerabilities}
+        return {
+            "status": "NOT_ASSESSED",
+            "assessment_performed": False,
+            "endpoints_received": len(endpoints),
+            "endpoints_scanned": 0,
+            "vulnerabilities": None,
+        }

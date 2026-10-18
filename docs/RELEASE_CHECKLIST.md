@@ -7,6 +7,8 @@
 - Lead form remains disabled by decision; no webhook endpoint or recipient was supplied.
 - AWS provisioning is not approved; no region/domain was supplied and cloud-cost approval was declined.
 - Privacy-controller details, support SLA, and security contact remain unspecified.
+- EDR/SIEM remains vendor-neutral CEF/webhook only; no provider adapter was selected.
+- Deployment remains local-only; no Parrot OS image digest or authorized lab was supplied.
 
 ## Product readiness
 
@@ -27,17 +29,21 @@
 - [ ] publish an authorized GitHub release with wheel/sdist and checksums
 - [x] prepare customer installation and deployment guide
 - [ ] define pricing and sales handoff workflow
-- [ ] set approved PLN prices, billing period, and payment provider; or keep the product explicitly sales-led with no published prices
+- [x] owner selected sales-led manual licensing with no online payments
+- [ ] define approved commercial terms, any published PLN prices, and sales handoff
 - [ ] configure and verify the lead webhook; publish a real sales contact path
 - [ ] replace the website privacy template with reviewed, operator-specific information
 - [ ] validate backups, secrets management, and environment isolation
-- [ ] integrate payments and customer entitlement management if selling subscriptions
-- [ ] replace the current prefix-based, in-memory license/quota stub with a verifiable entitlement and persistent metering design before selling plans
-- [ ] verify whether demo/simulated module outputs are suitable for any customer-facing claims
+- [ ] select and integrate a payment provider and license issuance/revocation workflow if selling subscriptions
+- [x] implement signed offline entitlement verification and persistent usage metering
+- [x] implement manual offline signed-token issuance for the selected sales-led model
+- [ ] bind authenticated customers/API credentials to tenant-scoped storage and authorization before offering SaaS
+- [ ] review all remaining demo/simulated module outputs before making customer-facing claims
 - [ ] choose target AWS region/account/domain and approve cloud resource costs before provisioning
 
 ## Deployment safety
 
+- [x] require explicit target allowlist, written authorization reference, and signed entitlement before active checks
 - [ ] configure secure secret storage
 - [ ] restrict API and dashboard exposure to trusted networks
 - [ ] enable logging and audit trail capture

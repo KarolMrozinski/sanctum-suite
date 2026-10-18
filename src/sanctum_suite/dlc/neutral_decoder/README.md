@@ -2,10 +2,10 @@
 
   <br />
   <h1>🧠 SANCTUM-DLC-NEURAL-DECODER</h1>
-  <p><b>Behavioral Biometrics, Rubber-Hose Cryptanalysis Defense & Neural Session Guardian</b></p>
+  <p><b>Unavailable biometric and session-guardian placeholder</b></p>
 
   <p>
-    <i>Opcjonalny dodatek DLC do platformy SANCTUM-SUITE, monitorujący dynamikę klawiatury operatora, wykrywający przymus fizyczny (Rubber-Hose Cryptanalysis) i automatycznie wyzwalający Dead-Man's Switch w przypadku zagrożenia.</i>
+    <i>Dodatek nie zbiera biometrii, nie wykrywa przymusu, nie autoryzuje sesji i nie uruchamia dead-man switch.</i>
   </p>
 
   <p>
@@ -21,7 +21,7 @@
 
 ## 🏛️ O module
 
-**SANCTUM-DLC-NEURAL-DECODER** to zaawansowany podsystem ochrony tożsamości i sesji uprzywilejowanych. Analizując biometrię behawioralną oraz wykrywając anomalie wywołane stresem lub przymusem, chroni enklawę przed przejęciem konta.
+**SANCTUM-DLC-NEURAL-DECODER** nie jest podsystemem ochrony tożsamości. Wyniki są oznaczane NOT_ASSESSED; brak walidowanego modelu biometrycznego i integracji sprzętowej.
 
 ---
 
@@ -33,14 +33,14 @@
       <h3>1. Behavioral Biometrics</h3>
       <p><b>Plik:</b> <code>behavioral_biometrics.py</code></p>
       <ul>
-        <li>Analiza opóźnień między naciśnięciami klawiszy (Keystroke Dynamics).</li>
+        <li>NOT_ASSESSED; dane rytmu pisania nie są analizowane.</li>
       </ul>
     </td>
     <td width="50%">
       <h3>2. Rubber-Hose Detector</h3>
       <p><b>Plik:</b> <code>rubber_hose_detector.py</code></p>
       <ul>
-        <li>Wykrywanie przymusu i automatyczne zerowanie kluczy (Kill-Switch).</li>
+        <li>NOT_ASSESSED; klucze nie są zerowane ani modyfikowane.</li>
       </ul>
     </td>
   </tr>
@@ -49,14 +49,14 @@
       <h3>3. Neural Core</h3>
       <p><b>Plik:</b> <code>neural_core.py</code></p>
       <ul>
-        <li>Lekki model decyzyjny oceniający entropię sesji.</li>
+        <li>Brak działającego modelu i atestacji sesji.</li>
       </ul>
     </td>
     <td width="50%">
       <h3>4. Orkiestrator Główny</h3>
       <p><b>Plik:</b> <code>engine.py</code></p>
       <ul>
-        <li>Koordynacja analizy behawioralnej i zarządzanie stanem zagrożenia.</li>
+        <li>Zwraca NOT_ASSESSED; nie zmienia stanu sesji.</li>
       </ul>
     </td>
   </tr>

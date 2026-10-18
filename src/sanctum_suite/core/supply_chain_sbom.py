@@ -1,19 +1,17 @@
-from typing import Dict, Any, List
+from typing import Any
 
 
 class SupplyChainSbomAuditEngine:
-    """Silnik audytu łańcucha dostaw SBOM, weryfikacji kryptograficznej i bezpieczeństwa bibliotek."""
+    """Reports SBOM analysis as unperformed until a scanner is configured."""
 
-    def audit_software_bill_of_materials(self, sbom_manifest_path: str) -> Dict[str, Any]:
-        """Przeszukuje zależności pod kątem skompromitowanych paczek i niezgodności z polityką."""
-        dependencies_analyzed = 148
-        vulnerable_packages: List[Dict[str, str]] = []
-
+    def audit_software_bill_of_materials(self, sbom_manifest_path: str) -> dict[str, Any]:
         return {
             "manifest_path": sbom_manifest_path,
-            "dependencies_scanned": dependencies_analyzed,
-            "vulnerable_components_found": len(vulnerable_packages),
-            "supply_chain_risk_score": 0.0,
-            "compliance_status": "PASSED_SECURE",
-            "components": vulnerable_packages,
+            "status": "NOT_SCANNED",
+            "scanner_configured": False,
+            "dependencies_scanned": None,
+            "vulnerable_components_found": None,
+            "supply_chain_risk_score": None,
+            "compliance_status": "NOT_ASSESSED",
+            "components": None,
         }

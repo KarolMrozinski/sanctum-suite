@@ -1,23 +1,14 @@
-from typing import Dict, Any, List
+from typing import Any
 
 
 class EDRTelemetrySyncEngine:
-    """Silnik integracji i korelacji telemetrycznej z systemami EDR/XDR."""
+    """Reports endpoint telemetry as unavailable until a vendor adapter is configured."""
 
-    def sync_endpoint_telemetry(self, audit_id: str) -> Dict[str, Any]:
-        """Pobiera zdarzenia z procesów hosta i koreluje je z incydentami AI Safety."""
-        correlated_events: List[Dict[str, str]] = [
-            {
-                "event_id": "EDR-EVT-9041",
-                "process_name": "python_agent_worker.exe",
-                "action": "SUSPICIOUS_CHILD_PROCESS_SPAWNED",
-                "correlation": "Triggered right after Indirect Prompt Injection exploit.",
-            }
-        ]
-
+    def sync_endpoint_telemetry(self, audit_id: str) -> dict[str, Any]:
         return {
             "audit_id": audit_id,
-            "edr_status": "CONNECTED",
-            "correlated_events_count": len(correlated_events),
-            "events": correlated_events,
+            "edr_status": "NOT_CONFIGURED",
+            "provider_connected": False,
+            "correlated_events_count": None,
+            "events": None,
         }
