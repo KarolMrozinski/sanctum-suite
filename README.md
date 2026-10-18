@@ -5,7 +5,7 @@
   <p><b>Next-Generation AI Safety & Autonomous Cyber Resilience Platform</b></p>
 
   <p>
-    <i>Platforma państwowej cyber-odporności łącząca pasywne rozpoznanie infrastruktury, ewolucyjny Red-Teaming (Polymorphic Fuzzing & BAS Simulation), profiling jądra eBPF Cilium, orkiestrację Parrot OS, audyt pamięci CUDA GPU, proxy L7 Guardrail, sieć pułapek Deception Mesh, kryptograficzny łańcuch zaufania (Trust Chain), korelacje XDR oraz certyfikację z normami DORA, NIS2, ISO/IEC 42001 i OWASP ASVS.</i>
+    <i>Platforma państwowej cyber-odporności łącząca pasywne rozpoznanie infrastruktury, ewolucyjny Red-Teaming (Polymorphic Fuzzing & BAS Simulation), profiling jądra eBPF Cilium, orkiestrację Parrot OS, audyt pamięci CUDA GPU, proxy L7 Guardrail, sieć pułapek Deception Mesh, kryptograficzny łańcuch zaufania (Trust Chain), korelacje XDR, audyt systemów przemysłowych ICS/SCADA, analizę binarną firmware oraz certyfikację z normami DORA, NIS2, ISO/IEC 42001 i OWASP ASVS.</i>
   </p>
 
   <p>
@@ -33,14 +33,22 @@
 
 ## Cechy Systemu
 
-**SANCTUM-SUITE** to platforma cyber-odporności stworzona z myślą o nowoczesnych zespołach Security, SOC i rządowych agencjach cyberbezpieczeństwa. Platforma zabezpiecza całe środowisko aplikacyjne – od niskopoziomowego jądra Linuksa (eBPF Cilium), kontenerów i pamięci VRAM GPU, aż po agenty LLM oraz infrastrukturę krytyczną.
+**SANCTUM-SUITE** to platforma cyber-odporności stworzona z myślą o nowoczesnych zespołach Security, SOC i rządowych agencjach cyberbezpieczeństwa. Platforma zabezpiecza całe środowisko aplikacyjne – od niskopoziomowego jądra Linuksa (eBPF Cilium), kontenerów i pamięci VRAM GPU, aż po agenty LLM oraz infrastrukturę krytyczną (OT/ICS).
 
-Dzięki automatyzacji opartej o korelacje XDR, kryptograficzny łańcuch zaufania, symulacje BAS, polimorficzny fuzzing, sieć pułapek Deception Mesh oraz audyty SBOM, SANCTUM drastycznie skraca czas reakcji na incydenty (MTTR) i samoczynnie wdraża łatki bezpieczeństwa (Self-Healing PRs).
+Dzięki automatyzacji opartej o audyty SCADA, dekompilację binarną Project Zero, operacyjny OpSec, korelacje XDR, kryptograficzny łańcuch zaufania, symulacje BAS, polimorficzny fuzzing i sieć pułapek Deception Mesh, SANCTUM drastycznie skraca czas reakcji na incydenty (MTTR) i samoczynnie wdraża łatki bezpieczeństwa (Self-Healing PRs).
 
 ### Kluczowe Filary Systemu
 
 <table>
   <tr>
+    <td width="50%">
+      <h3>🏭 ICS/SCADA, Reversing & OpSec</h3>
+      <ul>
+        <li><b>Industrial SCADA Auditor:</b> Bezpieczeństwo systemów przemysłowych, protokołów Modbus/IEC i logiki PLC (Stuxnet defense).</li>
+        <li><b>Project Zero Binary Reversing:</b> Automatyczna analiza binarna firmware i binariów pod kątem backdoorów i błędów pamięci.</li>
+        <li><b>OpSec Footprint Auditor:</b> Audyt powierzchni ataku i metadanych zgodnie z metodykami PTES oraz OSSTMM.</li>
+      </ul>
+    </td>
     <td width="50%">
       <h3>🛡️ eBPF Cilium, XDR & Trust Chain</h3>
       <ul>
@@ -49,6 +57,8 @@ Dzięki automatyzacji opartej o korelacje XDR, kryptograficzny łańcuch zaufani
         <li><b>Cilium Security Profile Engine:</b> Automatyczna generacja reguł <i>CiliumNetworkPolicy</i> L3/L4/L7 w oparciu o profilowanie jądra (eBPF).</li>
       </ul>
     </td>
+  </tr>
+  <tr>
     <td width="50%">
       <h3>🏛️ Continuous BAS, SBOM & DORA Compliance</h3>
       <ul>
@@ -57,22 +67,12 @@ Dzięki automatyzacji opartej o korelacje XDR, kryptograficzny łańcuch zaufani
         <li><b>Deception Mesh Orchestrator:</b> Wdrążanie sieci pułapek (Honeytokens, Canary Credentials) w chmurze i środowiskach agentów LLM.</li>
       </ul>
     </td>
-  </tr>
-  <tr>
     <td width="50%">
       <h3>⚔️ Sovereign Threat Actors & Exploit Lab</h3>
       <ul>
         <li><b>Sovereign Threat Actor Engine:</b> Emulacja zaawansowanych wektorów ataku grup APT29, Sandworm, NSA TAO i Equation Group.</li>
         <li><b>Kernel Exploit Lab:</b> Testowanie mitygacji jądra (KASLR, SMEP, SMAP) oraz ucieczek z kontenerów/hiperwizorów.</li>
-        <li><b>Parrot Container Orchestrator:</b> Dynamiczne tworzenie i sandboxing mikro-kontenerów Parrot OS do inspekcji.</li>
-      </ul>
-    </td>
-    <td width="50%">
-      <h3>🩹 Autonomous SOAR & KMS Vault</h3>
-      <ul>
-        <li><b>Autonomous SOAR Agent:</b> Reagowanie na incydenty w czasie rzeczywistym (blokada portów, zmiana trybu Guardraila).</li>
-        <li><b>Zero-Trust KMS Vault:</b> Szyfrowanie kopertowe (Envelope Encryption AES-256-GCM / RSA) wrażliwych ładunków danych.</li>
-        <li><b>Automated Code Patcher & Auto-PR:</b> Generowanie poprawek kodu (Unified Diffs) i tworzenie PR na GitHubie.</li>
+        <li><b>Autonomous SOAR Agent:</b> Reagowanie na incydenty w czasie rzeczywistym, blokada portów i self-healing code patching.</li>
       </ul>
     </td>
   </tr>
@@ -91,7 +91,8 @@ graph LR
     classDef core fill:#312e81,stroke:#818cf8,stroke-width:2px,color:#fff;
     classDef output fill:#064e3b,stroke:#34d399,stroke-width:1px,color:#fff;
 
-    Target["🎯 Domain / Infrastructure"] --> Trust["🔐 Trust Chain & XDR Correlator"]
+    Target["🎯 Domain / ICS Target"] --> SCADA["🏭 SCADA, Binary Reversing & OpSec"]
+    SCADA --> Trust["🔐 Trust Chain & XDR Correlator"]
     Trust --> Mesh["🛡️ Deception Mesh & L7 Sanitizer"]
     Mesh --> RedTeam["🎭 BAS Simulator, Polymorphic Fuzzer & APT"]
     RedTeam --> Correlator["🧠 Threat Correlator, DORA & ISO 42001"]
@@ -101,6 +102,6 @@ graph LR
     Correlator --> Reports["📄 Signed RSA-2048 PDF/HTML Reports"]
 
     class Target target;
-    class Trust,Mesh process;
+    class SCADA,Trust,Mesh process;
     class RedTeam,Correlator,Graph core;
     class SOAR,Patch,Reports output;
