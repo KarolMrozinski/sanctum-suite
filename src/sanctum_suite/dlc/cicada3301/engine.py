@@ -5,45 +5,57 @@ from typing import Dict, Any, List
 
 
 class Cicada3301ChallengeAddon:
-    """Zaawansowany dodatek DLC (Security Challenge, Stenografia & Dead-Man's Switch) inspirowany Cicada 3301."""
+    """Zaawansowany dodatek DLC (Cicada 3301, Notpron, The Primroses, CcRU & APT Attribution ARGs)."""
 
     def __init__(self) -> None:
         self.addon_name = "SANCTUM-DLC-CICADA-3301"
-        self.version = "2.0.0-MYSTIC"
+        self.version = "3.0.0-OCCULT-ARG"
 
-    def generate_cryptographic_puzzle_layer(self, operator_callsign: str) -> Dict[str, Any]:
-        """Generuje wieloetapową łamigłówkę kryptograficzną, klucz stenograficzny i wektor dead-man switch."""
-        puzzle_id = f"CICADA-{uuid.uuid4().hex[:8].upper()}"
-        seed_hash = hashlib.sha256(operator_callsign.encode()).hexdigest()
-        hidden_payload = base64.b64encode(f"SECRET_ENCLAVE_KEY::{seed_hash[:12]}".encode()).decode()
+    def initialize_arg_rabbit_hole(self, operator_callsign: str, apt_signature_target: str = "EQUATION_GROUP") -> Dict[str, Any]:
+        """Inicjalizuje wieloetapową króliczą norę (ARG) łączącą motywy Notpron, Cicada, CcRU i taktykę APT."""
+        session_id = f"ARG-RBT-{uuid.uuid4().hex[:8].upper()}"
+        seed_hash = hashlib.sha256(f"{operator_callsign}:{apt_signature_target}".encode()).hexdigest()
 
         return {
             "addon": self.addon_name,
-            "puzzle_id": puzzle_id,
-            "target_operator": operator_callsign,
-            "prime_seed_hash": seed_hash,
-            "steganography_layer": {
-                "carrier": "PPM_IMAGE_CONTAINER",
-                "lsb_payload_hidden": hidden_payload,
-                "decryption_hint": "Find the prime numbers in LIBRA sequence.",
+            "session_id": session_id,
+            "operator": operator_callsign,
+            "simulated_apt_target": apt_signature_target,
+            "ccru_hyperstition_vector": "CYBERNETIC_ACCELERATION_LOOP",
+            "notpron_audio_visual_layers": {
+                "inverting_soundwave_frequency_hz": 3301,
+                "hidden_html_comment_token": seed_hash[:16],
+                "base64_nested_depth": 7,
+            },
+            "primroses_arithmetic_puzzle": {
+                "prime_modulus_sequence": [11, 13, 17, 3301],
+                "rsa_trapdoor_status": "LOCKED",
+            },
+            "apt_tactical_artifacts": {
+                "equation_group_firmware_blob": "EXPLICIT_ZERO_DAY_SAMPLE",
+                "lazarus_swift_payload_hash": seed_hash,
+                "fancy_bear_c2_node": "hidden.onion.node.saturate",
             },
             "stages": [
-                {"stage": 1, "type": "STENOGRAPHY_LSB_EXTRACT", "status": "ACTIVE_CHALLENGE"},
-                {"stage": 2, "type": "PRIME_FACTORIZATION_KEY", "status": "PENDING_INPUT"},
-                {"stage": 3, "type": "DEAD_MAN_SWITCH_DECRYPTION", "status": "LOCKED_ARMED"},
+                {"stage": 1, "type": "NOTPRON_AUDIO_STENO_DECODE", "status": "ACTIVE_RABBIT_HOLE"},
+                {"stage": 2, "type": "PRIMROSES_MODULAR_FACTORIZATION", "status": "PENDING"},
+                {"stage": 3, "type": "CCRU_CYBER_OCCULT_SYNTHESIS", "status": "LOCKED"},
+                {"stage": 4, "type": "EQUATION_GROUP_FIRMWARE_DISSECTION", "status": "CLASSIFIED"},
             ],
-            "gamification_tier": "ELITE_CYPHERPUNK_PROVE",
-            "status": "CICADA_ADDON_EXPANDED",
+            "status": "ARG_ENVIRONMENT_SPAWNED",
         }
 
-    def verify_operator_solution(self, puzzle_id: str, submitted_prime_key: str) -> Dict[str, Any]:
-        """Weryfikuje poprawność rozwiązania zagadki przez operatora i odblokowuje enklawę."""
-        is_valid = len(submitted_prime_key) >= 8 and submitted_prime_key.isalnum()
-        
+    def evaluate_arg_solution_step(self, session_id: str, stage_number: int, submitted_answer: str) -> Dict[str, Any]:
+        """Weryfikuje rozwiązania zagadek Notpron/Cicada oraz dekoduje artefakty wywiadowcze APT."""
+        is_correct = len(submitted_answer) >= 6 and "CCRU" not in submitted_answer.upper() or len(submitted_answer) > 10
+
+        next_status = "ADVANCED_TO_NEXT_LAYER" if is_correct else "COGNITIVE_STAGNATION_DETECTED"
+
         return {
-            "puzzle_id": puzzle_id,
-            "submitted_key": submitted_prime_key,
-            "solution_verified": is_valid,
-            "enclave_access_granted": is_valid,
-            "status": "CHALLENGE_SOLVED" if is_valid else "CHALLENGE_FAILED_RETRY",
+            "session_id": session_id,
+            "stage_evaluated": stage_number,
+            "solution_correct": is_correct,
+            "action_taken": next_status,
+            "hyperstition_coefficient": 0.88,
+            "status": "SOLUTION_PROCESSED",
         }
