@@ -56,6 +56,9 @@ from sanctum_suite.core.bas_simulator import ContinuousBasSimulator
 from sanctum_suite.core.industrial_scada import IndustrialScadaTelemetryAuditor
 from sanctum_suite.core.binary_reversing import ProjectZeroBinaryReversingEngine
 from sanctum_suite.core.opsec_auditor import OpSecFootprintAuditor
+from sanctum_suite.core.ebpf_enforcement import EbpfInKernelEnforcementEngine
+from sanctum_suite.core.autonomous_red_team import AutonomousAgentRedTeamEngine
+from sanctum_suite.core.post_quantum_pqc import PostQuantumCryptographicAssuranceEngine
 
 def test_mitre_mapping():
     mitre = MitreMapperEngine()
@@ -487,3 +490,23 @@ def test_opsec_footprint_auditor():
     res = auditor.evaluate_operational_footprint("target.internal")
     assert res["status"] == "OPSEC_VERIFIED"
     assert res["dns_sec_enabled"] is True    
+
+def test_ebpf_in_kernel_enforcement_engine():
+    engine = EbpfInKernelEnforcementEngine()
+    res = engine.enforce_kernel_shield("strict_lsm")
+    assert res["status"] == "IN_KERNEL_SHIELD_ACTIVE"
+    assert res["lsm_hooks_active"] is True
+
+
+def test_autonomous_agent_red_team_engine():
+    engine = AutonomousAgentRedTeamEngine()
+    res = engine.execute_autonomous_campaign("https://api.target.com")
+    assert res["status"] == "CAMPAIGN_COMPLETED_SECURE"
+    assert res["endpoints_explored"] > 0
+
+
+def test_post_quantum_cryptographic_assurance_engine():
+    engine = PostQuantumCryptographicAssuranceEngine()
+    res = engine.audit_cryptographic_primitives()
+    assert res["status"] == "PQC_COMPLIANT_SECURE"
+    assert "CRYSTALS-Kyber" in res["lattice_algorithms_active"]    

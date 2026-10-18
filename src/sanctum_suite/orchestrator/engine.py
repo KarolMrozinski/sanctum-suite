@@ -59,6 +59,9 @@ from sanctum_suite.core.bas_simulator import ContinuousBasSimulator
 from sanctum_suite.core.industrial_scada import IndustrialScadaTelemetryAuditor
 from sanctum_suite.core.binary_reversing import ProjectZeroBinaryReversingEngine
 from sanctum_suite.core.opsec_auditor import OpSecFootprintAuditor
+from sanctum_suite.core.ebpf_enforcement import EbpfInKernelEnforcementEngine
+from sanctum_suite.core.autonomous_red_team import AutonomousAgentRedTeamEngine
+from sanctum_suite.core.post_quantum_pqc import PostQuantumCryptographicAssuranceEngine
 from sanctum_suite.modules.osint import SpectreOsintModule
 from sanctum_suite.modules.shadow import ShadowAgentModule
 from sanctum_suite.modules.ghost import GhostCommModule
@@ -67,7 +70,7 @@ from sanctum_suite.modules.multimodal_fuzzer import MultimodalSafetyFuzzer
 
 
 class SanctumUnifiedOrchestrator:
-    """Sovereign Enterprise Orchestration Engine z ICS/SCADA, Project Zero Reversing i OpSec Auditor."""
+    """Sovereign Enterprise Orchestration Engine z eBPF In-Kernel Enforcement, Autonomous Red-Team i PQC Assurance."""
 
     def __init__(self) -> None:
         self.osint = SpectreOsintModule()
@@ -135,6 +138,9 @@ class SanctumUnifiedOrchestrator:
         self.scada_auditor = IndustrialScadaTelemetryAuditor()
         self.binary_reversing = ProjectZeroBinaryReversingEngine()
         self.opsec_auditor = OpSecFootprintAuditor()
+        self.ebpf_kernel_shield = EbpfInKernelEnforcementEngine()
+        self.autonomous_red_team = AutonomousAgentRedTeamEngine()
+        self.pqc_assurance = PostQuantumCryptographicAssuranceEngine()
 
     def execute_full_resilience_audit(self, target_domain: str, role: UserRole = UserRole.ADMIN, license_key: str = "SANCTUM-FREE-KEY", tenant_id: str = "default_tenant") -> dict:
         self.rbac.verify_permission(role, "RUN_AUDIT")
@@ -143,6 +149,11 @@ class SanctumUnifiedOrchestrator:
         self.license_manager.check_and_increment_usage(tenant_id, lic_info["tier"], "audits")
 
         audit_id = f"SNC-{hash(target_domain) & 0xFFFF:04X}"
+
+        # Wykonanie silników w kernelu eBPF, Autonomous Red-Team oraz PQC
+        kernel_shield = self.ebpf_kernel_shield.enforce_kernel_shield("strict_syscall_lsm")
+        autonomous_rt = self.autonomous_red_team.execute_autonomous_campaign(target_domain)
+        pqc_audit = self.pqc_assurance.audit_cryptographic_primitives()
 
         # Wykonanie audytów SCADA, Binary Reversing oraz OpSec
         scada_audit = self.scada_auditor.audit_industrial_protocols(target_domain)
@@ -226,6 +237,9 @@ class SanctumUnifiedOrchestrator:
             "license_tier": lic_info["tier"].value,
             "overall_score": final_score,
             "risk_level": risk.value,
+            "kernel_shield": kernel_shield,
+            "autonomous_red_team": autonomous_rt,
+            "pqc_audit": pqc_audit,
             "scada_audit": scada_audit,
             "binary_audit": binary_audit,
             "opsec_audit": opsec_audit,
