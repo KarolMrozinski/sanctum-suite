@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "sanctum-suite"
-version = "0.1.0"
+version = "6.0.0"
 description = "Enterprise Cyber Resilience & AI Safety Platform"
 readme = "README.md"
 requires-python = ">=3.11"
@@ -29,3 +29,4 @@ sanctum = "sanctum_suite.main:app"
 
 [tool.setuptools.packages.find]
 where = ["src"]
+include = ["sanctum_suite*"]
