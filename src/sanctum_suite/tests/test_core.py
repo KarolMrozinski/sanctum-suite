@@ -62,6 +62,9 @@ from sanctum_suite.core.post_quantum_pqc import PostQuantumCryptographicAssuranc
 from sanctum_suite.core.airgap_diode import AirGapDataDiodeBroker
 from sanctum_suite.core.diamond_model import DiamondModelThreatTracker
 from sanctum_suite.core.nist_sp800_53 import NistSp80053ControlAssurance
+from sanctum_suite.core.purple_team import PurpleTeamEmulationCoordinator
+from sanctum_suite.core.tempest_auditor import TempestSdip27EmissionsAuditor
+from sanctum_suite.core.threat_intel import SovereignThreatIntelAggregator
 
 def test_mitre_mapping():
     mitre = MitreMapperEngine()
@@ -533,3 +536,23 @@ def test_nist_sp800_53_control_assurance():
     res = auditor.audit_security_controls()
     assert res["status"] == "NIST_CONTROLS_VERIFIED"
     assert res["zta_architecture"] == "FULLY_ENFORCED_PEP_PDP"    
+
+def test_purple_team_emulation_coordinator():
+    coordinator = PurpleTeamEmulationCoordinator()
+    res = coordinator.coordinate_emulation_cycle("Vector", "Rule")
+    assert res["status"] == "PURPLE_TEAM_SYNCHRONIZED"
+    assert res["detection_verified"] is True
+
+
+def test_tempest_sdip27_emissions_auditor():
+    auditor = TempestSdip27EmissionsAuditor()
+    res = auditor.audit_enclave_emissions("Zone-1")
+    assert res["status"] == "TEMPEST_COMPLIANT_SECURE"
+    assert "SDIP-27" in res["tempest_standard"]
+
+
+def test_sovereign_threat_intel_aggregator():
+    aggregator = SovereignThreatIntelAggregator()
+    res = aggregator.aggregate_threat_feeds()
+    assert res["status"] == "THREAT_INTEL_SYNCHRONIZED"
+    assert "APT29" in res["apt_groups_tracked"]    

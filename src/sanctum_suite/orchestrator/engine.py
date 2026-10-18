@@ -70,6 +70,9 @@ from sanctum_suite.modules.multimodal_fuzzer import MultimodalSafetyFuzzer
 from sanctum_suite.core.airgap_diode import AirGapDataDiodeBroker
 from sanctum_suite.core.diamond_model import DiamondModelThreatTracker
 from sanctum_suite.core.nist_sp800_53 import NistSp80053ControlAssurance
+from sanctum_suite.core.purple_team import PurpleTeamEmulationCoordinator
+from sanctum_suite.core.tempest_auditor import TempestSdip27EmissionsAuditor
+from sanctum_suite.core.threat_intel import SovereignThreatIntelAggregator
 
 class SanctumUnifiedOrchestrator:
     """Sovereign Enterprise Orchestration Engine z eBPF In-Kernel Enforcement, Autonomous Red-Team i PQC Assurance."""
@@ -146,6 +149,9 @@ class SanctumUnifiedOrchestrator:
         self.airgap_diode = AirGapDataDiodeBroker()
         self.diamond_tracker = DiamondModelThreatTracker()
         self.nist_800_53 = NistSp80053ControlAssurance()
+        self.purple_team = PurpleTeamEmulationCoordinator()
+        self.tempest_auditor = TempestSdip27EmissionsAuditor()
+        self.threat_intel = SovereignThreatIntelAggregator()
 
     def execute_full_resilience_audit(self, target_domain: str, role: UserRole = UserRole.ADMIN, license_key: str = "SANCTUM-FREE-KEY", tenant_id: str = "default_tenant") -> dict:
         self.rbac.verify_permission(role, "RUN_AUDIT")
@@ -239,6 +245,10 @@ class SanctumUnifiedOrchestrator:
         diamond_event = self.diamond_tracker.build_diamond_event("APT29_COZY_BEAR", "Custom eBPF Injection", "inference-cluster")
         nist_controls = self.nist_800_53.audit_security_controls()
 
+        purple_sync = self.purple_team.coordinate_emulation_cycle("APT29 Credential Access", "Sigma-Rule-9941")
+        tempest_audit = self.tempest_auditor.audit_enclave_emissions("Enclave-Alpha-Room")
+        threat_intel_sync = self.threat_intel.aggregate_threat_feeds()
+
         audit_summary = {
             "audit_id": audit_id,
             "target": target_domain,
@@ -303,6 +313,9 @@ class SanctumUnifiedOrchestrator:
             "airgap_transfer": airgap_transfer,
             "diamond_event": diamond_event,
             "nist_controls": nist_controls,
+            "purple_sync": purple_sync,
+            "tempest_audit": tempest_audit,
+            "threat_intel_sync": threat_intel_sync,
         }
 
         # Faza 6: SOAR Agent & Cleanup
