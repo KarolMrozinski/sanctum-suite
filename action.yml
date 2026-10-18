@@ -1,29 +1,33 @@
 name: 'SANCTUM AI Security & Resilience Gate'
-description: 'Automated AI Red-Teaming, EU AI Act Compliance & Security Audit for Enterprise CI/CD'
+description: 'Runs an explicitly authorized SANCTUM-SUITE audit against a supplied target'
 inputs:
   target-domain:
-    description: 'Target LLM / API domain to audit'
+    description: 'Target domain for which you have explicit written authorization to run an audit'
     required: true
-    default: '127.0.0.1'
-  license-key:
-    description: 'SANCTUM Enterprise License Key'
-    required: false
-    default: 'SANCTUM-FREE-KEY'
-outputs:
-  audit-score:
-    description: 'Overall Resilience Score'
-  compliance-status:
-    description: 'EU AI Act Compliance Result'
+  authorization:
+    description: 'Set to I_HAVE_AUTHORIZATION to confirm written permission to audit target-domain'
+    required: true
 runs:
   using: 'composite'
   steps:
     - name: Set up Python
-      uses: actions/setup-python@v4
+      uses: actions/setup-python@v5
       with:
         python-version: '3.11'
+    - name: Verify target authorization
+      run: |
+        if [ "$AUTHORIZATION" != "I_HAVE_AUTHORIZATION" ]; then
+          echo "Explicit authorization confirmation is required."
+          exit 1
+        fi
+      env:
+        AUTHORIZATION: ${{ inputs.authorization }}
+      shell: bash
     - name: Install SANCTUM-SUITE
       run: pip install -e .
       shell: bash
     - name: Run Resilience Audit Gate
-      run: sanctum run-audit --target ${{ inputs.target-domain }}
+      env:
+        TARGET_DOMAIN: ${{ inputs.target-domain }}
+      run: sanctum run-audit --target "$TARGET_DOMAIN"
       shell: bash

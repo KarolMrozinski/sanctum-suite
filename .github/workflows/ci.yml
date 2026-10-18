@@ -12,10 +12,10 @@ jobs:
 
     steps:
     - name: Checkout Repository
-      uses: actions/checkout@v3
+      uses: actions/checkout@v4
 
-    - name: Set up Python 3.11
-      uses: actions/setup-python@v4
+    - name: Set up Python
+      uses: actions/setup-python@v5
       with:
         python-version: "3.11"
 
@@ -25,5 +25,28 @@ jobs:
         pip install -e .
 
     - name: Run Pytest Suite
+      run: python -m pytest -q
+
+    - name: Build Python distributions
       run: |
-        pytest
+        python -m pip install build
+        python -m build
+
+    - name: Set up Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: "22"
+        cache: npm
+        cache-dependency-path: sanctum-dashboard/package-lock.json
+
+    - name: Install dashboard dependencies
+      working-directory: sanctum-dashboard
+      run: npm ci
+
+    - name: Lint dashboard
+      working-directory: sanctum-dashboard
+      run: npm run lint
+
+    - name: Build dashboard
+      working-directory: sanctum-dashboard
+      run: npm run build

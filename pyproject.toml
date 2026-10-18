@@ -8,6 +8,17 @@ version = "6.0.0"
 description = "High-level cyber-resilience platform"
 readme = "README.md"
 requires-python = ">=3.11"
+authors = [{ name = "Karol Mroziński" }]
+keywords = ["security", "cyber-resilience", "ai-safety", "soc", "compliance"]
+license = { text = "LIMITED SOURCE-AVAILABLE & VIEW-ONLY LICENSE" }
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Information Technology",
+    "License :: Other/Proprietary License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Topic :: Security",
+]
 dependencies = [
     "pydantic>=2.0.0",
     "networkx>=3.0",
@@ -27,6 +38,11 @@ dependencies = [
 
 [project.scripts]
 sanctum = "sanctum_suite.main:app"
+
+[project.urls]
+Homepage = "https://github.com/KarolMrozinski/sanctum-suite"
+Repository = "https://github.com/KarolMrozinski/sanctum-suite"
+Issues = "https://github.com/KarolMrozinski/sanctum-suite/issues"
 
 [tool.setuptools.packages.find]
 where = ["src"]

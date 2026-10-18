@@ -1,4 +1,4 @@
-import asyncio
+import inspect
 from typing import Dict, Any, List, Callable
 
 
@@ -18,7 +18,7 @@ class DistributedEventBus:
         """Publikuje wiadomość w temacie i powiadamia subskrybentów."""
         if topic in self._topics:
             for callback in self._topics[topic]:
-                if asyncio.iscoroutinefunction(callback):
+                if inspect.iscoroutinefunction(callback):
                     await callback(message)
                 else:
                     callback(message)

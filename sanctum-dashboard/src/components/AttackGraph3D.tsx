@@ -23,16 +23,8 @@ interface AttackGraphProps {
 }
 
 export default function AttackGraphVisualizer({ data }: AttackGraphProps) {
-  const nodes = data?.nodes || [
-    { id: "enterprise-core.com", type: "TARGET_HOST" },
-    { id: "Port:11434", type: "OPEN_PORT", service: "Ollama LLM API" },
-    { id: "Vuln:PROMPT_INJECTION_RISK", type: "VULNERABILITY", severity: "HIGH" },
-  ];
-
-  const edges = data?.edges || [
-    { source: "enterprise-core.com", target: "Port:11434", relation: "EXPOSES" },
-    { source: "Port:11434", target: "Vuln:PROMPT_INJECTION_RISK", relation: "EXPLOITS" },
-  ];
+  const nodes = data?.nodes ?? [];
+  const edges = data?.edges ?? [];
 
   return (
     <div className="bg-slate-900 border border-slate-800 p-6 rounded-lg font-mono">
@@ -43,28 +35,34 @@ export default function AttackGraphVisualizer({ data }: AttackGraphProps) {
         </span>
       </h3>
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
-        {nodes.map((node, idx) => (
-          <div
-            key={idx}
-            className={`p-3 rounded border text-xs ${
-              node.type === "TARGET_HOST"
-                ? "bg-slate-950 border-cyan-500/50 text-cyan-300"
-                : node.type === "OPEN_PORT"
-                ? "bg-slate-950 border-indigo-500/50 text-indigo-300"
-                : "bg-slate-950 border-rose-500/50 text-rose-300 animate-pulse"
-            }`}
-          >
-            <div className="font-bold">{node.id}</div>
-            <div className="text-[10px] text-slate-400 mt-1">Type: {node.type}</div>
-            {node.service && <div className="text-[10px] text-slate-500">Service: {node.service}</div>}
-            {node.severity && <div className="text-[10px] text-rose-400 font-semibold">Severity: {node.severity}</div>}
-          </div>
-        ))}
-      </div>
+      {nodes.length === 0 ? (
+        <p className="mb-4 rounded border border-slate-800 bg-slate-950 p-4 text-xs text-slate-500">
+          No attack graph data is connected. Graph details will appear here when supplied by an authorized data source.
+        </p>
+      ) : (
+        <div className="mb-4 grid grid-cols-1 gap-4 md:grid-cols-3">
+          {nodes.map((node) => (
+            <div
+              key={node.id}
+              className={`rounded border p-3 text-xs ${
+                node.type === "TARGET_HOST"
+                  ? "border-cyan-500/50 bg-slate-950 text-cyan-300"
+                  : node.type === "OPEN_PORT"
+                    ? "border-indigo-500/50 bg-slate-950 text-indigo-300"
+                    : "border-rose-500/50 bg-slate-950 text-rose-300"
+              }`}
+            >
+              <div className="font-bold">{node.id}</div>
+              <div className="mt-1 text-[10px] text-slate-400">Type: {node.type}</div>
+              {node.service && <div className="text-[10px] text-slate-500">Service: {node.service}</div>}
+              {node.severity && <div className="text-[10px] font-semibold text-rose-400">Severity: {node.severity}</div>}
+            </div>
+          ))}
+        </div>
+      )}
 
       <div className="bg-slate-950 p-3 rounded border border-slate-800 text-[11px] space-y-1">
-        <div className="text-slate-400 font-semibold mb-1">Detected Attack Vector Edges:</div>
+        <div className="mb-1 font-semibold text-slate-400">Attack graph relationships:</div>
         {edges.map((edge, idx) => (
           <div key={idx} className="flex items-center space-x-2 text-slate-300">
             <span className="text-cyan-400">{edge.source}</span>
