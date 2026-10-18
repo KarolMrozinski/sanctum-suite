@@ -1,7 +1,7 @@
 from fastapi import FastAPI, WebSocket, Security, HTTPException, status, Query
 from fastapi.security import APIKeyHeader
-from pydantic import BaseModel, Field
-from typing import Dict, Any, List
+from pydantic import AwareDatetime, BaseModel, Field
+from typing import Dict, Any, List, Literal
 from fastapi import Response
 import hmac
 import os
@@ -104,6 +104,9 @@ class SecurityEvent(BaseModel):
     event_id: str = Field(min_length=1, max_length=128)
     event_type: str = Field(min_length=1, max_length=128)
     correlation_key: str = Field(min_length=1, max_length=256)
+    source: str | None = Field(default=None, min_length=1, max_length=128)
+    observed_at: AwareDatetime | None = None
+    severity: Literal["CRITICAL", "HIGH", "MEDIUM", "LOW", "INFO"] | None = None
 
 class EventCorrelationRequest(BaseModel):
     events: List[SecurityEvent] = Field(min_length=1, max_length=1_000)
@@ -202,7 +205,7 @@ async def list_control_assessments(
 
 @app.post("/api/v1/events/correlate", dependencies=[Security(verify_api_key)])
 async def correlate_security_events(payload: EventCorrelationRequest) -> Dict[str, Any]:
-    """Locally groups normalized events by exact caller-supplied correlation key."""
+    """Groups events by exact key and returns a source-qualified, non-diagnostic timeline."""
     return xdr_correlator.ingest_telemetry_stream(
         [event.model_dump() for event in payload.events]
     )

@@ -37,6 +37,35 @@ sanctum serve --host 127.0.0.1 --port 8000
 
 The API rejects protected requests and fails readiness unless `SANCTUM_API_KEY` is configured with at least 32 bytes. The SDK reads this variable by default; alternatively pass `api_key` explicitly. Do not store a production key in source control or a checked-in `.env` file.
 
+### Local event correlation and timelines
+
+`POST /api/v1/events/correlate` accepts up to 1,000 caller-supplied events and requires the `X-API-Key` header. For example:
+
+```json
+{
+  "events": [
+    {
+      "event_id": "evt-1",
+      "event_type": "login",
+      "correlation_key": "case-123",
+      "source": "identity-provider",
+      "observed_at": "2026-10-18T10:00:00Z",
+      "severity": "MEDIUM"
+    },
+    {
+      "event_id": "evt-2",
+      "event_type": "privilege-change",
+      "correlation_key": "case-123",
+      "source": "identity-provider",
+      "observed_at": "2026-10-18T10:02:00Z",
+      "severity": "HIGH"
+    }
+  ]
+}
+```
+
+Events sharing an exact `correlation_key` are returned in timestamp order with a SHA-256 key reference, source-reported priority, and reasons. Timestamps must include a timezone; severity must be one of `CRITICAL`, `HIGH`, `MEDIUM`, `LOW`, or `INFO`. Missing severity yields `NOT_ASSESSED`. The priority only summarizes caller-provided severity and is not a threat assessment; grouping does not establish malicious activity. Correlation is limited to one request, and the API neither persists events nor connects external telemetry sources.
+
 `sanctum serve` permits plain HTTP only on loopback by default. Binding to any other address requires both `SANCTUM_TLS_CERT_FILE` and `SANCTUM_TLS_KEY_FILE` to point to existing TLS files; Uvicorn then serves HTTPS directly. For a TLS-terminating proxy, set `SANCTUM_TRUST_TLS_TERMINATION_PROXY=true` only when network policy prevents direct access to the plaintext backend and allows ingress solely from that proxy.
 
 Active audits and port/HTTPS checks also require an operator-configured exact target allowlist in `SANCTUM_AUTHORIZED_TARGETS`, a written authorization reference, and a valid signed entitlement. Configure `SANCTUM_LICENSE_PUBLIC_KEY` and `SANCTUM_LICENSE_KEY` in the deployment secret manager. With any of these unset, active audit execution is denied. See [COMMERCIAL_ENTITLEMENTS.md](./COMMERCIAL_ENTITLEMENTS.md) for token and scope details.
