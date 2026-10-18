@@ -5,13 +5,14 @@ from sanctum_suite.dlc.cicada3301.steganography import LsbSteganographyEngine
 from sanctum_suite.dlc.cicada3301.book_cipher import BookCipherEngine
 
 
-def test_cicada_3301_dlc_omega_engine():
+def test_complete_cicada_dlc_suite():
     addon = Cicada3301ChallengeAddon()
+    session = addon.initialize_challenge_session("Operator-Delta")
     res = addon.initialize_arg_rabbit_hole("Operator-Omega", "EQUATION_GROUP")
     
-    assert res["addon"] == "SANCTUM-DLC-CICADA-3301"
-    assert res["version"] == "5.0.0-OMEGA-HYPERSTITION"
-    assert res["status"] == "OMEGA_ENCLAVE_SPAWNED"
+    assert session["addon"] == "SANCTUM-DLC-CICADA-3301"
+    assert session["version"] == "6.0.0-MILITARY-CRYPT-DLC"
+    assert session["status"] == "SECURE_SESSION_INITIALIZED"
     assert res["target_apt"] == "EQUATION_GROUP"
     assert "notpron_sensory_layer" in res
     assert "primroses_arithmetic_trapdoor" in res
