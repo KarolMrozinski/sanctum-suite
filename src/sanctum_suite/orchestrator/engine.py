@@ -50,6 +50,9 @@ from sanctum_suite.core.spider_graph import SpiderGraphOsintEngine
 from sanctum_suite.core.cilium_profiler import CiliumSecurityProfileEngine
 from sanctum_suite.core.dora_iso_reporter import DoraIsoComplianceReporter
 from sanctum_suite.core.l7_sanitizer_proxy import L7GuardrailSanitizerProxy
+from sanctum_suite.core.polymorphic_fuzzer import PolymorphicFuzzingEngine
+from sanctum_suite.core.deception_mesh import DeceptionMeshOrchestrator
+from sanctum_suite.core.supply_chain_sbom import SupplyChainSbomAuditEngine
 from sanctum_suite.modules.osint import SpectreOsintModule
 from sanctum_suite.modules.shadow import ShadowAgentModule
 from sanctum_suite.modules.ghost import GhostCommModule
@@ -58,7 +61,7 @@ from sanctum_suite.modules.multimodal_fuzzer import MultimodalSafetyFuzzer
 
 
 class SanctumUnifiedOrchestrator:
-    """Sovereign Enterprise Orchestration Engine z Cilium Profiler, DORA/ISO Reporter i L7 Guardrail Proxy."""
+    """Sovereign Enterprise Orchestration Engine z Polymorphic Fuzzer, Deception Mesh i Supply Chain SBOM Audit."""
 
     def __init__(self) -> None:
         self.osint = SpectreOsintModule()
@@ -117,6 +120,9 @@ class SanctumUnifiedOrchestrator:
         self.cilium_profiler = CiliumSecurityProfileEngine()
         self.dora_iso_reporter = DoraIsoComplianceReporter()
         self.l7_sanitizer = L7GuardrailSanitizerProxy()
+        self.polymorphic_fuzzer = PolymorphicFuzzingEngine()
+        self.deception_mesh = DeceptionMeshOrchestrator()
+        self.supply_chain_sbom = SupplyChainSbomAuditEngine()
 
     def execute_full_resilience_audit(self, target_domain: str, role: UserRole = UserRole.ADMIN, license_key: str = "SANCTUM-FREE-KEY", tenant_id: str = "default_tenant") -> dict:
         self.rbac.verify_permission(role, "RUN_AUDIT")
@@ -126,8 +132,11 @@ class SanctumUnifiedOrchestrator:
 
         audit_id = f"SNC-{hash(target_domain) & 0xFFFF:04X}"
 
-        # L7 Input Sanitization
+        # Inicjalizacja komponentów ochronnych i sieci pułapek
         sanitized_input = self.l7_sanitizer.sanitize_input_payload(target_domain)
+        canary_mesh = self.deception_mesh.deploy_canary_mesh("cluster-edge")
+        poly_payload = self.polymorphic_fuzzer.generate_polymorphic_payload("ignore previous instructions")
+        sbom_audit = self.supply_chain_sbom.audit_software_bill_of_materials("sbom.json")
 
         # Uruchomienie tunelu Cyber Plumber, mikro-kontenera Parrot Sec i AnonSurf
         plumber_tunnel = self.cyber_plumber.establish_multihop_tunnel("entry-node.proxy", "exit-node.proxy")
@@ -196,6 +205,9 @@ class SanctumUnifiedOrchestrator:
             "overall_score": final_score,
             "risk_level": risk.value,
             "sanitized_input": sanitized_input,
+            "canary_mesh": canary_mesh,
+            "polymorphic_payload": poly_payload,
+            "sbom_audit": sbom_audit,
             "plumber_tunnel": plumber_tunnel,
             "anonsurf_tunnel": anonsurf_status,
             "parrot_container": parrot_container,

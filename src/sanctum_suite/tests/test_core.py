@@ -47,6 +47,9 @@ from sanctum_suite.core.spider_graph import SpiderGraphOsintEngine
 from sanctum_suite.core.cilium_profiler import CiliumSecurityProfileEngine
 from sanctum_suite.core.dora_iso_reporter import DoraIsoComplianceReporter
 from sanctum_suite.core.l7_sanitizer_proxy import L7GuardrailSanitizerProxy
+from sanctum_suite.core.polymorphic_fuzzer import PolymorphicFuzzingEngine
+from sanctum_suite.core.deception_mesh import DeceptionMeshOrchestrator
+from sanctum_suite.core.supply_chain_sbom import SupplyChainSbomAuditEngine
 
 def test_mitre_mapping():
     mitre = MitreMapperEngine()
@@ -418,3 +421,23 @@ def test_l7_guardrail_sanitizer_proxy():
     output_res = proxy.sanitize_output_payload("System token: SECRET_KEY")
     assert output_res["leak_prevented"] is True
     assert "[REDACTED]" in output_res["sanitized_response"]     
+
+def test_polymorphic_fuzzing_engine():
+    engine = PolymorphicFuzzingEngine()
+    res = engine.generate_polymorphic_payload("test payload")
+    assert res["status"] == "SYNTHESIZED"
+    assert "mutated_payload" in res
+
+
+def test_deception_mesh_orchestrator():
+    mesh = DeceptionMeshOrchestrator()
+    res = mesh.deploy_canary_mesh("k8s-pod")
+    assert res["status"] == "DECEPTION_MESH_ACTIVE"
+    assert res["deployed_canary_token"] is not None
+
+
+def test_supply_chain_sbom_audit_engine():
+    engine = SupplyChainSbomAuditEngine()
+    res = engine.audit_software_bill_of_materials("sbom.json")
+    assert res["compliance_status"] == "PASSED_SECURE"
+    assert res["dependencies_scanned"] > 0    
