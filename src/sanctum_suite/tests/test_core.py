@@ -59,6 +59,9 @@ from sanctum_suite.core.opsec_auditor import OpSecFootprintAuditor
 from sanctum_suite.core.ebpf_enforcement import EbpfInKernelEnforcementEngine
 from sanctum_suite.core.autonomous_red_team import AutonomousAgentRedTeamEngine
 from sanctum_suite.core.post_quantum_pqc import PostQuantumCryptographicAssuranceEngine
+from sanctum_suite.core.airgap_diode import AirGapDataDiodeBroker
+from sanctum_suite.core.diamond_model import DiamondModelThreatTracker
+from sanctum_suite.core.nist_sp800_53 import NistSp80053ControlAssurance
 
 def test_mitre_mapping():
     mitre = MitreMapperEngine()
@@ -510,3 +513,23 @@ def test_post_quantum_cryptographic_assurance_engine():
     res = engine.audit_cryptographic_primitives()
     assert res["status"] == "PQC_COMPLIANT_SECURE"
     assert "CRYSTALS-Kyber" in res["lattice_algorithms_active"]    
+
+def test_air_gap_data_diode_broker():
+    broker = AirGapDataDiodeBroker()
+    res = broker.enforce_unidirectional_transfer("data", "enclave-1")
+    assert res["status"] == "AIR_GAP_DIODE_TRANSFERRED"
+    assert res["return_channel_blocked"] is True
+
+
+def test_diamond_model_threat_tracker():
+    tracker = DiamondModelThreatTracker()
+    res = tracker.build_diamond_event("APT29", "Exploit", "Target-App")
+    assert res["status"] == "DIAMOND_NODE_MAPPED"
+    assert res["adversary"] == "APT29"
+
+
+def test_nist_sp800_53_control_assurance():
+    auditor = NistSp80053ControlAssurance()
+    res = auditor.audit_security_controls()
+    assert res["status"] == "NIST_CONTROLS_VERIFIED"
+    assert res["zta_architecture"] == "FULLY_ENFORCED_PEP_PDP"    

@@ -67,7 +67,9 @@ from sanctum_suite.modules.shadow import ShadowAgentModule
 from sanctum_suite.modules.ghost import GhostCommModule
 from sanctum_suite.modules.multi_turn_fuzzer import MultiTurnJailbreakFuzzer
 from sanctum_suite.modules.multimodal_fuzzer import MultimodalSafetyFuzzer
-
+from sanctum_suite.core.airgap_diode import AirGapDataDiodeBroker
+from sanctum_suite.core.diamond_model import DiamondModelThreatTracker
+from sanctum_suite.core.nist_sp800_53 import NistSp80053ControlAssurance
 
 class SanctumUnifiedOrchestrator:
     """Sovereign Enterprise Orchestration Engine z eBPF In-Kernel Enforcement, Autonomous Red-Team i PQC Assurance."""
@@ -141,6 +143,9 @@ class SanctumUnifiedOrchestrator:
         self.ebpf_kernel_shield = EbpfInKernelEnforcementEngine()
         self.autonomous_red_team = AutonomousAgentRedTeamEngine()
         self.pqc_assurance = PostQuantumCryptographicAssuranceEngine()
+        self.airgap_diode = AirGapDataDiodeBroker()
+        self.diamond_tracker = DiamondModelThreatTracker()
+        self.nist_800_53 = NistSp80053ControlAssurance()
 
     def execute_full_resilience_audit(self, target_domain: str, role: UserRole = UserRole.ADMIN, license_key: str = "SANCTUM-FREE-KEY", tenant_id: str = "default_tenant") -> dict:
         self.rbac.verify_permission(role, "RUN_AUDIT")
@@ -230,6 +235,10 @@ class SanctumUnifiedOrchestrator:
         sigma_rule = self.rules_gen.generate_sigma_rule(audit_id, target_domain, shadow_res["vulnerabilities"])
         yara_rule = self.rules_gen.generate_yara_rule(audit_id)
 
+        airgap_transfer = self.airgap_diode.enforce_unidirectional_transfer("telemetry_payload", "secure_enclave_alpha")
+        diamond_event = self.diamond_tracker.build_diamond_event("APT29_COZY_BEAR", "Custom eBPF Injection", "inference-cluster")
+        nist_controls = self.nist_800_53.audit_security_controls()
+
         audit_summary = {
             "audit_id": audit_id,
             "target": target_domain,
@@ -291,6 +300,9 @@ class SanctumUnifiedOrchestrator:
             "auto_patch": auto_patch,
             "cef_log": cef_log,
             "detection_rules": {"sigma": sigma_rule, "yara": yara_rule},
+            "airgap_transfer": airgap_transfer,
+            "diamond_event": diamond_event,
+            "nist_controls": nist_controls,
         }
 
         # Faza 6: SOAR Agent & Cleanup
