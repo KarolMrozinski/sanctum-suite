@@ -32,7 +32,7 @@ Projekt ma status **beta**. Zakres, dojrzałość i wymagania zależą od konkre
 ## Możliwości
 
 - **Audyt i testy** — wybrane, jawnie autoryzowane testy HTTPS/TCP z kontrolą dozwolonych celów.
-- **Analiza i korelacja** — przetwarzanie zdarzeń, analityka oraz pomocnicze narzędzia do raportowania.
+- **Analiza i obsługa incydentów** — lokalna korelacja zdarzeń, trwałe sprawy SQLite, przypisania, statusy, notatki i odnośniki do dowodów, symulowane rekomendacje reakcji, audyt dostępu, opcjonalna retencja, fikcyjne scenariusze demonstracyjne oraz przygotowany, domyślnie wyłączony przepływ ingestii telemetrii przez push API i import JSON/JSONL/CEF. Brak domyślnie aktywnych integracji dostawców i automatycznych reakcji.
 - **AI safety** — moduły do analizy promptów i eksperymentów z zabezpieczeniami modeli.
 - **Interfejsy** — CLI w Pythonie, REST API i WebSocket oraz osobny dashboard oparty na Next.js.
 - **Kontrole i entitlementy** — mapowanie kontroli oraz weryfikacja podpisanych uprawnień do użycia.
@@ -41,7 +41,23 @@ Projekt ma status **beta**. Zakres, dojrzałość i wymagania zależą od konkre
 
 Część modułów jest eksperymentalna, zależna od platformy lub stanowi jedynie punkt integracji. Repozytorium nie dostarcza działających integracji dla skanowania kontenerów/SBOM, analizy firmware i pamięci, telemetrii EDR/XDR, inspekcji GPU, sprzętowych enklaw ani magazynowania danych niejawnych. Funkcje kampanii red-team, C2/covert-channel, spoofingu satelitarnego, biometrii, hot-patchingu i dead-man switch nie wykonują opisanych działań. Brak integracji jest raportowany jako brak oceny, a nie jako pozytywny wynik.
 
-Dashboard nie otrzymuje obecnie rzeczywistej telemetrii z endpointu workbench. Pomocnicze szyfrowanie kopertowe `ZeroTrustKMSVault` wykorzystuje klucz efemeryczny przechowywany w pamięci procesu i **nie zastępuje produkcyjnego KMS**.
+Dashboard nie otrzymuje obecnie rzeczywistej telemetrii przez WebSocket. Znormalizowane dane można po jawnej konfiguracji źródła importować przez zabezpieczone API i przeglądać w Workbench; nie jest skonfigurowany konkretny dostawca ani harmonogram pull. Pomocnicze szyfrowanie kopertowe `ZeroTrustKMSVault` wykorzystuje klucz efemeryczny przechowywany w pamięci procesu i **nie zastępuje produkcyjnego KMS**.
+
+Konfigurację i ograniczenia przygotowanego ingestu opisuje [przewodnik instalacji](./docs/INSTALLATION.md#preparing-external-telemetry-ingestion).
+
+### Przygotowany przepływ danych telemetrycznych
+
+Integracja jest **domyślnie wyłączona** i vendor-neutral. Po stronie serwera operator może skonfigurować mapę `SANCTUM_EVENT_SOURCE_KEYS` (ID źródła → osobny sekret o długości co najmniej 32 bajtów) oraz wymaganą politykę `SANCTUM_EVENT_RETENTION_DAYS` (1–36500 dni). Sekrety należy przechowywać w menedżerze sekretów, nigdy w dashboardzie ani repozytorium. Bez obu ustawień przyjmowanie danych jest zablokowane.
+
+Obsługiwane ścieżki:
+
+- **Push API:** `POST /api/v1/telemetry/ingest`, uwierzytelniane nagłówkami `X-Sanctum-Source-ID` i `X-Sanctum-Source-Key`.
+- **Import plików:** `POST /api/v1/telemetry/import`; obsługiwane formaty JSON, JSONL i CEF, do 4 MB i 1000 zdarzeń na import. W Workbench można załadować plik, sprawdzić źródła i przeglądać zapisane, znormalizowane zdarzenia.
+- **Pull:** dostępny jest kontrakt dla przyszłych adapterów, ale nie ma zaimplementowanego konektora dostawcy, harmonogramu pobierania ani domyślnych połączeń wychodzących.
+
+Zdarzenia przechodzą walidację wspólnego schematu, a następnie trafiają do SQLite. Surowe payloady nie są zapisywane; identyfikatory źródłowe i tokeny korelacji są haszowane, a powtórzenia deduplikowane. Korelacja grupuje wyłącznie dokładne dopasowania pseudonimowych tokenów w skonfigurowanym oknie czasu — nie stanowi detekcji ani oceny zagrożenia. Tokeny pseudonimowe nie są anonimowe; przed wysłaniem danych należy ograniczyć je do niezbędnego zakresu i stosować zatwierdzoną politykę pseudonimizacji.
+
+Konfiguracja endpointów i schematów znajduje się w [przewodniku instalacji](./docs/INSTALLATION.md#preparing-external-telemetry-ingestion). Podłączenie tej ścieżki nie uruchamia automatycznych reakcji ani nie zasila strumienia WebSocket.
 
 ## Szybki start
 

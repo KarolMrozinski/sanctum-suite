@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import AttackGraphVisualizer from "@/components/AttackGraph3D";
 
 interface IncidentEvent {
@@ -8,6 +8,73 @@ interface IncidentEvent {
   source: string;
   severity?: string;
   details?: string;
+}
+
+function isSyntheticScenario(value: unknown): value is SyntheticScenario {
+  if (!isRecord(value)) return false;
+  return (
+    typeof value.scenario_id === "string" &&
+    typeof value.title === "string" &&
+    typeof value.description === "string" &&
+    Array.isArray(value.learning_objectives) &&
+    value.learning_objectives.every((objective) => typeof objective === "string") &&
+    typeof value.event_count === "number" &&
+    value.data_classification === "SYNTHETIC" &&
+    value.external_connections === false &&
+    value.writes_case_data === false
+  );
+}
+
+function isSyntheticScenarioCatalog(
+  value: unknown,
+): value is { status: "SYNTHETIC_DEMO_ONLY"; scenarios: SyntheticScenario[] } {
+  return (
+    isRecord(value) &&
+    value.status === "SYNTHETIC_DEMO_ONLY" &&
+    Array.isArray(value.scenarios) &&
+    value.scenarios.every(isSyntheticScenario)
+  );
+}
+
+function isSyntheticRun(value: unknown): value is {
+  status: "SYNTHETIC_DEMO_ONLY";
+  scenario: { scenario_id: string; title: string; description: string; learning_objectives: string[] };
+  events: CorrelationInputEvent[];
+  correlations: CorrelatedIncident[];
+  persisted: false;
+  external_connections: false;
+  limitations: string;
+} {
+  if (!isRecord(value) || !isRecord(value.scenario)) return false;
+  return (
+    value.status === "SYNTHETIC_DEMO_ONLY" &&
+    typeof value.scenario.scenario_id === "string" &&
+    typeof value.scenario.title === "string" &&
+    typeof value.scenario.description === "string" &&
+    Array.isArray(value.scenario.learning_objectives) &&
+    value.scenario.learning_objectives.every((objective) => typeof objective === "string") &&
+    Array.isArray(value.events) &&
+    value.events.every(
+      (event) =>
+        isRecord(event) &&
+        typeof event.event_id === "string" &&
+        typeof event.event_type === "string" &&
+        typeof event.correlation_key === "string",
+    ) &&
+    value.persisted === false &&
+    value.external_connections === false &&
+    typeof value.limitations === "string" &&
+    isCorrelationResult(value)
+  );
+}
+
+interface CorrelationInputEvent {
+  event_id: string;
+  event_type: string;
+  correlation_key: string;
+  source?: string;
+  observed_at?: string;
+  severity?: string;
 }
 
 interface IncidentTimelineEntry {
@@ -24,12 +91,193 @@ interface CorrelatedIncident {
   priority: string;
   priority_reasons: string[];
   timeline: IncidentTimelineEntry[];
+  synthetic?: boolean;
+  scenario_id?: string;
+  scenario_title?: string;
+  synthetic_run_id?: string;
+}
+
+interface SyntheticScenario {
+  scenario_id: string;
+  title: string;
+  description: string;
+  learning_objectives: string[];
+  event_count: number;
+  data_classification: "SYNTHETIC";
+  external_connections: false;
+  writes_case_data: false;
+}
+
+interface IncidentCaseRecord {
+  case_id: string;
+  correlation_id: string | null;
+  title: string;
+  summary: string;
+  priority: string;
+  priority_reasons: string[];
+  status: "open" | "in_progress" | "resolved" | "closed";
+  assigned_to: string | null;
+  event_count: number;
+  created_at: string;
+  updated_at: string;
+  notes?: Array<{ note_id: string; author: string; body: string; created_at: string }>;
+  evidence?: Array<{
+    evidence_id: string;
+    source: string;
+    reference: string;
+    sha256: string | null;
+    added_by: string;
+    created_at: string;
+  }>;
+}
+
+interface PlaybookStep {
+  step_id: string;
+  title: string;
+  description: string;
+  basis: string;
+}
+
+interface PlaybookDecision {
+  decision_id: string;
+  decision: "approve" | "reject";
+  reviewer: string;
+  rationale: string;
+  created_at: string;
+}
+
+interface IncidentPlaybook {
+  plan_id: string;
+  case_id: string;
+  status: "simulated" | "approved_for_manual_review" | "rejected";
+  simulated_by: string;
+  case_snapshot: Record<string, unknown>;
+  steps: PlaybookStep[];
+  decisions: PlaybookDecision[];
+  execution_status: "NOT_EXECUTED";
+  created_at: string;
+  updated_at: string;
+}
+
+interface IncidentAuditRecord {
+  audit_id: string;
+  occurred_at: string;
+  credential_fingerprint: string | null;
+  action: string;
+  outcome_code: number;
+  record_type: "api_access" | "retention";
+}
+
+interface TelemetryConnectorCatalog {
+  sources: Array<{
+    source_id: string;
+    modes: string[];
+    credentials_configured: boolean;
+  }>;
+  file_formats: string[];
+  pull_adapters: string[];
+  pull_connector_contract_available: boolean;
+  push_ingestion_enabled: boolean;
+  event_retention_days: number | null;
+  limitations: string;
+}
+
+interface NormalizedTelemetryEvent {
+  event_id: string;
+  source_id: string;
+  event_type: string;
+  observed_at: string;
+  reported_severity: string | null;
+  ingested_at: string;
+}
+
+function isTelemetryConnectorCatalog(value: unknown): value is TelemetryConnectorCatalog {
+  return (
+    isRecord(value) &&
+    Array.isArray(value.sources) &&
+    value.sources.every(
+      (source) =>
+        isRecord(source) &&
+        typeof source.source_id === "string" &&
+        Array.isArray(source.modes) &&
+        source.modes.every((mode) => typeof mode === "string") &&
+        source.credentials_configured === true,
+    ) &&
+    Array.isArray(value.file_formats) &&
+    value.file_formats.every((format) => typeof format === "string") &&
+    Array.isArray(value.pull_adapters) &&
+    value.pull_adapters.every((adapter) => typeof adapter === "string") &&
+    typeof value.pull_connector_contract_available === "boolean" &&
+    typeof value.push_ingestion_enabled === "boolean" &&
+    (typeof value.event_retention_days === "number" || value.event_retention_days === null) &&
+    typeof value.limitations === "string"
+  );
+}
+
+function isNormalizedTelemetryEvent(value: unknown): value is NormalizedTelemetryEvent {
+  return (
+    isRecord(value) &&
+    typeof value.event_id === "string" &&
+    typeof value.source_id === "string" &&
+    typeof value.event_type === "string" &&
+    typeof value.observed_at === "string" &&
+    (typeof value.reported_severity === "string" || value.reported_severity === null) &&
+    typeof value.ingested_at === "string"
+  );
 }
 
 type WorkbenchIncident = IncidentEvent | CorrelatedIncident;
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function isIncidentCase(value: unknown): value is IncidentCaseRecord {
+  if (!isRecord(value)) return false;
+  return (
+    typeof value.case_id === "string" &&
+    (typeof value.correlation_id === "string" || value.correlation_id === null) &&
+    typeof value.title === "string" &&
+    typeof value.summary === "string" &&
+    typeof value.priority === "string" &&
+    Array.isArray(value.priority_reasons) &&
+    value.priority_reasons.every((reason) => typeof reason === "string") &&
+    (value.status === "open" ||
+      value.status === "in_progress" ||
+      value.status === "resolved" ||
+      value.status === "closed") &&
+    (typeof value.assigned_to === "string" || value.assigned_to === null) &&
+    typeof value.event_count === "number" &&
+    typeof value.created_at === "string" &&
+    typeof value.updated_at === "string" &&
+    (value.notes === undefined || Array.isArray(value.notes)) &&
+    (value.evidence === undefined || Array.isArray(value.evidence))
+  );
+}
+
+async function sendCaseRequest(apiKey: string, path: string, init: RequestInit = {}): Promise<unknown> {
+  const apiUrl = process.env.NEXT_PUBLIC_SANCTUM_API_URL ??
+    `${window.location.protocol === "https:" ? "https:" : "http:"}//${window.location.hostname}:8000`;
+  const response = await fetch(`${apiUrl.replace(/\/$/, "")}${path}`, {
+    ...init,
+    headers: {
+      "Content-Type": "application/json",
+      "X-API-Key": apiKey,
+      ...init.headers,
+    },
+  });
+  if (!response.ok) {
+    const body = await response.text();
+    let detail = body;
+    try {
+      const parsed: unknown = JSON.parse(body);
+      if (isRecord(parsed) && typeof parsed.detail === "string") detail = parsed.detail;
+    } catch {
+      detail = body || response.statusText;
+    }
+    throw new Error(`API ${response.status}: ${detail}`);
+  }
+  return response.json();
 }
 
 function isCorrelatedIncident(value: unknown): value is CorrelatedIncident {
@@ -53,9 +301,105 @@ function isCorrelatedIncident(value: unknown): value is CorrelatedIncident {
   );
 }
 
+function isCorrelationResult(value: unknown): value is { correlations: CorrelatedIncident[] } {
+  return (
+    isRecord(value) &&
+    Array.isArray(value.correlations) &&
+    value.correlations.every(isCorrelatedIncident)
+  );
+}
+
+function isIncidentPlaybook(value: unknown): value is IncidentPlaybook {
+  if (!isRecord(value)) return false;
+  return (
+    typeof value.plan_id === "string" &&
+    typeof value.case_id === "string" &&
+    (value.status === "simulated" ||
+      value.status === "approved_for_manual_review" ||
+      value.status === "rejected") &&
+    typeof value.simulated_by === "string" &&
+    isRecord(value.case_snapshot) &&
+    Array.isArray(value.steps) &&
+    value.steps.every(
+      (step) =>
+        isRecord(step) &&
+        typeof step.step_id === "string" &&
+        typeof step.title === "string" &&
+        typeof step.description === "string" &&
+        typeof step.basis === "string",
+    ) &&
+    Array.isArray(value.decisions) &&
+    value.decisions.every(
+      (decision) =>
+        isRecord(decision) &&
+        typeof decision.decision_id === "string" &&
+        (decision.decision === "approve" || decision.decision === "reject") &&
+        typeof decision.reviewer === "string" &&
+        typeof decision.rationale === "string" &&
+        typeof decision.created_at === "string",
+    ) &&
+    value.execution_status === "NOT_EXECUTED" &&
+    typeof value.created_at === "string" &&
+    typeof value.updated_at === "string"
+  );
+}
+
+function isIncidentAuditRecord(value: unknown): value is IncidentAuditRecord {
+  if (!isRecord(value)) return false;
+  return (
+    typeof value.audit_id === "string" &&
+    typeof value.occurred_at === "string" &&
+    (typeof value.credential_fingerprint === "string" ||
+      value.credential_fingerprint === null) &&
+    typeof value.action === "string" &&
+    typeof value.outcome_code === "number" &&
+    (value.record_type === "api_access" || value.record_type === "retention")
+  );
+}
+
+function isPlaybookList(value: unknown): value is { playbooks: IncidentPlaybook[] } {
+  return (
+    isRecord(value) &&
+    Array.isArray(value.playbooks) &&
+    value.playbooks.every(isIncidentPlaybook)
+  );
+}
+
 export default function WorkbenchPage() {
   const [incidents, setIncidents] = useState<WorkbenchIncident[]>([]);
   const [status, setStatus] = useState("CONNECTING");
+  const [apiKey, setApiKey] = useState("");
+  const [createdBy, setCreatedBy] = useState("");
+  const [caseRecords, setCaseRecords] = useState<IncidentCaseRecord[]>([]);
+  const [caseMessage, setCaseMessage] = useState("");
+  const [caseBusy, setCaseBusy] = useState(false);
+  const [assigneeDrafts, setAssigneeDrafts] = useState<Record<string, string>>({});
+  const [noteDrafts, setNoteDrafts] = useState<Record<string, string>>({});
+  const [evidenceDrafts, setEvidenceDrafts] = useState<Record<string, string>>({});
+  const [correlationEvents, setCorrelationEvents] = useState<CorrelationInputEvent[]>([]);
+  const [eventDraft, setEventDraft] = useState({
+    event_id: "",
+    event_type: "",
+    correlation_key: "",
+    source: "",
+    observed_at: "",
+    severity: "",
+  });
+  const [playbooksByCase, setPlaybooksByCase] = useState<Record<string, IncidentPlaybook[]>>({});
+  const [decisionDrafts, setDecisionDrafts] = useState<Record<string, string>>({});
+  const [accessAuditRecords, setAccessAuditRecords] = useState<IncidentAuditRecord[]>([]);
+  const [auditLimitations, setAuditLimitations] = useState("");
+  const [syntheticScenarios, setSyntheticScenarios] = useState<SyntheticScenario[]>([]);
+  const [selectedScenarioId, setSelectedScenarioId] = useState("");
+  const [syntheticLimitations, setSyntheticLimitations] = useState("");
+  const [telemetryCatalog, setTelemetryCatalog] = useState<TelemetryConnectorCatalog | null>(null);
+  const [telemetryEvents, setTelemetryEvents] = useState<NormalizedTelemetryEvent[]>([]);
+  const [telemetrySourceId, setTelemetrySourceId] = useState("");
+  const [telemetryFormat, setTelemetryFormat] = useState("json");
+  const [telemetryFileName, setTelemetryFileName] = useState("");
+  const [telemetryFileContent, setTelemetryFileContent] = useState("");
+  const [telemetryMessage, setTelemetryMessage] = useState("");
+  const telemetryFileInput = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     const configuredUrl = process.env.NEXT_PUBLIC_SANCTUM_WS_URL;
@@ -100,6 +444,513 @@ export default function WorkbenchPage() {
 
   const connected = status === "CONNECTED";
 
+  async function loadCases() {
+    setCaseBusy(true);
+    setCaseMessage("");
+    try {
+      const result: unknown = await sendCaseRequest(apiKey, "/api/v1/cases?limit=50");
+      if (!isRecord(result) || !Array.isArray(result.cases) || !result.cases.every(isIncidentCase)) {
+        throw new Error("The API returned an invalid case list.");
+      }
+      setCaseRecords(result.cases);
+      setAssigneeDrafts(Object.fromEntries(result.cases.map((item) => [item.case_id, item.assigned_to ?? ""])));
+      setCaseMessage(`Loaded ${result.cases.length} cases.`);
+    } catch (error) {
+      setCaseMessage(error instanceof Error ? error.message : "Unable to load cases.");
+    } finally {
+      setCaseBusy(false);
+    }
+  }
+
+  async function createCase(incident: CorrelatedIncident) {
+    if (!createdBy.trim()) {
+      setCaseMessage("Enter your analyst name before creating a case.");
+      return;
+    }
+    setCaseBusy(true);
+    setCaseMessage("");
+    try {
+      const result: unknown = await sendCaseRequest(apiKey, "/api/v1/cases", {
+        method: "POST",
+        body: JSON.stringify({
+          title: `${incident.priority} correlated incident`,
+          ...(incident.synthetic
+            ? {
+                summary: `[SYNTHETIC DEMO · ${incident.scenario_title ?? incident.scenario_id ?? "scenario"}] ${incident.priority_reasons.join(" ")}`,
+              }
+            : {}),
+          ...(!incident.synthetic
+            ? { summary: incident.priority_reasons.join(" ") }
+            : {}),
+          created_by: createdBy,
+          priority: incident.priority,
+          correlation_id: incident.correlation_id,
+          priority_reasons: incident.priority_reasons,
+          timeline: incident.timeline,
+        }),
+      });
+      if (!isIncidentCase(result)) throw new Error("The API returned an invalid case.");
+      setCaseRecords((previous) => [result, ...previous.filter((item) => item.case_id !== result.case_id)]);
+      setAssigneeDrafts((previous) => ({ ...previous, [result.case_id]: result.assigned_to ?? "" }));
+      setCaseMessage(`Created case ${result.case_id}.`);
+    } catch (error) {
+      setCaseMessage(error instanceof Error ? error.message : "Unable to create case.");
+    } finally {
+      setCaseBusy(false);
+    }
+  }
+
+  function addCorrelationEvent() {
+    if (!eventDraft.event_id.trim() || !eventDraft.event_type.trim() || !eventDraft.correlation_key.trim()) {
+      setCaseMessage("Event ID, event type, and correlation key are required.");
+      return;
+    }
+    setCorrelationEvents((previous) => [
+      ...previous,
+      {
+        event_id: eventDraft.event_id.trim(),
+        event_type: eventDraft.event_type.trim(),
+        correlation_key: eventDraft.correlation_key.trim(),
+        ...(eventDraft.source.trim() ? { source: eventDraft.source.trim() } : {}),
+        ...(eventDraft.observed_at
+          ? { observed_at: new Date(eventDraft.observed_at).toISOString() }
+          : {}),
+        ...(eventDraft.severity ? { severity: eventDraft.severity } : {}),
+      },
+    ]);
+    setEventDraft({
+      event_id: "",
+      event_type: "",
+      correlation_key: "",
+      source: "",
+      observed_at: "",
+      severity: "",
+    });
+    setCaseMessage("");
+  }
+
+  async function correlateEventBatch() {
+    if (!apiKey || correlationEvents.length === 0) {
+      setCaseMessage("Enter an API key and add at least one event.");
+      return;
+    }
+    setCaseBusy(true);
+    setCaseMessage("");
+    try {
+      const result: unknown = await sendCaseRequest(apiKey, "/api/v1/events/correlate", {
+        method: "POST",
+        body: JSON.stringify({ events: correlationEvents }),
+      });
+      if (!isCorrelationResult(result)) throw new Error("The API returned an invalid correlation result.");
+      setIncidents((previous) => [...result.correlations, ...previous].slice(0, 10));
+      setCaseMessage(
+        result.correlations.length > 0
+          ? `Created ${result.correlations.length} local correlation group(s).`
+          : "No groups found. Add multiple events with the same exact correlation key.",
+      );
+    } catch (error) {
+      setCaseMessage(error instanceof Error ? error.message : "Unable to correlate events.");
+    } finally {
+      setCaseBusy(false);
+    }
+  }
+
+  async function updateCase(caseId: string, patch: { status?: IncidentCaseRecord["status"]; assigned_to?: string | null }) {
+    setCaseBusy(true);
+    setCaseMessage("");
+    try {
+      const result: unknown = await sendCaseRequest(apiKey, `/api/v1/cases/${encodeURIComponent(caseId)}`, {
+        method: "PATCH",
+        body: JSON.stringify(patch),
+      });
+      if (!isIncidentCase(result)) throw new Error("The API returned an invalid case.");
+      setCaseRecords((previous) => previous.map((item) => item.case_id === caseId ? result : item));
+      setCaseMessage(`Updated case ${caseId}.`);
+    } catch (error) {
+      setCaseMessage(error instanceof Error ? error.message : "Unable to update case.");
+    } finally {
+      setCaseBusy(false);
+    }
+  }
+
+  async function loadCaseDetails(caseId: string) {
+    setCaseBusy(true);
+    setCaseMessage("");
+    try {
+      const result: unknown = await sendCaseRequest(apiKey, `/api/v1/cases/${encodeURIComponent(caseId)}`);
+      if (!isIncidentCase(result)) throw new Error("The API returned an invalid case.");
+      setCaseRecords((previous) => previous.map((item) => item.case_id === caseId ? result : item));
+    } catch (error) {
+      setCaseMessage(error instanceof Error ? error.message : "Unable to load case details.");
+    } finally {
+      setCaseBusy(false);
+    }
+  }
+
+  async function loadCasePlaybooks(caseId: string) {
+    setCaseBusy(true);
+    setCaseMessage("");
+    try {
+      const result: unknown = await sendCaseRequest(
+        apiKey,
+        `/api/v1/cases/${encodeURIComponent(caseId)}/playbooks`,
+      );
+      if (!isPlaybookList(result)) {
+        throw new Error("The API returned an invalid playbook list.");
+      }
+      setPlaybooksByCase((previous) => ({ ...previous, [caseId]: result.playbooks }));
+      setCaseMessage(`Loaded ${result.playbooks.length} simulated playbook(s).`);
+    } catch (error) {
+      setCaseMessage(error instanceof Error ? error.message : "Unable to load playbooks.");
+    } finally {
+      setCaseBusy(false);
+    }
+  }
+
+  async function loadAccessAudit() {
+    setCaseBusy(true);
+    setCaseMessage("");
+    try {
+      const result: unknown = await sendCaseRequest(
+        apiKey,
+        "/api/v1/governance/access-log?limit=100",
+      );
+      if (
+        !isRecord(result) ||
+        !Array.isArray(result.records) ||
+        !result.records.every(isIncidentAuditRecord) ||
+        typeof result.limitations !== "string"
+      ) {
+        throw new Error("The API returned an invalid access audit.");
+      }
+      setAccessAuditRecords(result.records);
+      setAuditLimitations(result.limitations);
+      setCaseMessage(`Loaded ${result.records.length} access audit records.`);
+    } catch (error) {
+      setCaseMessage(error instanceof Error ? error.message : "Unable to load access audit.");
+    } finally {
+      setCaseBusy(false);
+    }
+  }
+
+  async function loadSyntheticScenarios() {
+    setCaseBusy(true);
+    setCaseMessage("");
+    try {
+      const result: unknown = await sendCaseRequest(apiKey, "/api/v1/lab/scenarios");
+      if (!isSyntheticScenarioCatalog(result)) {
+        throw new Error("The API returned an invalid synthetic scenario catalog.");
+      }
+      setSyntheticScenarios(result.scenarios);
+      setSelectedScenarioId((current) => current || result.scenarios[0]?.scenario_id || "");
+      setSyntheticLimitations("");
+      setCaseMessage(`Loaded ${result.scenarios.length} synthetic training scenarios.`);
+    } catch (error) {
+      setCaseMessage(error instanceof Error ? error.message : "Unable to load synthetic scenarios.");
+    } finally {
+      setCaseBusy(false);
+    }
+  }
+
+  async function runSyntheticScenario() {
+    if (!selectedScenarioId) {
+      setCaseMessage("Select a synthetic scenario first.");
+      return;
+    }
+    setCaseBusy(true);
+    setCaseMessage("");
+    try {
+      const result: unknown = await sendCaseRequest(
+        apiKey,
+        `/api/v1/lab/scenarios/${encodeURIComponent(selectedScenarioId)}/run`,
+        { method: "POST" },
+      );
+      if (!isSyntheticRun(result)) throw new Error("The API returned an invalid synthetic run.");
+      setIncidents((previous) => [...result.correlations, ...previous].slice(0, 10));
+      setSyntheticLimitations(result.limitations);
+      setCaseMessage(
+        `Generated ${result.events.length} synthetic events. Nothing was persisted or executed.`,
+      );
+    } catch (error) {
+      setCaseMessage(error instanceof Error ? error.message : "Unable to run synthetic scenario.");
+    } finally {
+      setCaseBusy(false);
+    }
+  }
+
+  async function loadTelemetryWorkbench() {
+    setCaseBusy(true);
+    setTelemetryMessage("");
+    try {
+      const [catalogResult, eventResult]: unknown[] = await Promise.all([
+        sendCaseRequest(apiKey, "/api/v1/telemetry/connectors"),
+        sendCaseRequest(apiKey, "/api/v1/telemetry/events?limit=100"),
+      ]);
+      if (!isTelemetryConnectorCatalog(catalogResult)) {
+        throw new Error("The API returned an invalid telemetry connector catalog.");
+      }
+      if (
+        !isRecord(eventResult) ||
+        !Array.isArray(eventResult.events) ||
+        !eventResult.events.every(isNormalizedTelemetryEvent)
+      ) {
+        throw new Error("The API returned an invalid telemetry event list.");
+      }
+      setTelemetryCatalog(catalogResult);
+      setTelemetryEvents(eventResult.events);
+      setTelemetrySourceId((current) =>
+        catalogResult.sources.some((source) => source.source_id === current)
+          ? current
+          : catalogResult.sources[0]?.source_id ?? "",
+      );
+      setTelemetryMessage(
+        `Loaded ${catalogResult.sources.length} configured source(s) and ${eventResult.events.length} recent event(s).`,
+      );
+    } catch (error) {
+      setTelemetryMessage(
+        error instanceof Error ? error.message : "Unable to load telemetry configuration.",
+      );
+    } finally {
+      setCaseBusy(false);
+    }
+  }
+
+  async function selectTelemetryFile(file: File | undefined) {
+    clearTelemetrySelection();
+    if (!file) return;
+    if (file.size > 4_000_000) {
+      setTelemetryMessage("Select a file no larger than 4 MB.");
+      return;
+    }
+    const extension = file.name.split(".").pop()?.toLowerCase();
+    const format =
+      extension === "jsonl" || extension === "ndjson"
+        ? "jsonl"
+        : extension === "cef"
+          ? "cef"
+          : extension === "json"
+            ? "json"
+            : "";
+    if (!format) {
+      setTelemetryMessage("Choose a JSON, JSONL, or CEF file.");
+      if (telemetryFileInput.current) telemetryFileInput.current.value = "";
+      return;
+    }
+    try {
+      const content = await file.text();
+      setTelemetryFormat(format);
+      setTelemetryFileName(file.name);
+      setTelemetryFileContent(content);
+      setTelemetryMessage("");
+    } catch {
+      setTelemetryMessage("The selected file could not be read.");
+      if (telemetryFileInput.current) telemetryFileInput.current.value = "";
+    }
+  }
+
+  function clearTelemetrySelection() {
+    setTelemetryFileName("");
+    setTelemetryFileContent("");
+    if (telemetryFileInput.current) telemetryFileInput.current.value = "";
+  }
+
+  async function importTelemetryFile() {
+    if (!apiKey || !telemetrySourceId || !telemetryFileContent) {
+      setTelemetryMessage("Load configured sources, select a source, and choose a file.");
+      return;
+    }
+    setCaseBusy(true);
+    setTelemetryMessage("");
+    try {
+      const result: unknown = await sendCaseRequest(apiKey, "/api/v1/telemetry/import", {
+        method: "POST",
+        body: JSON.stringify({
+          source_id: telemetrySourceId,
+          format: telemetryFormat,
+          content: telemetryFileContent,
+        }),
+      });
+      if (
+        !isRecord(result) ||
+        typeof result.inserted_count !== "number" ||
+        typeof result.duplicate_count !== "number" ||
+        result.raw_payload_persisted !== false
+      ) {
+        throw new Error("The API returned an invalid telemetry import result.");
+      }
+      const eventResult: unknown = await sendCaseRequest(
+        apiKey,
+        "/api/v1/telemetry/events?limit=100",
+      );
+      if (
+        !isRecord(eventResult) ||
+        !Array.isArray(eventResult.events) ||
+        !eventResult.events.every(isNormalizedTelemetryEvent)
+      ) {
+        throw new Error("The import succeeded, but the API returned an invalid event list.");
+      }
+      setTelemetryEvents(eventResult.events);
+      setTelemetryMessage(
+        `Imported ${result.inserted_count} event(s); ${result.duplicate_count} duplicate(s) skipped. File content was cleared from page memory.`,
+      );
+    } catch (error) {
+      setTelemetryMessage(
+        error instanceof Error ? error.message : "Unable to import telemetry file.",
+      );
+    } finally {
+      clearTelemetrySelection();
+      setCaseBusy(false);
+    }
+  }
+
+  async function correlatePersistedTelemetry() {
+    setCaseBusy(true);
+    setTelemetryMessage("");
+    try {
+      const result: unknown = await sendCaseRequest(
+        apiKey,
+        "/api/v1/telemetry/correlate?window_hours=24",
+        { method: "POST" },
+      );
+      if (
+        !isCorrelationResult(result) ||
+        !result.correlations.every(isCorrelatedIncident)
+      ) {
+        throw new Error("The API returned an invalid telemetry correlation result.");
+      }
+      setIncidents((previous) => [...result.correlations, ...previous].slice(0, 10));
+      setTelemetryMessage(
+        `Found ${result.correlations.length} correlation group(s). Grouping is exact-token only, not a threat assessment.`,
+      );
+    } catch (error) {
+      setTelemetryMessage(
+        error instanceof Error ? error.message : "Unable to correlate stored telemetry.",
+      );
+    } finally {
+      setCaseBusy(false);
+    }
+  }
+
+  async function simulateCasePlaybook(caseId: string) {
+    if (!createdBy.trim()) {
+      setCaseMessage("Enter your analyst name before simulating a playbook.");
+      return;
+    }
+    setCaseBusy(true);
+    setCaseMessage("");
+    try {
+      const result: unknown = await sendCaseRequest(
+        apiKey,
+        `/api/v1/cases/${encodeURIComponent(caseId)}/playbooks/simulate`,
+        {
+          method: "POST",
+          body: JSON.stringify({ simulated_by: createdBy }),
+        },
+      );
+      if (!isIncidentPlaybook(result)) throw new Error("The API returned an invalid playbook.");
+      setPlaybooksByCase((previous) => ({
+        ...previous,
+        [caseId]: [result, ...(previous[caseId] ?? [])],
+      }));
+      setCaseMessage("Simulated a recommendation-only playbook. No actions were executed.");
+    } catch (error) {
+      setCaseMessage(error instanceof Error ? error.message : "Unable to simulate playbook.");
+    } finally {
+      setCaseBusy(false);
+    }
+  }
+
+  async function decideCasePlaybook(
+    plan: IncidentPlaybook,
+    decision: "approve" | "reject",
+  ) {
+    const rationale = decisionDrafts[plan.plan_id]?.trim();
+    if (!createdBy.trim() || !rationale) {
+      setCaseMessage("Enter your reviewer name and a decision rationale.");
+      return;
+    }
+    setCaseBusy(true);
+    setCaseMessage("");
+    try {
+      const result: unknown = await sendCaseRequest(
+        apiKey,
+        `/api/v1/playbooks/${encodeURIComponent(plan.plan_id)}/decisions`,
+        {
+          method: "POST",
+          body: JSON.stringify({
+            decision,
+            reviewer: createdBy,
+            rationale,
+          }),
+        },
+      );
+      if (!isIncidentPlaybook(result)) throw new Error("The API returned an invalid playbook.");
+      setPlaybooksByCase((previous) => ({
+        ...previous,
+        [plan.case_id]: (previous[plan.case_id] ?? []).map((item) =>
+          item.plan_id === plan.plan_id ? result : item,
+        ),
+      }));
+      setDecisionDrafts((previous) => ({ ...previous, [plan.plan_id]: "" }));
+      setCaseMessage(
+        decision === "approve"
+          ? "Approved for manual review only. No response action was executed."
+          : "Playbook rejected; the decision was recorded.",
+      );
+    } catch (error) {
+      setCaseMessage(error instanceof Error ? error.message : "Unable to record playbook decision.");
+    } finally {
+      setCaseBusy(false);
+    }
+  }
+
+  async function addCaseNote(caseId: string) {
+    const body = noteDrafts[caseId]?.trim();
+    if (!body || !createdBy.trim()) {
+      setCaseMessage("Enter your analyst name and a note.");
+      return;
+    }
+    await appendCaseActivity(caseId, "notes", { author: createdBy, body });
+    setNoteDrafts((previous) => ({ ...previous, [caseId]: "" }));
+  }
+
+  async function addCaseEvidence(caseId: string) {
+    const reference = evidenceDrafts[caseId]?.trim();
+    if (!reference || !createdBy.trim()) {
+      setCaseMessage("Enter your analyst name and an evidence reference.");
+      return;
+    }
+    await appendCaseActivity(caseId, "evidence", {
+      source: "operator-reference",
+      reference,
+      added_by: createdBy,
+    });
+    setEvidenceDrafts((previous) => ({ ...previous, [caseId]: "" }));
+  }
+
+  async function appendCaseActivity(
+    caseId: string,
+    activity: "notes" | "evidence",
+    payload: Record<string, string>,
+  ) {
+    setCaseBusy(true);
+    setCaseMessage("");
+    try {
+      const result: unknown = await sendCaseRequest(
+        apiKey,
+        `/api/v1/cases/${encodeURIComponent(caseId)}/${activity}`,
+        { method: "POST", body: JSON.stringify(payload) },
+      );
+      if (!isIncidentCase(result)) throw new Error("The API returned an invalid case.");
+      setCaseRecords((previous) => previous.map((item) => item.case_id === caseId ? result : item));
+      setCaseMessage(`Added ${activity === "notes" ? "note" : "evidence reference"} to ${caseId}.`);
+    } catch (error) {
+      setCaseMessage(error instanceof Error ? error.message : "Unable to update case activity.");
+    } finally {
+      setCaseBusy(false);
+    }
+  }
+
   return (
     <main className="min-h-screen bg-slate-950 p-6 font-mono text-slate-100 md:p-8">
       <header className="mb-8 flex items-center justify-between border-b border-slate-800 pb-4">
@@ -129,6 +980,384 @@ export default function WorkbenchPage() {
           <p className="mt-2 text-xs text-slate-500">No live graph integration is configured by default.</p>
         </section>
         <section className="mt-4 rounded-lg border border-slate-800 bg-slate-900 p-6 md:col-span-3">
+          <div className="flex flex-wrap items-end gap-4">
+            <label className="min-w-64 flex-1 text-xs text-slate-300">
+              API key (held in memory only)
+              <input
+                type="password"
+                autoComplete="off"
+                value={apiKey}
+                onChange={(event) => setApiKey(event.target.value)}
+                className="mt-2 w-full rounded border border-slate-700 bg-slate-950 px-3 py-2 text-sm"
+              />
+            </label>
+            <label className="min-w-48 text-xs text-slate-300">
+              Analyst name
+              <input
+                value={createdBy}
+                onChange={(event) => setCreatedBy(event.target.value)}
+                className="mt-2 w-full rounded border border-slate-700 bg-slate-950 px-3 py-2 text-sm"
+              />
+            </label>
+            <button
+              type="button"
+              disabled={!apiKey || caseBusy}
+              onClick={() => void loadCases()}
+              className="rounded bg-cyan-400 px-4 py-2 text-sm font-semibold text-slate-950 disabled:opacity-50"
+            >
+              Load cases
+            </button>
+          </div>
+          <h2 className="mb-4 mt-7 text-sm font-semibold text-slate-300">Incident cases</h2>
+          {caseMessage && <p className="mb-4 text-xs text-cyan-200" role="status">{caseMessage}</p>}
+          <div className="mb-5 rounded border border-violet-900/60 bg-violet-950/20 p-4">
+            <div className="flex flex-wrap items-end gap-3">
+              <div className="min-w-64 flex-1">
+                <h3 className="font-semibold text-violet-200">Synthetic incident lab</h3>
+                <p className="mt-1 text-xs text-slate-400">Fictional training data only; no external connections, persistence, or response actions.</p>
+              </div>
+              <button type="button" disabled={!apiKey || caseBusy} onClick={() => void loadSyntheticScenarios()} className="rounded border border-violet-800 px-3 py-2 text-violet-200 disabled:opacity-50">Load scenarios</button>
+              {syntheticScenarios.length > 0 && (
+                <>
+                  <select aria-label="Synthetic scenario" value={selectedScenarioId} disabled={caseBusy} onChange={(event) => setSelectedScenarioId(event.target.value)} className="rounded border border-slate-700 bg-slate-950 px-3 py-2 text-slate-100">
+                    {syntheticScenarios.map((scenario) => <option key={scenario.scenario_id} value={scenario.scenario_id}>{scenario.title}</option>)}
+                  </select>
+                  <button type="button" disabled={!apiKey || caseBusy || !selectedScenarioId} onClick={() => void runSyntheticScenario()} className="rounded bg-violet-400 px-3 py-2 font-semibold text-slate-950 disabled:opacity-50">Run demo</button>
+                </>
+              )}
+            </div>
+            {syntheticScenarios.find((scenario) => scenario.scenario_id === selectedScenarioId) && (
+              <ul className="mt-3 list-disc space-y-1 pl-5 text-xs text-slate-400">
+                {syntheticScenarios.find((scenario) => scenario.scenario_id === selectedScenarioId)?.learning_objectives.map((objective) => <li key={objective}>{objective}</li>)}
+              </ul>
+            )}
+            {syntheticLimitations && <p className="mt-3 text-xs text-violet-200">{syntheticLimitations}</p>}
+          </div>
+          <div className="mb-5 rounded border border-teal-900/60 bg-teal-950/20 p-4">
+            <div className="flex flex-wrap items-end gap-3">
+              <div className="min-w-64 flex-1">
+                <h3 className="font-semibold text-teal-200">Configured telemetry sources</h3>
+                <p className="mt-1 text-xs text-slate-400">
+                  Normalized source data only. Push secrets stay server-side; pull connectors are not activated by default.
+                </p>
+              </div>
+              <button
+                type="button"
+                disabled={!apiKey || caseBusy}
+                onClick={() => void loadTelemetryWorkbench()}
+                className="rounded border border-teal-800 px-3 py-2 text-teal-200 disabled:opacity-50"
+              >
+                Load telemetry
+              </button>
+              <button
+                type="button"
+                disabled={!apiKey || caseBusy}
+                onClick={() => void correlatePersistedTelemetry()}
+                className="rounded bg-teal-400 px-3 py-2 font-semibold text-slate-950 disabled:opacity-50"
+              >
+                Correlate stored events
+              </button>
+            </div>
+            {telemetryCatalog && (
+              <div className="mt-3 text-xs text-slate-400">
+                <p>
+                  {telemetryCatalog.push_ingestion_enabled
+                    ? `Ingestion enabled · retention ${telemetryCatalog.event_retention_days} days`
+                    : "Ingestion disabled · configure source credentials and event retention on the API server"}
+                  {" · "}formats: {telemetryCatalog.file_formats.join(", ") || "none"}
+                  {" · "}pull adapters: {telemetryCatalog.pull_adapters.join(", ") || "none registered"}
+                </p>
+                <p className="mt-1">{telemetryCatalog.limitations}</p>
+              </div>
+            )}
+            <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+              <label className="text-xs text-slate-400">
+                Configured source
+                <select
+                  aria-label="Telemetry source"
+                  value={telemetrySourceId}
+                  disabled={caseBusy || !telemetryCatalog?.sources.length}
+                  onChange={(event) => setTelemetrySourceId(event.target.value)}
+                  className="mt-1 w-full rounded border border-slate-700 bg-slate-900 px-3 py-2 text-slate-100"
+                >
+                  {telemetryCatalog?.sources.length ? (
+                    telemetryCatalog.sources.map((source) => (
+                      <option key={source.source_id} value={source.source_id}>
+                        {source.source_id}
+                      </option>
+                    ))
+                  ) : (
+                    <option value="">Load configured sources</option>
+                  )}
+                </select>
+              </label>
+              <label className="text-xs text-slate-400">
+                File format
+                <select
+                  aria-label="Telemetry file format"
+                  value={telemetryFormat}
+                  disabled={caseBusy}
+                  onChange={(event) => setTelemetryFormat(event.target.value)}
+                  className="mt-1 w-full rounded border border-slate-700 bg-slate-900 px-3 py-2 text-slate-100"
+                >
+                  {["json", "jsonl", "cef"].map((format) => (
+                    <option key={format} value={format}>{format.toUpperCase()}</option>
+                  ))}
+                </select>
+              </label>
+              <label className="text-xs text-slate-400 sm:col-span-2">
+                Import file (maximum 4 MB)
+                <input
+                  ref={telemetryFileInput}
+                  type="file"
+                  accept=".json,.jsonl,.ndjson,.cef"
+                  disabled={caseBusy}
+                  onChange={(event) => void selectTelemetryFile(event.currentTarget.files?.[0])}
+                  className="mt-1 block w-full rounded border border-slate-700 bg-slate-900 px-3 py-2 text-slate-300"
+                />
+              </label>
+            </div>
+            <div className="mt-3 flex flex-wrap items-center gap-3">
+              {telemetryFileName && (
+                <>
+                  <span className="text-xs text-slate-400">Selected: {telemetryFileName}</span>
+                  <button
+                    type="button"
+                    disabled={caseBusy}
+                    onClick={clearTelemetrySelection}
+                    className="text-xs text-slate-400 underline disabled:opacity-50"
+                  >
+                    Clear selection
+                  </button>
+                </>
+              )}
+              <button
+                type="button"
+                disabled={
+                  !apiKey ||
+                  !telemetrySourceId ||
+                  !telemetryFileContent ||
+                  caseBusy
+                }
+                onClick={() => void importTelemetryFile()}
+                className="rounded border border-teal-800 px-3 py-2 text-teal-200 disabled:opacity-50"
+              >
+                Import selected file
+              </button>
+            </div>
+            {telemetryMessage && (
+              <p className="mt-3 text-xs text-teal-200" role="status">{telemetryMessage}</p>
+            )}
+            {telemetryEvents.length > 0 && (
+              <div className="mt-3 max-h-48 overflow-auto rounded border border-slate-800 bg-slate-950 p-3">
+                <p className="mb-2 text-xs font-semibold text-slate-300">
+                  Recent normalized events ({telemetryEvents.length})
+                </p>
+                <ul className="space-y-1 text-xs text-slate-400">
+                  {telemetryEvents.map((event) => (
+                    <li key={event.event_id}>
+                      {event.observed_at} · {event.source_id} · {event.event_type}
+                      {event.reported_severity ? ` · reported ${event.reported_severity}` : ""}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+          </div>
+          <div className="rounded border border-slate-800 bg-slate-950 p-4">
+            <h3 className="font-semibold text-slate-200">Correlate a supplied event batch</h3>
+            <p className="mt-1 text-slate-500">Events are sent to the authenticated API for exact-key grouping only; they are not persisted until you create a case.</p>
+            <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+              <input aria-label="Event ID" placeholder="Event ID *" value={eventDraft.event_id} onChange={(event) => setEventDraft((previous) => ({ ...previous, event_id: event.target.value }))} className="rounded border border-slate-700 bg-slate-900 px-3 py-2" />
+              <input aria-label="Event type" placeholder="Event type *" value={eventDraft.event_type} onChange={(event) => setEventDraft((previous) => ({ ...previous, event_type: event.target.value }))} className="rounded border border-slate-700 bg-slate-900 px-3 py-2" />
+              <input aria-label="Correlation key" placeholder="Correlation key *" value={eventDraft.correlation_key} onChange={(event) => setEventDraft((previous) => ({ ...previous, correlation_key: event.target.value }))} className="rounded border border-slate-700 bg-slate-900 px-3 py-2" />
+              <input aria-label="Event source" placeholder="Source (optional)" value={eventDraft.source} onChange={(event) => setEventDraft((previous) => ({ ...previous, source: event.target.value }))} className="rounded border border-slate-700 bg-slate-900 px-3 py-2" />
+              <input aria-label="Event time" type="datetime-local" value={eventDraft.observed_at} onChange={(event) => setEventDraft((previous) => ({ ...previous, observed_at: event.target.value }))} className="rounded border border-slate-700 bg-slate-900 px-3 py-2" />
+              <select aria-label="Reported severity" value={eventDraft.severity} onChange={(event) => setEventDraft((previous) => ({ ...previous, severity: event.target.value }))} className="rounded border border-slate-700 bg-slate-900 px-3 py-2">
+                <option value="">Severity (optional)</option>
+                {["CRITICAL", "HIGH", "MEDIUM", "LOW", "INFO"].map((severity) => <option key={severity}>{severity}</option>)}
+              </select>
+            </div>
+            <div className="mt-3 flex flex-wrap items-center gap-3">
+              <button type="button" onClick={addCorrelationEvent} className="rounded border border-slate-700 px-3 py-2 text-slate-200">Add event</button>
+              <button type="button" disabled={!apiKey || correlationEvents.length === 0 || caseBusy} onClick={() => void correlateEventBatch()} className="rounded bg-cyan-400 px-3 py-2 font-semibold text-slate-950 disabled:opacity-50">Correlate {correlationEvents.length} event(s)</button>
+              <button type="button" disabled={correlationEvents.length === 0 || caseBusy} onClick={() => setCorrelationEvents([])} className="rounded border border-slate-700 px-3 py-2 text-slate-400 disabled:opacity-50">Clear batch</button>
+            </div>
+            {correlationEvents.length > 0 && (
+              <ul className="mt-3 space-y-1 text-slate-400">
+                {correlationEvents.map((event, index) => (
+                  <li key={`${event.event_id}-${index}`} className="flex justify-between gap-3">
+                    <span>{event.event_id} · {event.event_type} · key: {event.correlation_key}</span>
+                    <button type="button" onClick={() => setCorrelationEvents((previous) => previous.filter((_, eventIndex) => eventIndex !== index))} className="text-rose-300">Remove</button>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+          {caseRecords.length === 0 ? (
+            <p className="text-xs text-slate-500">No cases loaded. Enter an API key and load cases.</p>
+          ) : (
+            <div className="space-y-4">
+              {caseRecords.map((item) => (
+                <article key={item.case_id} className="rounded border border-slate-800 bg-slate-950 p-4 text-xs">
+                  <div className="flex flex-wrap items-start justify-between gap-3">
+                    <div>
+                      <h3 className="font-bold text-cyan-300">{item.title}</h3>
+                      <p className="mt-1 text-slate-400">{item.case_id} · {item.priority} · {item.event_count} events</p>
+                      <p className="mt-2 max-w-3xl text-slate-300">{item.summary}</p>
+                    </div>
+                    <button
+                      type="button"
+                      disabled={caseBusy || (item.notes !== undefined && item.evidence !== undefined)}
+                      onClick={() => void loadCaseDetails(item.case_id)}
+                      className="mt-3 rounded border border-slate-700 px-3 py-1.5 text-slate-300 disabled:opacity-50"
+                    >
+                      {item.notes !== undefined && item.evidence !== undefined ? "Activity loaded" : "Load notes and evidence"}
+                    </button>
+                    <div className="mt-4 rounded border border-amber-900/60 bg-amber-950/20 p-3">
+                      <div className="flex flex-wrap items-center justify-between gap-3">
+                        <div>
+                          <h4 className="font-semibold text-amber-200">Response playbooks · recommendation only</h4>
+                          <p className="mt-1 text-slate-400">Simulation and approval never run commands, contact services, or change systems.</p>
+                        </div>
+                        <div className="flex gap-2">
+                          <button type="button" disabled={!apiKey || caseBusy} onClick={() => void simulateCasePlaybook(item.case_id)} className="rounded border border-amber-800 px-3 py-2 text-amber-200 disabled:opacity-50">Simulate</button>
+                          <button type="button" disabled={!apiKey || caseBusy} onClick={() => void loadCasePlaybooks(item.case_id)} className="rounded border border-slate-700 px-3 py-2 text-slate-300 disabled:opacity-50">Load playbooks</button>
+                        </div>
+                      </div>
+                      {(playbooksByCase[item.case_id] ?? []).map((plan) => (
+                        <div key={plan.plan_id} className="mt-3 rounded border border-slate-800 bg-slate-950 p-3">
+                          <div className="flex flex-wrap justify-between gap-2">
+                            <span className="font-semibold text-slate-200">Plan {plan.plan_id}</span>
+                            <span className="text-amber-200">{plan.status.replaceAll("_", " ")} · {plan.execution_status}</span>
+                          </div>
+                          <p className="mt-1 text-slate-500">Simulated by {plan.simulated_by} · {plan.steps.length} review steps</p>
+                          <ol className="mt-3 list-decimal space-y-2 pl-5 text-slate-300">
+                            {plan.steps.map((step) => (
+                              <li key={step.step_id}>
+                                <span className="font-semibold">{step.title}</span>
+                                <p className="mt-0.5 text-slate-400">{step.description}</p>
+                                <p className="mt-0.5 text-slate-500">Basis: {step.basis}</p>
+                              </li>
+                            ))}
+                          </ol>
+                          <label className="mt-3 block text-slate-400">
+                            Decision rationale (required)
+                            <textarea
+                              value={decisionDrafts[plan.plan_id] ?? ""}
+                              onChange={(event) => setDecisionDrafts((previous) => ({ ...previous, [plan.plan_id]: event.target.value }))}
+                              className="mt-1 w-full rounded border border-slate-700 bg-slate-900 p-2 text-slate-100"
+                              rows={2}
+                            />
+                          </label>
+                          <div className="mt-2 flex flex-wrap gap-2">
+                            <button type="button" disabled={!apiKey || caseBusy} onClick={() => void decideCasePlaybook(plan, "approve")} className="rounded border border-emerald-800 px-3 py-1.5 text-emerald-200 disabled:opacity-50">Approve for manual review</button>
+                            <button type="button" disabled={!apiKey || caseBusy} onClick={() => void decideCasePlaybook(plan, "reject")} className="rounded border border-rose-900 px-3 py-1.5 text-rose-200 disabled:opacity-50">Reject</button>
+                          </div>
+                          {plan.decisions.length > 0 && (
+                            <ul className="mt-3 space-y-2 border-t border-slate-800 pt-3 text-slate-400">
+                              {plan.decisions.map((entry) => (
+                                <li key={entry.decision_id}>
+                                  <span className="text-slate-200">{entry.reviewer} {entry.decision === "approve" ? "approved" : "rejected"}:</span> {entry.rationale}
+                                  <span className="ml-2 text-slate-600">{entry.created_at}</span>
+                                </li>
+                              ))}
+                            </ul>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                    <label className="text-slate-400">
+                      Status
+                      <select
+                        value={item.status}
+                        disabled={caseBusy}
+                        onChange={(event) => void updateCase(item.case_id, { status: event.target.value as IncidentCaseRecord["status"] })}
+                        className="ml-2 rounded border border-slate-700 bg-slate-900 px-2 py-1 text-slate-100"
+                      >
+                        {["open", "in_progress", "resolved", "closed"].map((value) => <option key={value}>{value}</option>)}
+                      </select>
+                    </label>
+                  </div>
+                  <div className="mt-4 flex flex-wrap gap-2">
+                    <input
+                      aria-label={`Assignee for ${item.title}`}
+                      value={assigneeDrafts[item.case_id] ?? ""}
+                      onChange={(event) => setAssigneeDrafts((previous) => ({ ...previous, [item.case_id]: event.target.value }))}
+                      placeholder="Assign to analyst"
+                      className="min-w-48 rounded border border-slate-700 bg-slate-900 px-3 py-2"
+                    />
+                    <button
+                      type="button"
+                      disabled={caseBusy}
+                      onClick={() => void updateCase(item.case_id, { assigned_to: assigneeDrafts[item.case_id]?.trim() || null })}
+                      className="rounded border border-slate-700 px-3 py-2 text-cyan-200 disabled:opacity-50"
+                    >
+                      Save assignment
+                    </button>
+                  </div>
+                  <div className="mt-4 grid gap-3 md:grid-cols-2">
+                    <div>
+                      <label className="block text-slate-400">
+                        Add note
+                        <textarea
+                          value={noteDrafts[item.case_id] ?? ""}
+                          onChange={(event) => setNoteDrafts((previous) => ({ ...previous, [item.case_id]: event.target.value }))}
+                          className="mt-1 w-full rounded border border-slate-700 bg-slate-900 p-2 text-slate-100"
+                          rows={2}
+                        />
+                      </label>
+                      <button type="button" disabled={caseBusy} onClick={() => void addCaseNote(item.case_id)} className="mt-1 rounded border border-slate-700 px-3 py-1.5 text-cyan-200 disabled:opacity-50">Add note</button>
+                    </div>
+                    <div>
+                      <label className="block text-slate-400">
+                        Evidence reference (no file upload)
+                        <input
+                          value={evidenceDrafts[item.case_id] ?? ""}
+                          onChange={(event) => setEvidenceDrafts((previous) => ({ ...previous, [item.case_id]: event.target.value }))}
+                          className="mt-1 w-full rounded border border-slate-700 bg-slate-900 p-2 text-slate-100"
+                        />
+                      </label>
+                      <button type="button" disabled={caseBusy} onClick={() => void addCaseEvidence(item.case_id)} className="mt-1 rounded border border-slate-700 px-3 py-1.5 text-cyan-200 disabled:opacity-50">Add reference</button>
+                    </div>
+                  </div>
+                  {(item.notes ?? []).length > 0 && (
+                    <ul className="mt-4 space-y-1 border-t border-slate-800 pt-3 text-slate-400">
+                      {item.notes?.map((note) => <li key={note.note_id}><span className="text-slate-300">{note.author}:</span> {note.body}</li>)}
+                    </ul>
+                  )}
+                  {(item.evidence ?? []).length > 0 && (
+                    <ul className="mt-3 space-y-1 text-slate-400">
+                      {item.evidence?.map((evidence) => <li key={evidence.evidence_id}>Evidence · {evidence.source}: {evidence.reference}{evidence.sha256 ? ` · SHA-256 ${evidence.sha256}` : ""}</li>)}
+                    </ul>
+                  )}
+                </article>
+              ))}
+            </div>
+          )}
+          <p className="mt-4 text-xs text-slate-500">Case notes and evidence references are append-only. Evidence content is not uploaded or stored here. The API key is not saved by the dashboard.</p>
+          <div className="mt-5 border-t border-slate-800 pt-4">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <h3 className="font-semibold text-slate-200">Access audit</h3>
+                <p className="mt-1 text-xs text-slate-500">Shows authenticated case and playbook API access without request bodies or client IP addresses.</p>
+              </div>
+              <button type="button" disabled={!apiKey || caseBusy} onClick={() => void loadAccessAudit()} className="rounded border border-slate-700 px-3 py-2 text-slate-300 disabled:opacity-50">Load access audit</button>
+            </div>
+            {auditLimitations && <p className="mt-2 text-xs text-amber-300">{auditLimitations}</p>}
+            {accessAuditRecords.length > 0 && (
+              <ol className="mt-3 max-h-64 space-y-2 overflow-y-auto text-xs text-slate-400">
+                {accessAuditRecords.map((record) => (
+                  <li key={record.audit_id} className="flex flex-wrap justify-between gap-2 border-b border-slate-800 pb-2">
+                    <span>{record.action} · HTTP {record.outcome_code} · {record.record_type}</span>
+                    <span>{record.credential_fingerprint ?? "policy"} · {record.occurred_at}</span>
+                  </li>
+                ))}
+              </ol>
+            )}
+          </div>
+        </section>
+        <section className="mt-4 rounded-lg border border-slate-800 bg-slate-900 p-6 md:col-span-3">
           <h2 className="mb-4 text-sm font-semibold text-slate-300">Live incident stream</h2>
           <div className="max-h-72 space-y-2 overflow-y-auto">
             {incidents.length === 0 ? (
@@ -136,9 +1365,19 @@ export default function WorkbenchPage() {
             ) : incidents.map((item, index) => "timeline" in item ? (
               <article key={`${item.correlation_id}-${index}`} className="rounded border border-slate-800 bg-slate-950 p-4 text-xs">
                 <div className="flex flex-wrap items-center justify-between gap-3">
-                  <h3 className="font-bold text-cyan-300">Correlated incident · {item.correlation_id}</h3>
+                  <h3 className={`font-bold ${item.synthetic ? "text-violet-300" : "text-cyan-300"}`}>
+                    {item.synthetic ? `SYNTHETIC DEMO · ${item.scenario_title ?? "Scenario"}` : "Correlated incident"} · {item.correlation_id}
+                  </h3>
                   <span className="font-semibold text-amber-300">Reported priority: {item.priority}</span>
                 </div>
+                <button
+                  type="button"
+                  disabled={!apiKey || caseBusy}
+                  onClick={() => void createCase(item)}
+                  className="mt-3 rounded border border-cyan-700 px-3 py-1.5 text-cyan-200 disabled:opacity-50"
+                >
+                  Create case
+                </button>
                 <ul className="mt-3 space-y-1 text-slate-400">
                   {item.priority_reasons.map((reason) => <li key={reason}>• {reason}</li>)}
                 </ul>
