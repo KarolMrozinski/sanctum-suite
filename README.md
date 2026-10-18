@@ -5,7 +5,7 @@
   <p><b>Next-Generation AI Safety & Autonomous Cyber Resilience Platform</b></p>
 
   <p>
-    <i>Platforma państwowej cyber-odporności łącząca pasywne rozpoznanie infrastruktury, ewolucyjny Red-Teaming (Polymorphic Fuzzing & APT Emulation), profiling jądra eBPF Cilium, orkiestrację Parrot OS, audyt pamięci CUDA GPU, proxy L7 Guardrail, sieć pułapek Deception Mesh, audyt SBOM łańcucha dostaw oraz certyfikację z normami DORA, NIS2, ISO/IEC 42001 i OWASP ASVS.</i>
+    <i>Platforma państwowej cyber-odporności łącząca pasywne rozpoznanie infrastruktury, ewolucyjny Red-Teaming (Polymorphic Fuzzing & BAS Simulation), profiling jądra eBPF Cilium, orkiestrację Parrot OS, audyt pamięci CUDA GPU, proxy L7 Guardrail, sieć pułapek Deception Mesh, kryptograficzny łańcuch zaufania (Trust Chain), korelacje XDR oraz certyfikację z normami DORA, NIS2, ISO/IEC 42001 i OWASP ASVS.</i>
   </p>
 
   <p>
@@ -35,26 +35,26 @@
 
 **SANCTUM-SUITE** to platforma cyber-odporności stworzona z myślą o nowoczesnych zespołach Security, SOC i rządowych agencjach cyberbezpieczeństwa. Platforma zabezpiecza całe środowisko aplikacyjne – od niskopoziomowego jądra Linuksa (eBPF Cilium), kontenerów i pamięci VRAM GPU, aż po agenty LLM oraz infrastrukturę krytyczną.
 
-Dzięki automatyzacji opartej o profilowanie eBPF, polimorficzny fuzzing, sieć pułapek Deception Mesh, audyty łańcucha dostaw SBOM oraz autonomicznych agentów SOAR, SANCTUM drastycznie skraca czas reakcji na incydenty (MTTR) i samoczynnie wdraża łatki bezpieczeństwa (Self-Healing PRs).
+Dzięki automatyzacji opartej o korelacje XDR, kryptograficzny łańcuch zaufania, symulacje BAS, polimorficzny fuzzing, sieć pułapek Deception Mesh oraz audyty SBOM, SANCTUM drastycznie skraca czas reakcji na incydenty (MTTR) i samoczynnie wdraża łatki bezpieczeństwa (Self-Healing PRs).
 
 ### Kluczowe Filary Systemu
 
 <table>
   <tr>
     <td width="50%">
-      <h3>🛡️ eBPF Cilium & Polymorphic Fuzzer</h3>
+      <h3>🛡️ eBPF Cilium, XDR & Trust Chain</h3>
       <ul>
-        <li><b>Polymorphic Fuzzing Engine:</b> Ewolucyjna synteza i mutacja wektorów testowych omijająca statyczne sygnatury heurystyczne.</li>
+        <li><b>Realtime XDR Correlator:</b> Strumieniowa korelacja telemetrii bezpieczeństwa i eksport w standardach OpenTelemetry / STIX/TAXII.</li>
+        <li><b>Sovereign Trust Chain Verifier:</b> Kryptograficzna weryfikacja sum kontrolnych i podpisu modułów przed egzekucją.</li>
         <li><b>Cilium Security Profile Engine:</b> Automatyczna generacja reguł <i>CiliumNetworkPolicy</i> L3/L4/L7 w oparciu o profilowanie jądra (eBPF).</li>
-        <li><b>L7 Guardrail Sanitizer Proxy:</b> Filtrująca sanityzacja wejścia i wyjścia w komunikacji z modelami LLM/RAG.</li>
       </ul>
     </td>
     <td width="50%">
-      <h3>🏛️ DORA, ISO/IEC 42001 & Supply Chain SBOM</h3>
+      <h3>🏛️ Continuous BAS, SBOM & DORA Compliance</h3>
       <ul>
+        <li><b>Continuous BAS Simulator:</b> Ciągłe testy symulacji przełamań (Breach and Attack Simulation) w oparciu o PTES i OSSTMM.</li>
         <li><b>Supply Chain SBOM Audit:</b> Automatyczna dekonstrukcja zależności oprogramowania pod kątem podatności i norm NIS2/DORA.</li>
         <li><b>Deception Mesh Orchestrator:</b> Wdrążanie sieci pułapek (Honeytokens, Canary Credentials) w chmurze i środowiskach agentów LLM.</li>
-        <li><b>Global Regulatory Engine:</b> Automatyczna certyfikacja wymogów <b>DORA</b>, <b>NIS2</b>, <b>ISO/IEC 42001</b> oraz <b>NIST CSF 2.0</b>.</li>
       </ul>
     </td>
   </tr>
@@ -91,9 +91,9 @@ graph LR
     classDef core fill:#312e81,stroke:#818cf8,stroke-width:2px,color:#fff;
     classDef output fill:#064e3b,stroke:#34d399,stroke-width:1px,color:#fff;
 
-    Target["🎯 Domain / Infrastructure"] --> Mesh["🛡️ Deception Mesh & L7 Sanitizer"]
-    Mesh --> OSINT["🔍 SBOM Audit, Parrot & GPU Probe"]
-    OSINT --> RedTeam["🎭 Polymorphic Fuzzer, APT & Kernel Lab"]
+    Target["🎯 Domain / Infrastructure"] --> Trust["🔐 Trust Chain & XDR Correlator"]
+    Trust --> Mesh["🛡️ Deception Mesh & L7 Sanitizer"]
+    Mesh --> RedTeam["🎭 BAS Simulator, Polymorphic Fuzzer & APT"]
     RedTeam --> Correlator["🧠 Threat Correlator, DORA & ISO 42001"]
     Correlator --> Graph["🕸️ Attack Graph & Compliance Scorecard"]
     Graph --> SOAR["🤖 Autonomous SOAR Agent & K8s eBPF"]
@@ -101,6 +101,6 @@ graph LR
     Correlator --> Reports["📄 Signed RSA-2048 PDF/HTML Reports"]
 
     class Target target;
-    class Mesh,OSINT process;
+    class Trust,Mesh process;
     class RedTeam,Correlator,Graph core;
     class SOAR,Patch,Reports output;
