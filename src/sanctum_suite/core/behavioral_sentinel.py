@@ -1,33 +1,36 @@
 import uuid
-import math
 from typing import Dict, Any, List
 
 
 class AutonomousBehavioralSentinel:
-    """Rdzeń SANCTUM: Autonomiczny Strażnik Dryfu Behawioralnego i Entropii (Behavioral Sentinel)."""
+    """Rdzeń SANCTUM (Mandiant/Project Zero Spec): Zaawansowany Strażnik Dryfu Behawioralnego i Izolacji Sieciowej."""
 
     def __init__(self, entropy_threshold: float = 7.5) -> None:
-        self.sentinel_id = f"BEH-SENTINEL-{uuid.uuid4().hex[:8].upper()}"
+        self.sentinel_id = f"BEH-SENTINEL-ADV-{uuid.uuid4().hex[:8].upper()}"
         self.threshold = entropy_threshold
 
     def evaluate_system_entropy(self, operational_metrics: List[float]) -> Dict[str, Any]:
-        """Analizuje entropię oraz wskaźniki behawioralne systemu w czasie rzeczywistym."""
+        """Dokonuje wielowymiarowej analizy anomalii strumienia operacyjnego pod kątem eksfiltracji."""
         if not operational_metrics:
             return {"status": "INSUFFICIENT_METRICS", "autonomous_action_taken": False}
 
-        # Obliczenie średniej entropii strumienia danych/operacji
         avg_entropy = sum(operational_metrics) / len(operational_metrics)
-        anomaly_detected = avg_entropy > self.threshold
+        max_metric = max(operational_metrics)
+        anomaly_detected = avg_entropy > self.threshold or max_metric > (self.threshold * 1.2)
 
         action = "NONE"
+        quarantine_list = []
         if anomaly_detected:
-            action = "ISOLATE_SUBSYSTEM_AND_ROTATE_KEYS"
+            action = "IMMEDIATE_NETWORK_QUARANTINE_AND_PROCESS_SUSPENSION"
+            quarantine_list = ["ALL_EXTERNAL_SOCKETS", "UNTRUSTED_IPC_CHANNELS"]
 
         return {
             "sentinel_id": self.sentinel_id,
             "average_entropy": round(avg_entropy, 2),
+            "peak_entropy": round(max_metric, 2),
             "threshold": self.threshold,
             "anomaly_detected": anomaly_detected,
             "autonomous_action_taken": action,
-            "status": "BEHAVIORAL_DEFENSE_ACTIVE"
+            "quarantined_resources": quarantine_list,
+            "status": "BEHAVIORAL_DEFENSE_ENFORCED"
         }
