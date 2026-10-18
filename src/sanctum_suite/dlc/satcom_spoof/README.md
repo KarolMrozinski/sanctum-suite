@@ -2,10 +2,10 @@
 
   <br />
   <h1>🛰️ SANCTUM-DLC-SATCOM-SPOOF</h1>
-  <p><b>Orbital Security Audit, CCSDS Telemetry Analyzer & Uplink Spoofing Simulation Module</b></p>
+  <p><b>Disabled satellite telemetry and uplink testing placeholder</b></p>
 
   <p>
-    <i>Opcjonalny dodatek DLC do platformy SANCTUM-SUITE, symulujący zaawansowaną analizę dynamiki orbitalnej (efekt Dopplera), inspekcję ramek telekomunikacyjnych CCSDS oraz audyt odporności stacji naziemnych i satelitów na wstrzykiwanie komend.</i>
+    <i>Dodatek nie łączy się z satelitami ani radiem, nie analizuje telemetrii i nie wysyła komend. Wynik audytu ma status NOT_ASSESSED.</i>
   </p>
 
   <p>
@@ -21,7 +21,7 @@
 
 ## 🏛️ O module
 
-**SANCTUM-DLC-SATCOM-SPOOF** to enklawa symulacyjna stworzona z myślą o audycie bezpieczeństwa infrastruktury kosmicznej (Space-Sec). Moduł modeluje warunki fizyczne łączy LEO/MEO, weryfikuje podatności na braki uwierzytelniania w standardach telemetrii CCSDS oraz symuluje ataki typu *Command Injection* i *Replay*.
+**SANCTUM-DLC-SATCOM-SPOOF** nie jest zweryfikowanym audytem ani symulatorem łącza. Brak autoryzowanego laboratorium i adaptera CCSDS; nie przypisuje się podatności ani poziomu ryzyka.
 
 ---
 
@@ -33,16 +33,16 @@
       <h3>1. Orbital Doppler Engine</h3>
       <p><b>Plik:</b> <code>orbital_doppler.py</code></p>
       <ul>
-        <li>Obliczanie przesunięcia częstotliwości Dopplera dla satelitów LEO.</li>
-        <li>Modelowanie strat ścieżki w wolnej przestrzeni (Free Space Path Loss).</li>
+        <li>Brak zweryfikowanego modelu łącza satelitarnego.</li>
+        <li>Nie używać jako pomiaru ani prognozy operacyjnej.</li>
       </ul>
     </td>
     <td width="50%">
       <h3>2. CCSDS Telemetry Analyzer</h3>
       <p><b>Plik:</b> <code>ccsds_telemetry.py</code></p>
       <ul>
-        <li>Parsowanie nagłówków ramek telekomunikacyjnych CCSDS (APID, wersja).</li>
-        <li>Weryfikacja obecności kryptograficznego uwierzytelniania.</li>
+        <li>NOT_ANALYZED; ramki nie są parsowane.</li>
+        <li>Uwierzytelnianie nie jest oceniane.</li>
       </ul>
     </td>
   </tr>
@@ -51,15 +51,15 @@
       <h3>3. Uplink Spoofing Simulation</h3>
       <p><b>Plik:</b> <code>uplink_spoofing.py</code></p>
       <ul>
-        <li>Symulacja wstrzykiwania fałszywych komend sterujących (Command Injection).</li>
-        <li>Ocena ryzyka dla podsystemów kontroli orientacji (ADCS).</li>
+        <li>NOT_IMPLEMENTED; komendy nie są tworzone ani wysyłane.</li>
+        <li>Ryzyko dla ADCS nie jest oceniane.</li>
       </ul>
     </td>
     <td width="50%">
       <h3>4. Orkiestrator Główny</h3>
       <p><b>Plik:</b> <code>engine.py</code></p>
       <ul>
-        <li>Koordynacja pełnego audytu bezpieczeństwa łącza satelitarnego.</li>
+        <li>Zwraca NOT_ASSESSED; nie uruchamia audytu łącza.</li>
       </ul>
     </td>
   </tr>

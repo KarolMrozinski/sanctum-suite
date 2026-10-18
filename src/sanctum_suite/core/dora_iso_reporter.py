@@ -1,19 +1,25 @@
-from typing import Dict, Any, List
+from typing import Any
 
 
 class DoraIsoComplianceReporter:
-    """Automatyczny generator dokumentacji i kart zgodności dla norm DORA, ISO/IEC 42001 oraz NIS2."""
+    """Summarizes findings for review without asserting certification readiness."""
 
-    def generate_audit_scorecard(self, system_findings: List[Dict[str, Any]]) -> Dict[str, Any]:
-        """Ewaluuje znaleziska infrastruktury pod kątem wymogów formalnych certyfikacji."""
-        critical_issues = [f for f in system_findings if f.get("severity") == "HIGH"]
-
+    def generate_audit_scorecard(self, system_findings: list[dict[str, Any]]) -> dict[str, Any]:
+        findings_requiring_review = [
+            finding
+            for finding in system_findings
+            if str(finding.get("severity", "")).upper() in {"HIGH", "CRITICAL"}
+        ]
         return {
             "standard_evaluations": {
-                "DORA_Art_6_ICT_Risk_Management": "COMPLIANT" if not critical_issues else "NON_COMPLIANT",
-                "ISO_IEC_42001_AIMS_Clause_6": "SATISFIED",
-                "NIS2_Art_21_Cybersecurity_Risk_Measures": "VERIFIED",
+                "DORA_Art_6_ICT_Risk_Management": "NOT_ASSESSED",
+                "ISO_IEC_42001_AIMS_Clause_6": "NOT_ASSESSED",
+                "NIS2_Art_21_Cybersecurity_Risk_Measures": "NOT_ASSESSED",
             },
-            "readiness_status": "CERTIFICATION_READY" if not critical_issues else "REMEDIATION_REQUIRED",
-            "critical_blockers_count": len(critical_issues),
+            "readiness_status": "NOT_ASSESSED",
+            "findings_requiring_review": len(findings_requiring_review),
+            "limitations": (
+                "Technical findings do not determine organizational applicability, "
+                "control effectiveness, or certification readiness."
+            ),
         }

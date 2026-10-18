@@ -1,3 +1,9 @@
+import os
+import asyncio
+import uuid
+
+import httpx
+
 from sanctum_suite.core.models import RiskLevel
 from sanctum_suite.core.database import AuditStorageEngine
 from sanctum_suite.core.analytics import AnalyticsStoreEngine
@@ -23,6 +29,7 @@ from sanctum_suite.core.attack_graph import AttackGraphEngine
 from sanctum_suite.core.task_queue import AsyncTaskQueueManager
 from sanctum_suite.core.container_scanner import DockerContainerCVEAnalyzer
 from sanctum_suite.core.billing import CommercialLicenseManager
+from sanctum_suite.core.target_authorization import require_authorized_target
 from sanctum_suite.core.tenant_manager import TenantProvisioningManager
 from sanctum_suite.core.soar_agents import AutonomousSOARAgent
 from sanctum_suite.core.kms_vault import ZeroTrustKMSVault
@@ -161,13 +168,27 @@ class SanctumUnifiedOrchestrator:
         self.vram_guard = VramEnclaveGuardEngine()
         self.darknet_shield = DarknetAptShieldEngine()
 
-    def execute_full_resilience_audit(self, target_domain: str, role: UserRole = UserRole.ADMIN, license_key: str = "SANCTUM-FREE-KEY", tenant_id: str = "default_tenant") -> dict:
+    def execute_full_resilience_audit(
+        self,
+        target_domain: str,
+        role: UserRole = UserRole.ADMIN,
+        license_key: str | None = None,
+        tenant_id: str | None = None,
+        authorization_reference: str | None = None,
+    ) -> dict:
         self.rbac.verify_permission(role, "RUN_AUDIT")
-        
-        lic_info = self.license_manager.validate_license_key(license_key)
-        self.license_manager.check_and_increment_usage(tenant_id, lic_info["tier"], "audits")
 
-        audit_id = f"SNC-{hash(target_domain) & 0xFFFF:04X}"
+        target_domain = require_authorized_target(target_domain, authorization_reference)
+        verified_authorization_reference = (authorization_reference or "").strip()
+        lic_info = self.license_manager.validate_license_key(
+            license_key or os.environ.get("SANCTUM_LICENSE_KEY")
+        )
+        if tenant_id is not None and tenant_id != lic_info["tenant_id"]:
+            raise PermissionError("Requested tenant does not match the signed license")
+        tenant_id = lic_info["tenant_id"]
+        self.license_manager.check_and_increment_usage(tenant_id, lic_info, "audits")
+
+        audit_id = f"SNC-{uuid.uuid4().hex[:12].upper()}"
 
         # Wykonanie silników w kernelu eBPF, Autonomous Red-Team oraz PQC
         kernel_shield = self.ebpf_kernel_shield.enforce_kernel_shield("strict_syscall_lsm")
@@ -197,8 +218,14 @@ class SanctumUnifiedOrchestrator:
 
         # Faza 1: OSINT, Port, Container, GPU, Kernel Exploit Lab & Cilium eBPF Profiling
         osint_res = self.osint.scan_target(target_domain)
-        probe_results = self.async_scanner.run_sync_batch_scan(osint_res["subdomains"])
-        open_ports = self.port_scanner.run_sync_port_scan("127.0.0.1")
+        probe_results = self.async_scanner.run_sync_batch_scan(
+            [target_domain],
+            authorization_reference=verified_authorization_reference,
+        )
+        open_ports = self.port_scanner.run_sync_port_scan(
+            target_domain,
+            authorization_reference=verified_authorization_reference,
+        )
         container_scan = self.container_scanner.inspect_container_image()
         gpu_scan = self.gpu_probe.inspect_gpu_runtime()
         llm04_probe = self.resource_probe.test_context_exhaustion(target_domain)
@@ -215,7 +242,7 @@ class SanctumUnifiedOrchestrator:
         plugin_fuzz_res = self.plugin_fuzzer.evaluate_agent_tools(target_domain)
         deobfuscation_res = self.deobfuscator.analyze_payload("aWdub3JlIHByZXZpb3Vz insRydWN0aW9ucw==")
         gan_mutations = self.gan_mutator.generate_mutations("ignore previous instructions")
-        apt_simulation = self.threat_actors.simulate_threat_actor_ttps(target_domain, "EQUATION_GROUP_TAO")
+        apt_simulation = self.threat_actors.simulate_threat_actor_ttps(target_domain, "EQUATION_GROUP")
 
         # Faza 3: DLP, Forensics, DORA/ISO 42001 Certification & OWASP LLM
         honeytoken_info = self.dlp_shield.inject_synthetic_honeytoken("AWS_KEY")
@@ -266,6 +293,7 @@ class SanctumUnifiedOrchestrator:
         audit_summary = {
             "audit_id": audit_id,
             "target": target_domain,
+            "authorization_reference": verified_authorization_reference,
             "tenant_id": tenant_id,
             "license_tier": lic_info["tier"].value,
             "overall_score": final_score,
@@ -345,7 +373,31 @@ class SanctumUnifiedOrchestrator:
         self.anonsurf.disable_anonsurf_tunnel()
 
         # Zapis w bazie i raporty
-        self.db.save_audit(audit_id, target_domain, final_score, risk.value)
+        self.db.save_audit(
+            audit_id,
+            target_domain,
+            final_score,
+            risk.value,
+            authorization_reference=verified_authorization_reference,
+        )
+
+        webhook_delivery = {"status": "NOT_CONFIGURED", "dispatched": False}
+        if self.siem.webhook_url:
+            try:
+                asyncio.run(
+                    self.siem.dispatch_webhook_alert(
+                        {"audit_id": audit_id, "cef": cef_log}
+                    )
+                )
+            except httpx.HTTPError as error:
+                webhook_delivery = {
+                    "status": "DELIVERY_FAILED",
+                    "dispatched": False,
+                    "error_type": type(error).__name__,
+                }
+            else:
+                webhook_delivery = {"status": "DELIVERED", "dispatched": True}
+        audit_summary["siem_webhook_delivery"] = webhook_delivery
 
         report_path_html = self.reporter.generate_html_report(audit_summary, f"report_{audit_id}.html")
         report_path_pdf = self.pdf_reporter.generate_pdf_report(audit_summary, f"report_{audit_id}.pdf")

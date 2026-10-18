@@ -5,6 +5,8 @@ class K8sCiliumOperator:
     """Operator mikrosegmentacji i izolacji eBPF dla klastrów Kubernetes."""
 
     def enforce_pod_quarantine(self, pod_name: str, namespace: str = "default") -> Dict[str, Any]:
+        if not pod_name.strip() or not namespace.strip():
+            raise ValueError("A pod and namespace are required")
         """Aplikuje dynamiczną politykę izolacji sieciowej dla wyznaczonego poda."""
         generated_policy = {
             "apiVersion": "cilium.io/v2",
@@ -23,8 +25,9 @@ class K8sCiliumOperator:
         }
 
         return {
-            "status": "QUARANTINE_POLICY_APPLIED",
+            "status": "POLICY_GENERATED_NOT_APPLIED",
             "target_pod": pod_name,
             "namespace": namespace,
             "applied_policy": generated_policy,
+            "cluster_mutated": False,
         }

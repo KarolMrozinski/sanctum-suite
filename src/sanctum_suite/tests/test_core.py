@@ -1,4 +1,10 @@
+import base64
+import json
+import time
+
 import pytest
+from cryptography.hazmat.primitives import serialization
+from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 from sanctum_suite.core.signer import SecurityReportSigner
 from sanctum_suite.core.mitre import MitreMapperEngine
 from sanctum_suite.core.remediation import RemediationPlaybookEngine
@@ -68,6 +74,7 @@ from sanctum_suite.core.threat_intel import SovereignThreatIntelAggregator
 from sanctum_suite.core.zero_trust_mesh import ZeroTrustMeshProtocolEngine
 from sanctum_suite.core.self_healing import SelfHealingBinaryEngine
 from sanctum_suite.core.vram_guard import VramEnclaveGuardEngine
+from sanctum_suite.modules.shadow import ShadowAgentModule
 
 def test_mitre_mapping():
     mitre = MitreMapperEngine()
@@ -107,9 +114,22 @@ def test_guardrail_proxy():
 
 def test_siem_exporter():
     exporter = SIEMIntegrationExporter()
-    cef = exporter.format_cef_event("SNC-0001", "test.com", 75.0, "HIGH")
+    cef = exporter.format_cef_event(
+        "SNC-0001",
+        "test.com|suser=attacker\n",
+        75.0,
+        "HIGH",
+    )
     assert "CEF:0|SANCTUM-SUITE" in cef
-    assert "suser=test.com" in cef
+    assert "suser=test.com\\|suser\\=attacker\\n" in cef
+    with pytest.raises(RuntimeError, match="No SIEM webhook is configured"):
+        import asyncio
+
+        asyncio.run(exporter.dispatch_webhook_alert({"event": "test"}))
+    with pytest.raises(ValueError, match="HTTPS"):
+        SIEMIntegrationExporter("http://example.com/hook")._validate_webhook_url(
+            "http://example.com/hook"
+        )
 
 
 @pytest.mark.asyncio
@@ -125,6 +145,8 @@ def test_detection_rules():
 
     assert "title: SANCTUM AI Prompt Injection" in sigma
     assert "rule SANCTUM_Prompt_Injection_Pattern_SNC_1234" in yara
+    with pytest.raises(ValueError, match="audit_id"):
+        gen.generate_yara_rule("bad\nrule")
 
 
 def test_ml_anomaly_detector():
@@ -136,8 +158,17 @@ def test_ml_anomaly_detector():
 def test_multi_turn_fuzzer():
     fuzzer = MultiTurnJailbreakFuzzer()
     res = fuzzer.execute_multi_turn_fuzzing("test.com")
-    assert res["conversations_tested"] > 0
-    assert len(res["vulnerabilities"]) > 0
+    assert res["status"] == "NOT_EXECUTED"
+    assert res["conversations_tested"] == 0
+    assert res["vulnerabilities"] is None
+
+
+def test_shadow_agent_does_not_infer_vulnerabilities_from_hostnames():
+    result = ShadowAgentModule().evaluate_llm_endpoints(["https://api.example.com"])
+    assert result["status"] == "NOT_ASSESSED"
+    assert result["assessment_performed"] is False
+    assert result["endpoints_scanned"] == 0
+    assert result["vulnerabilities"] is None
 
 
 @pytest.mark.asyncio
@@ -164,21 +195,25 @@ async def test_event_bus():
 def test_auto_patcher():
     patcher = AutomatedPatchEngine()
     res = patcher.generate_remediation_patch([{"issue": "PROMPT_INJECTION_RISK"}])
-    assert res["patch_applied"] is True
+    assert res["patch_applied"] is False
+    assert res["status"] == "PATCH_TEMPLATE_NOT_APPLIED"
     assert "Unified Diff" in res["recommendation"] or len(res["unified_diff"]) > 0    
 
 def test_multimodal_fuzzer():
     fuzzer = MultimodalSafetyFuzzer()
     res = fuzzer.evaluate_visual_prompts("test.com")
-    assert res["images_scanned"] == 5
-    assert len(res["vulnerabilities"]) > 0
+    assert res["status"] == "NOT_EXECUTED"
+    assert res["images_scanned"] == 0
+    assert res["vulnerabilities"] is None
 
 
 @pytest.mark.asyncio
 async def test_github_integration():
     gh = GitHubAutomatedPRPublisher()
     res = await gh.create_auto_fix_pr("auto-fix-branch", "diff_patch", "Fix Prompt Injection")
-    assert "pr_url" in res
+    assert res["status"] == "NOT_IMPLEMENTED"
+    assert res["created"] is False
+    assert res["pr_url"] is None
 
 
 def test_rbac_permissions():
@@ -193,8 +228,10 @@ def test_compliance_engine():
     open_ports = [{"port": 11434}]
 
     res = engine.evaluate_compliance(shadow_vulns, open_ports)
-    assert res["eu_ai_act"]["article_15_cybersecurity"] == "NON_COMPLIANT"
-    assert res["iso_27001"]["control_A_8_8_technical_vulnerabilities"] == "FAIL"
+    assert res["eu_ai_act"]["status"] == "NOT_ASSESSED"
+    assert res["iso_27001"]["status"] == "NOT_ASSESSED"
+    assert "PROMPT_INJECTION_RISK_OBSERVED" in res["eu_ai_act"]["review_signals"]
+    assert res["overall_compliance_grade"] == "NOT_ASSESSED"
 
 
 def test_attack_graph_engine():
@@ -253,25 +290,65 @@ def test_task_queue_manager():
 def test_container_cve_analyzer():
     analyzer = DockerContainerCVEAnalyzer()
     res = analyzer.inspect_container_image("sanctum-suite:latest")
-    assert res["vulnerabilities_found"] >= 1
-    assert "cve_id" in res["cves"][0]    
+    assert res["status"] == "NOT_SCANNED"
+    assert res["scanner_configured"] is False
+    assert res["vulnerabilities_found"] is None
+    assert res["cves"] is None
 
-def test_commercial_license_validation():
-    mgr = CommercialLicenseManager()
+def test_commercial_license_validation(tmp_path):
+    private_key = Ed25519PrivateKey.generate()
+    public_key_pem = private_key.public_key().public_bytes(
+        encoding=serialization.Encoding.PEM,
+        format=serialization.PublicFormat.SubjectPublicKeyInfo,
+    )
+    claims = {
+        "license_id": "license-123",
+        "tenant_id": "tenant-01",
+        "tier": LicenseTier.ENTERPRISE.value,
+        "exp": int(time.time()) + 3600,
+        "limits": {"max_audits_per_month": 1, "max_prompts_per_day": 3},
+        "features": ["audit"],
+    }
+    encoded_claims = base64.urlsafe_b64encode(
+        json.dumps(claims, separators=(",", ":")).encode()
+    ).rstrip(b"=").decode()
+    signature = base64.urlsafe_b64encode(
+        private_key.sign(encoded_claims.encode("ascii"))
+    ).rstrip(b"=").decode()
+    token = f"{encoded_claims}.{signature}"
+    mgr = CommercialLicenseManager(public_key_pem, tmp_path / "usage.sqlite3")
+    entitlement = mgr.validate_license_key(token)
+    assert entitlement["tier"] == LicenseTier.ENTERPRISE
+    with pytest.raises(HTTPException) as feature_error:
+        mgr.check_and_increment_usage("tenant-01", entitlement, "prompts")
+    assert feature_error.value.status_code == 403
+    mgr.check_and_increment_usage("tenant-01", entitlement)
+    with pytest.raises(HTTPException) as quota_error:
+        mgr.check_and_increment_usage("tenant-01", entitlement)
+    assert quota_error.value.status_code == 429
+    with pytest.raises(HTTPException) as tenant_error:
+        mgr.check_and_increment_usage("tenant-02", entitlement)
+    assert tenant_error.value.status_code == 403
+    with pytest.raises(HTTPException) as forged_error:
+        mgr.validate_license_key("SANCTUM-FREE-KEY")
+    assert forged_error.value.status_code == 402
 
-    free_lic = mgr.validate_license_key("SANCTUM-FREE-KEY")
-    assert free_lic["tier"] == LicenseTier.COMMUNITY
-
-    ent_lic = mgr.validate_license_key("SNC-ENT-999")
-    assert ent_lic["tier"] == LicenseTier.ENTERPRISE
+def test_license_validation_fails_closed_without_issuer_key():
+    with pytest.raises(HTTPException) as error:
+        CommercialLicenseManager().validate_license_key("any-token")
+    assert error.value.status_code == 503
 
 
 def test_tenant_provisioning_manager():
     mgr = TenantProvisioningManager()
-    tenant = mgr.register_tenant("tenant-01", "Acme Cyber Corp", "SNC-ENT-999")
+    tenant = mgr.register_tenant("tenant-01", "Acme Cyber Corp")
 
     assert tenant["tenant_id"] == "tenant-01"
-    assert tenant["db_schema"] == "tenant_tenant_01" 
+    assert tenant["status"] == "NOT_IMPLEMENTED"
+    assert tenant["data_isolation"] == "NOT_IMPLEMENTED"
+    assert tenant["record_persisted"] is False
+    with pytest.raises(RuntimeError, match="not implemented"):
+        mgr.get_tenant_config("unknown")
 
 def test_soar_agent_execution():
     agent = AutonomousSOARAgent()
@@ -280,8 +357,9 @@ def test_soar_agent_execution():
         "open_ports": [{"port": 11434}],
     }
     res = agent.evaluate_and_remediate(mock_audit)
-    assert res["status"] == "REMEDIATION_EXECUTED"
-    assert res["actions_count"] >= 2
+    assert res["status"] == "RECOMMENDATIONS_READY"
+    assert res["actions_executed"] == 0
+    assert len(res["recommendations"]) >= 2
 
 
 def test_kms_vault_envelope_encryption():
@@ -291,6 +369,8 @@ def test_kms_vault_envelope_encryption():
     envelope = kms.encrypt_payload(secret_text)
     assert "ciphertext" in envelope
     assert "encrypted_dek" in envelope
+    assert envelope["key_management"] == "LOCAL_EPHEMERAL_PROCESS_MEMORY"
+    assert envelope["production_kms_configured"] == "false"
 
     decrypted = kms.decrypt_payload(envelope)
     assert decrypted == secret_text     
@@ -306,14 +386,18 @@ def test_payload_deobfuscator():
 def test_agent_tool_fuzzer():
     fuzzer = AgentToolPluginFuzzer()
     res = fuzzer.evaluate_agent_tools("agent-core.internal")
-    assert res["indirect_injection_susceptible"] is True
+    assert res["status"] == "NOT_ASSESSED"
+    assert res["test_harness_configured"] is False
+    assert res["indirect_injection_susceptible"] is None
 
 
 def test_xdr_telemetry_sync():
     sync = EDRTelemetrySyncEngine()
     res = sync.sync_endpoint_telemetry("SNC-1234")
-    assert res["edr_status"] == "CONNECTED"
-    assert res["correlated_events_count"] >= 1  
+    assert res["edr_status"] == "NOT_CONFIGURED"
+    assert res["provider_connected"] is False
+    assert res["correlated_events_count"] is None
+    assert res["events"] is None
 
 def test_gan_mutator_engine():
     mutator = GANMutatorEngine()
@@ -325,7 +409,8 @@ def test_gan_mutator_engine():
 def test_k8s_cilium_operator():
     op = K8sCiliumOperator()
     res = op.enforce_pod_quarantine("test-pod")
-    assert res["status"] == "QUARANTINE_POLICY_APPLIED"
+    assert res["status"] == "POLICY_GENERATED_NOT_APPLIED"
+    assert res["cluster_mutated"] is False
     assert res["applied_policy"]["kind"] == "CiliumNetworkPolicy"
 
 
@@ -341,48 +426,54 @@ def test_dlp_shield_engine():
 def test_parrot_sec_engine():
     engine = ParrotSecEngine()
     res = engine.run_recon_audit("127.0.0.1")
-    assert res["engine"] == "ParrotSecEngine 6.x"
-    assert res["status"] == "COMPLETED"
+    assert res["engine"] == "ParrotSecEngine"
+    assert res["status"] == "NOT_EXECUTED"
+    assert res["tools_executed"] == []
+    assert res["network_requests_made"] is False
 
 
 def test_anonsurf_proxy_module():
     proxy = AnonSurfProxyModule()
     start_res = proxy.enable_anonsurf_tunnel()
-    assert start_res["status"] == "ANONSURF_ACTIVE"
-    assert start_res["circuit_id"] is not None
+    assert start_res["status"] == "NOT_IMPLEMENTED"
+    assert start_res["tunnel_active"] is False
 
     stop_res = proxy.disable_anonsurf_tunnel()
-    assert stop_res["status"] == "ANONSURF_DISABLED"
+    assert stop_res["status"] == "NOT_IMPLEMENTED"
 
 
 def test_parrot_forensics_engine():
     forensics = ParrotForensicsEngine()
     res = forensics.analyze_memory_dump("dump.raw")
-    assert res["forensic_status"] == "ANALYSIS_COMPLETE"
-    assert res["integrity_verified"] is True   
+    assert res["forensic_status"] == "NOT_ANALYZED"
+    assert res["analysis_performed"] is False
+    assert res["integrity_verified"] is None
 
 def test_parrot_container_orchestrator():
     orchestrator = ParrotContainerOrchestrator()
     container_info = orchestrator.spawn_parrot_microcontainer("RECON")
     assert "container_id" in container_info
-    assert container_info["status"] == "RUNNING"
+    assert container_info["status"] == "NOT_STARTED"
+    assert container_info["container_started"] is False
 
     term_res = orchestrator.terminate_container(container_info["container_id"])
-    assert term_res["status"] == "TERMINATED"
+    assert term_res["status"] == "NO_CONTAINER_WAS_STARTED"
 
 
 def test_nist_compliance_engine():
     engine = NistComplianceEngine()
     eval_res = engine.evaluate_frameworks([])
-    assert eval_res["nist_ai_rmf"]["govern"] == "PASS"
-    assert eval_res["overall_compliance"] == "PASS"
+    assert eval_res["nist_ai_rmf"]["status"] == "NOT_ASSESSED"
+    assert eval_res["overall_compliance"] == "NOT_ASSESSED"
 
 
 def test_gpu_memory_security_probe():
     probe = GPUMemorySecurityProbe()
     gpu_info = probe.inspect_gpu_runtime()
-    assert gpu_info["vram_status"] == "SECURE"
-    assert gpu_info["isolation_verified"] is True     
+    assert gpu_info["status"] == "NOT_ASSESSED"
+    assert gpu_info["vram_status"] == "NOT_ASSESSED"
+    assert gpu_info["isolation_verified"] is None
+    assert gpu_info["device_inspected"] is False
 
 def test_owasp_llm_compliance_engine():
     engine = OWASPLLMComplianceEngine()
@@ -391,60 +482,66 @@ def test_owasp_llm_compliance_engine():
     assert res["standard"] == "OWASP Top 10 for LLM Applications"
     assert res["category_breakdown"]["LLM01"] == 1
     assert res["category_breakdown"]["LLM06"] == 1
+    assert res["status"] == "FINDINGS_MAPPED_NOT_COMPLIANCE"
+    assert res["compliance_status"] == "NOT_ASSESSED"
+    empty = engine.evaluate_owasp_top10([])
+    assert empty["status"] == "NOT_ASSESSED"
+    assert empty["unmapped_findings"] == 0
 
 
 def test_llm04_resource_probe():
     probe = LLMResourceExhaustionProbe()
     res = probe.test_context_exhaustion("http://127.0.0.1:11434")
-    assert res["probe_type"] == "CONTEXT_WINDOW_SATURATION_LLM04"
-    assert res["status"] == "PASS"
+    assert res["probe_type"] == "BOUNDED_CONTEXT_RESOURCE_TEST_PLAN"
+    assert res["status"] == "NOT_EXECUTED"
+    assert res["network_requests_made"] is False
 
 
 def test_parrot_owasp_reporter():
     reporter = ParrotOwaspReporter()
     card = reporter.generate_compliance_scorecard({"compliance_status": "PASSED"}, {"overall_compliance": "PASS"})
-    assert card["certified_for_production"] is True
-    assert "Parrot Security OS 6.x" in card["environment"]    
+    assert card["certified_for_production"] is False
+    assert card["environment"]["os_version"] is None
 
 def test_sovereign_threat_actor_engine():
     engine = SovereignThreatActorEngine()
-    res = engine.simulate_threat_actor_ttps("enterprise.target.com", "EQUATION_GROUP_TAO")
-    assert res["simulated_actor"] == "EQUATION_GROUP_TAO"
-    assert "ZERO_DAY_KERNEL_EXPLOIT" in res["executed_ttps"]
-    assert res["status"] == "NEUTRALIZED_BY_SANCTUM_eBPF"
+    res = engine.simulate_threat_actor_ttps("authorized-lab", "EQUATION_GROUP")
+    assert res["threat_context"] == "EQUATION_GROUP"
+    assert res["techniques_executed"] == []
+    assert res["status"] == "PLANNING_CONTEXT_ONLY"
 
 
 def test_global_regulatory_engine():
     engine = GlobalRegulatoryEngine()
     res = engine.evaluate_global_compliance([])
-    assert res["dora_compliance"]["digital_operational_resilience"] == "COMPLIANT"
-    assert res["nis2_directive"]["supply_chain_security"] == "VERIFIED"
-    assert res["iso_iec_42001"]["ai_management_system"] == "CERTIFIED"
-    assert res["tiber_eu_readiness"]["threat_intelligence_targeted_testing"] == "READY"
+    assert res["status"] == "NOT_ASSESSED"
+    assert res["frameworks"]["DORA"] == "NOT_ASSESSED"
+    assert res["frameworks"]["NIS2"] == "NOT_ASSESSED"
 
 
 def test_lowlevel_resilience_engine():
     engine = LowLevelResilienceEngine()
     res = engine.execute_low_level_audit("kernel.target.com")
-    assert res["owasp_asvs_level"] == "LEVEL_3_ADVANCED"
-    assert res["ebpf_kernel_probe"]["tracing_status"] == "ACTIVE_BPF_EVENTS"
-    assert res["osstmm_security_metrics"]["raven_score"] > 90.0    
+    assert res["status"] == "NOT_EXECUTED"
+    assert res["discovery_executed"] is False
+    assert "OSSTMM" in res["frameworks_available_for_planning"]
 
 def test_exploit_lab_engine():
     lab = ExploitLabEngine()
     res = lab.inspect_kernel_mitigations()
-    assert res["kernel_hardening_score"] > 90.0
-    assert res["status"] == "HARDENED"
+    assert res["kernel_hardening_score"] is None
+    assert res["status"] == "NOT_ASSESSED"
+    assert res["tests_executed"] is False
 
 
 def test_cyber_plumber_network_engine():
     plumber = CyberPlumberNetworkEngine()
     tunnel = plumber.establish_multihop_tunnel("entry", "exit")
-    assert tunnel["status"] == "ESTABLISHED"
-    assert tunnel["encapsulation"] == "eBPF_SSH_SOCKS5"
+    assert tunnel["status"] == "NOT_IMPLEMENTED"
+    assert tunnel["network_changed"] is False
 
     td = plumber.teardown_tunnel(tunnel["tunnel_id"])
-    assert td["status"] == "CLOSED_AND_PURGED"
+    assert td["status"] == "NO_TUNNEL_WAS_CREATED"
 
 
 def test_spider_graph_osint_engine():
@@ -458,14 +555,17 @@ def test_cilium_security_profile_engine():
     engine = CiliumSecurityProfileEngine()
     res = engine.generate_least_privilege_policy("inference-engine", "sanctum-ns")
     assert res["status"] == "POLICY_GENERATED"
+    assert res["ebpf_profile_verified"] is None
+    assert res["cluster_connected"] is False
+    assert res["policy_applied"] is False
     assert res["policy"]["kind"] == "CiliumNetworkPolicy"
 
 
 def test_dora_iso_compliance_reporter():
     reporter = DoraIsoComplianceReporter()
     res = reporter.generate_audit_scorecard([])
-    assert res["readiness_status"] == "CERTIFICATION_READY"
-    assert res["standard_evaluations"]["DORA_Art_6_ICT_Risk_Management"] == "COMPLIANT"
+    assert res["readiness_status"] == "NOT_ASSESSED"
+    assert res["standard_evaluations"]["DORA_Art_6_ICT_Risk_Management"] == "NOT_ASSESSED"
 
 
 def test_l7_guardrail_sanitizer_proxy():
@@ -487,81 +587,131 @@ def test_polymorphic_fuzzing_engine():
 def test_deception_mesh_orchestrator():
     mesh = DeceptionMeshOrchestrator()
     res = mesh.deploy_canary_mesh("k8s-pod")
-    assert res["status"] == "DECEPTION_MESH_ACTIVE"
-    assert res["deployed_canary_token"] is not None
+    assert res["status"] == "NOT_DEPLOYED"
+    assert res["secrets_created"] is False
 
 
 def test_supply_chain_sbom_audit_engine():
     engine = SupplyChainSbomAuditEngine()
     res = engine.audit_software_bill_of_materials("sbom.json")
-    assert res["compliance_status"] == "PASSED_SECURE"
-    assert res["dependencies_scanned"] > 0    
+    assert res["status"] == "NOT_SCANNED"
+    assert res["compliance_status"] == "NOT_ASSESSED"
+    assert res["dependencies_scanned"] is None
+    assert res["vulnerable_components_found"] is None
 
 def test_realtime_xdr_mesh_correlator():
     correlator = RealtimeXdrMeshCorrelator()
-    res = correlator.ingest_telemetry_stream([{"source": "test", "event": "login"}])
-    assert res["status"] == "CORRELATED_CLEAN"
-    assert res["opentelemetry_status"] == "STREAMING_ACTIVE"
+    res = correlator.ingest_telemetry_stream([
+        {"event_id": "e1", "event_type": "login", "correlation_key": "user-1"},
+        {"event_id": "e2", "event_type": "privilege-change", "correlation_key": "user-1"},
+        {"event": "malformed"},
+    ])
+    assert res["status"] == "LOCAL_CORRELATION_ONLY"
+    assert res["events_accepted"] == 2
+    assert res["events_rejected"] == 1
+    assert res["correlations"][0]["event_ids"] == ["e1", "e2"]
+    assert res["correlations"][0]["threat_assessment"] == "NOT_ASSESSED"
 
 
 def test_sovereign_trust_chain_verifier():
     verifier = SovereignTrustChainVerifier()
-    res = verifier.verify_module_integrity("TestModule", b"binary_data")
+    content = b"binary_data"
+    unsigned = verifier.verify_module_integrity("TestModule", content)
+    assert unsigned["signature_valid"] is None
+    assert unsigned["status"] == "DIGEST_ONLY_NOT_AUTHENTICATED"
+
+    private_key = Ed25519PrivateKey.generate()
+    public_key = private_key.public_key().public_bytes(
+        encoding=serialization.Encoding.PEM,
+        format=serialization.PublicFormat.SubjectPublicKeyInfo,
+    )
+    res = verifier.verify_module_integrity(
+        "TestModule",
+        content,
+        private_key.sign(content),
+        public_key,
+    )
     assert res["signature_valid"] is True
-    assert res["trust_tier"] == "SECURE_BOOT_VERIFIED"
+    assert res["status"] == "SIGNATURE_VALID"
 
 
 def test_continuous_bas_simulator():
     sim = ContinuousBasSimulator()
     res = sim.execute_lateral_movement_simulation("test-zone")
-    assert res["lateral_movement_blocked"] is True
-    assert res["status"] == "SIMULATION_COMPLETED_SUCCESS"    
+    assert res["status"] == "PENDING_EXTERNAL_TELEMETRY"
+    assert res["detection_verified"] is None
+    assert res["lateral_movement_executed"] is False
 
 def test_industrial_scada_telemetry_auditor():
     auditor = IndustrialScadaTelemetryAuditor()
     res = auditor.audit_industrial_protocols("192.168.1.50")
-    assert res["status"] == "SCADA_SECURE"
-    assert res["industrial_hardening_score"] > 90.0
+    assert res["status"] == "NOT_ASSESSED"
+    assert res["network_requests_made"] is False
 
 
 def test_project_zero_binary_reversing_engine():
     engine = ProjectZeroBinaryReversingEngine()
     res = engine.analyze_firmware_binary("sample.bin")
-    assert res["status"] == "BINARY_ANALYSIS_PASSED"
-    assert res["backdoors_detected"] == 0
+    assert res["status"] == "NOT_ANALYZED"
+    assert res["analysis_performed"] is False
+    assert res["backdoors_detected"] is None
 
 
 def test_opsec_footprint_auditor():
     auditor = OpSecFootprintAuditor()
     res = auditor.evaluate_operational_footprint("target.internal")
-    assert res["status"] == "OPSEC_VERIFIED"
-    assert res["dns_sec_enabled"] is True    
+    assert res["status"] == "NOT_ASSESSED"
+    assert res["collection_performed"] is False
 
 def test_ebpf_in_kernel_enforcement_engine():
     engine = EbpfInKernelEnforcementEngine()
     res = engine.enforce_kernel_shield("strict_lsm")
-    assert res["status"] == "IN_KERNEL_SHIELD_ACTIVE"
-    assert res["lsm_hooks_active"] is True
+    assert res["status"] == "NOT_IMPLEMENTED"
+    assert res["lsm_hooks_active"] is False
+    assert res["enforcement_active"] is False
 
 
 def test_autonomous_agent_red_team_engine():
     engine = AutonomousAgentRedTeamEngine()
     res = engine.execute_autonomous_campaign("https://api.target.com")
-    assert res["status"] == "CAMPAIGN_COMPLETED_SECURE"
-    assert res["endpoints_explored"] > 0
+    assert res["status"] == "NOT_IMPLEMENTED"
+    assert res["execution_started"] is False
+    assert res["endpoints_explored"] is None
 
 
 def test_post_quantum_cryptographic_assurance_engine():
     engine = PostQuantumCryptographicAssuranceEngine()
     res = engine.audit_cryptographic_primitives()
-    assert res["status"] == "PQC_COMPLIANT_SECURE"
-    assert "CRYSTALS-Kyber" in res["lattice_algorithms_active"]    
+    assert res["status"] == "NOT_ASSESSED"
+    assert res["inventory_required"] is True
+    inventory = engine.audit_cryptographic_primitives([
+        {"algorithm": "ML-KEM", "location": "service-a"},
+        {"algorithm": "RSA", "location": "legacy-service"},
+    ])
+    assert inventory["status"] == "INVENTORY_REVIEW_REQUIRED"
+    assert inventory["algorithms"][0]["standard"] == "NIST FIPS 203"
+    assert inventory["algorithms"][1]["classification"] == "CLASSICAL_PUBLIC_KEY_ALGORITHM_REPORTED"
 
 def test_air_gap_data_diode_broker():
     broker = AirGapDataDiodeBroker()
     res = broker.enforce_unidirectional_transfer("data", "enclave-1")
-    assert res["status"] == "AIR_GAP_DIODE_TRANSFERRED"
-    assert res["return_channel_blocked"] is True
+    assert res["status"] == "UNSIGNED_MANIFEST_READY_FOR_MANUAL_OFFLINE_TRANSFER"
+    assert res["transmitted"] is False
+    assert res["return_channel_blocked"] is None
+    assert len(res["payload_sha256"]) == 64
+    private_key = Ed25519PrivateKey.generate()
+    public_key = private_key.public_key().public_bytes(
+        encoding=serialization.Encoding.PEM,
+        format=serialization.PublicFormat.SubjectPublicKeyInfo,
+    )
+    signed = broker.prepare_offline_package(
+        b"controlled test payload",
+        "enclave-1",
+        private_key.sign(b"controlled test payload"),
+        public_key,
+    )
+    assert signed["status"] == "SIGNED_PACKAGE_READY_FOR_MANUAL_OFFLINE_TRANSFER"
+    assert signed["signature_valid"] is True
 
 
 def test_diamond_model_threat_tracker():
@@ -574,45 +724,55 @@ def test_diamond_model_threat_tracker():
 def test_nist_sp800_53_control_assurance():
     auditor = NistSp80053ControlAssurance()
     res = auditor.audit_security_controls()
-    assert res["status"] == "NIST_CONTROLS_VERIFIED"
-    assert res["zta_architecture"] == "FULLY_ENFORCED_PEP_PDP"    
+    assert res["status"] == "NOT_ASSESSED"
+    assert res["zta_architecture"] == "NOT_ASSESSED"
 
 def test_purple_team_emulation_coordinator():
     coordinator = PurpleTeamEmulationCoordinator()
-    res = coordinator.coordinate_emulation_cycle("Vector", "Rule")
-    assert res["status"] == "PURPLE_TEAM_SYNCHRONIZED"
+    pending = coordinator.coordinate_emulation_cycle("scenario-1", "rule-1")
+    assert pending["status"] == "PENDING_EXTERNAL_TELEMETRY"
+    assert pending["detection_verified"] is None
+    assert pending["execution_mode"] == "OFFLINE_EVALUATION_ONLY"
+
+    res = coordinator.coordinate_emulation_cycle(
+        "scenario-1",
+        "rule-1",
+        [{"scenario_id": "scenario-1", "rule_id": "rule-1"}],
+    )
+    assert res["status"] == "DETECTION_OBSERVED"
     assert res["detection_verified"] is True
 
 
 def test_tempest_sdip27_emissions_auditor():
     auditor = TempestSdip27EmissionsAuditor()
     res = auditor.audit_enclave_emissions("Zone-1")
-    assert res["status"] == "TEMPEST_COMPLIANT_SECURE"
-    assert "SDIP-27" in res["tempest_standard"]
+    assert res["status"] == "NOT_ASSESSED"
+    assert "SDIP-27" in res["framework_reference"]
 
 
 def test_sovereign_threat_intel_aggregator():
     aggregator = SovereignThreatIntelAggregator()
     res = aggregator.aggregate_threat_feeds()
-    assert res["status"] == "THREAT_INTEL_SYNCHRONIZED"
-    assert "APT29" in res["apt_groups_tracked"]    
+    assert res["status"] == "FEED_NOT_CONFIGURED"
+    assert res["provider_connected"] is False
 
 def test_zero_trust_mesh_protocol():
     engine = ZeroTrustMeshProtocolEngine()
     res = engine.establish_secure_mesh_link("node-1", "node-2")
-    assert res["status"] == "ZERO_TRUST_MESH_SECURED"
-    assert res["crypto_handshake"] == "KYBER-1024 / DILITHIUM-V3"
+    assert res["status"] == "NOT_IMPLEMENTED"
+    assert res["connection_established"] is False
 
 
 def test_self_healing_binary_engine():
     engine = SelfHealingBinaryEngine()
     res = engine.evaluate_and_patch_memory_anomaly("test-pid")
-    assert res["status"] == "SELF_HEALING_APPLIED_SUCCESS"
-    assert res["downtime_seconds"] == 0.0
+    assert res["status"] == "NOT_IMPLEMENTED"
+    assert res["process_modified"] is False
 
 
 def test_vram_enclave_guard_engine():
     engine = VramEnclaveGuardEngine()
     res = engine.secure_gpu_memory_space("GPU-0")
-    assert res["status"] == "VRAM_ENCLAVE_PROTECTED"
-    assert res["aes_gcm_vram_encryption"] == "ENABLED"    
+    assert res["status"] == "NOT_IMPLEMENTED"
+    assert res["device_modified"] is False
+    assert res["encryption_status"] == "NOT_ASSESSED"

@@ -1,24 +1,15 @@
-from typing import List, Dict, Any
+from typing import Any
 
 
 class MultimodalSafetyFuzzer:
-    """Silnik testowania odporności modeli multimodalnych (Vision / Audio Prompt Injection)."""
+    """Reports image and audio prompt testing as unavailable without a test harness."""
 
-    def evaluate_visual_prompts(self, endpoint: str) -> Dict[str, Any]:
-        """Testuje odporność endpointu na ukryte wstrzyknięcia w obrazach i plikach graficznych."""
-        vulnerabilities = [
-            {
-                "endpoint": endpoint,
-                "attack_type": "VISUAL_PROMPT_INJECTION",
-                "severity": "HIGH",
-                "issue": "PROMPT_INJECTION_RISK",
-                "details": "Model extracted and executed adversarial hidden text embedded in input image.",
-            }
-        ]
-
+    def evaluate_visual_prompts(self, endpoint: str) -> dict[str, Any]:
         return {
             "endpoint": endpoint,
-            "images_scanned": 5,
-            "vulnerabilities": vulnerabilities,
-            "vision_resilience_score": 78.0,
+            "status": "NOT_EXECUTED",
+            "test_harness_configured": False,
+            "images_scanned": 0,
+            "vulnerabilities": None,
+            "vision_resilience_score": None,
         }

@@ -10,6 +10,13 @@ services:
     environment:
       SANCTUM_ENV: production
       SANCTUM_API_KEY: ${SANCTUM_API_KEY:?Set SANCTUM_API_KEY in the deployment secret store}
+      SANCTUM_AUTHORIZED_TARGETS: ${SANCTUM_AUTHORIZED_TARGETS:-}
+      SANCTUM_LICENSE_KEY: ${SANCTUM_LICENSE_KEY:-}
+      SANCTUM_LICENSE_PUBLIC_KEY: ${SANCTUM_LICENSE_PUBLIC_KEY:-}
+      SANCTUM_CONTROLS_DB: /data/controls.sqlite3
+      SANCTUM_BILLING_DB: /data/usage.sqlite3
+    volumes:
+      - sanctum_data:/data
     deploy:
       resources:
         limits:
@@ -23,3 +30,6 @@ services:
       interval: 15s
       timeout: 5s
       retries: 3
+
+volumes:
+  sanctum_data:

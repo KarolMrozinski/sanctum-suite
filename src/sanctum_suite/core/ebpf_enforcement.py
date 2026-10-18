@@ -1,19 +1,22 @@
 import uuid
-from typing import Dict, Any, List
+from typing import Any
 
 
 class EbpfInKernelEnforcementEngine:
-    """Silnik natychmiastowej mitygacji i blokowania anomalii w jądrze przy użyciu eBPF LSM hooks."""
+    """Reports eBPF profile prerequisites without claiming kernel enforcement."""
 
-    def enforce_kernel_shield(self, target_syscall_profile: str) -> Dict[str, Any]:
-        """Aktywuje filtry eBPF w przestrzeni jądra do blokowania prób memory corruption i zero-day w czasie rzeczywistym."""
-        shield_id = f"EBPF-LSM-{uuid.uuid4().hex[:8].upper()}"
-        
+    def enforce_kernel_shield(self, target_syscall_profile: str) -> dict[str, Any]:
+        profile = target_syscall_profile.strip()
+        if not profile:
+            raise ValueError("A named eBPF profile is required")
         return {
-            "shield_id": shield_id,
-            "profile": target_syscall_profile,
-            "lsm_hooks_active": True,
-            "kernel_enforcement_mode": "BLOCKING_DROP",
-            "latency_overhead_ns": 45,
-            "status": "IN_KERNEL_SHIELD_ACTIVE",
+            "shield_id": f"EBPF-PLAN-{uuid.uuid4().hex[:8].upper()}",
+            "profile": profile,
+            "status": "NOT_IMPLEMENTED",
+            "enforcement_active": False,
+            "lsm_hooks_active": False,
+            "requirements": [
+                "A reviewed eBPF program and supported kernel are required.",
+                "Privilege, verifier, attachment, and enforcement behavior must be tested on the target host.",
+            ],
         }

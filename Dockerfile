@@ -15,6 +15,7 @@ WORKDIR /app
 
 # Utworzenie nieuprzywilejowanego użytkownika systemowego sanctum (Non-Root)
 RUN useradd -m -u 10001 sanctumuser
+RUN mkdir -p /data && chown sanctumuser:sanctumuser /data
 
 COPY --from=builder /usr/local/lib/python3.11/site-packages /usr/local/lib/python3.11/site-packages
 COPY --from=builder /usr/local/bin /usr/local/bin

@@ -1,17 +1,24 @@
-from typing import Dict, Any
+from typing import Any
 
 
 class ParrotOwaspReporter:
-    """Generowanie zagregowanych kart wyników (Compliance Scorecard) dla Parrot OS i OWASP LLM."""
+    """Summarizes caller-supplied assessment states without certifying environments."""
 
-    def generate_compliance_scorecard(self, owasp_data: Dict[str, Any], nist_data: Dict[str, Any]) -> Dict[str, Any]:
-        """Syntezuje zbiorczy wskaźnik dojrzałości bezpieczeństwa (Resilience Score)."""
-        scorecard = {
-            "report_title": "SANCTUM-SUITE Enterprise Safety & Resilience Scorecard",
-            "environment": "Parrot Security OS 6.x / Sovereign Cloud",
-            "owasp_status": owasp_data.get("compliance_status", "UNKNOWN"),
-            "nist_status": nist_data.get("overall_compliance", "UNKNOWN"),
-            "resilience_index": "94.5 / 100",
-            "certified_for_production": True if owasp_data.get("compliance_status") == "PASSED" else False,
+    def generate_compliance_scorecard(
+        self,
+        owasp_data: dict[str, Any],
+        nist_data: dict[str, Any],
+        environment: dict[str, str | None] | None = None,
+    ) -> dict[str, Any]:
+        return {
+            "report_title": "SANCTUM-SUITE Assessment Summary",
+            "environment": environment or {"os_name": None, "os_version": None},
+            "owasp_status": owasp_data.get("status", "NOT_ASSESSED"),
+            "nist_status": nist_data.get("status", "NOT_ASSESSED"),
+            "resilience_index": None,
+            "certified_for_production": False,
+            "limitations": (
+                "This summary is not a certification, production-readiness determination, "
+                "or substitute for independent framework assessment."
+            ),
         }
-        return scorecard

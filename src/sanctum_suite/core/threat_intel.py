@@ -1,18 +1,29 @@
 import uuid
-from typing import Dict, Any, List
+from collections.abc import Mapping, Sequence
+from typing import Any
 
 
 class SovereignThreatIntelAggregator:
-    """Agregator globalnego wywiadu zagrożeń w standardzie STIX/TAXII i atrybucji APT."""
+    """Summarizes caller-supplied indicators without claiming feed connectivity."""
 
-    def aggregate_threat_feeds(self) -> Dict[str, Any]:
-        """Pobiera i koreluje wskaźniki IoC z Vx-Underground i feedów wywiadowczych (Mandiant/GCHQ)."""
-        feed_id = f"INTEL-{uuid.uuid4().hex[:8].upper()}"
-        
+    def aggregate_threat_feeds(
+        self,
+        indicators: Sequence[Mapping[str, Any]] | None = None,
+    ) -> dict[str, Any]:
+        if indicators is None:
+            return {
+                "feed_id": None,
+                "provider_connected": False,
+                "indicators_processed": 0,
+                "status": "FEED_NOT_CONFIGURED",
+            }
         return {
-            "feed_id": feed_id,
-            "stix_taxii_channel": "CONNECTED_ACTIVE",
-            "indicators_processed": 14250,
-            "apt_groups_tracked": ["APT29", "Sandworm", "Equation Group", "Unit 26165"],
-            "status": "THREAT_INTEL_SYNCHRONIZED",
+            "feed_id": f"OFFLINE-{uuid.uuid4().hex[:8].upper()}",
+            "provider_connected": False,
+            "indicators_processed": len(indicators),
+            "status": "CALLER_SUPPLIED_INDICATORS_COUNTED",
+            "limitations": (
+                "No external feed is queried, and no threat actor attribution, "
+                "enrichment, or STIX/TAXII validation is performed."
+            ),
         }

@@ -36,6 +36,8 @@ class CiliumSecurityProfileEngine:
             "pod_label": pod_label,
             "namespace": namespace,
             "status": "POLICY_GENERATED",
-            "ebpf_profile_verified": True,
+            "ebpf_profile_verified": None,
+            "cluster_connected": False,
+            "policy_applied": False,
             "policy": cilium_policy,
         }

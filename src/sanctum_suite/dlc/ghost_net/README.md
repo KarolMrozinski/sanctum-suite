@@ -2,10 +2,10 @@
 
   <br />
   <h1>👻 SANCTUM-DLC-GHOST-NET</h1>
-  <p><b>Decentralized P2P C2 Simulation, DGA & Covert Channel Exfiltration Module</b></p>
+  <p><b>Disabled C2 / covert-channel placeholder</b></p>
 
   <p>
-    <i>Opcjonalny dodatek DLC do platformy SANCTUM-SUITE, symulujący zaawansowane, odporne na cenzurę sieci dowodzenia i kontroli (C2), routing cebulowy oraz ukryte kanały eksfiltracji danych (DNS/ICMP Tunneling).</i>
+    <i>Ten dodatek nie tworzy sieci C2, nie generuje domen i nie koduje ani nie przesyła danych ukrytymi kanałami. Metody zwracają NOT_IMPLEMENTED.</i>
   </p>
 
   <p>
@@ -21,7 +21,7 @@
 
 ## 🏛️ O module
 
-**SANCTUM-DLC-GHOST-NET** to enklawa symulacyjna stworzona do testowania zdolności wykrywania ukrytych kanałów komunikacyjnych, odporności infrastruktury sieciowej na protokoły tunelujące oraz analizy zachowań zaawansowanych sieci C2 (Command and Control) w środowiskach o wysokim ryzyku inwigilacji.
+**SANCTUM-DLC-GHOST-NET** nie jest działającą symulacją ani narzędziem detekcyjnym. Nie wykonuje połączeń sieciowych ani testów; integracja wymaga osobnego, autoryzowanego i zweryfikowanego laboratorium.
 
 ---
 
@@ -33,17 +33,16 @@
       <h3>1. P2P Mesh & Onion Routing</h3>
       <p><b>Plik:</b> <code>p2p_mesh.py</code></p>
       <ul>
-        <li>Zdecentralizowana sieć przekaźnikowa P2P.</li>
-        <li>Wielowarstwowy routing cebulowy (Onion Layers).</li>
-        <li>Szyfrowanie transportowe ChaCha20-Poly1305.</li>
+        <li>NOT_IMPLEMENTED; sieć nie jest tworzona.</li>
+        <li>Brak routingu i szyfrowania transportowego.</li>
       </ul>
     </td>
     <td width="50%">
       <h3>2. DGA & Fast Flux</h3>
       <p><b>Plik:</b> <code>dga_fast_flux.py</code></p>
       <ul>
-        <li>Dynamiczne generowanie algorytmicznych domen (Domain Generation Algorithms).</li>
-        <li>Rotacja adresów i węzłów brzegowych.</li>
+        <li>NOT_IMPLEMENTED; domeny nie są generowane.</li>
+        <li>Brak rotacji adresów lub węzłów.</li>
       </ul>
     </td>
   </tr>
@@ -52,15 +51,15 @@
       <h3>3. Covert Channels Exfiltration</h3>
       <p><b>Plik:</b> <code>covert_channels.py</code></p>
       <ul>
-        <li>Tunelowanie danych przez zapytania DNS.</li>
-        <li>Eksfiltracja pakietów w protokole ICMP z maskowaniem TTL.</li>
+        <li>NOT_IMPLEMENTED; payload nie jest kodowany ani przesyłany.</li>
+        <li>Brak tunelowania DNS/ICMP.</li>
       </ul>
     </td>
     <td width="50%">
       <h3>4. Orkiestrator Główny</h3>
       <p><b>Plik:</b> <code>engine.py</code></p>
       <ul>
-        <li>Koordynacja całej symulacji ruchu C2 i generowanie telemetrii.</li>
+        <li>Zwraca stan NOT_IMPLEMENTED; nie tworzy telemetrii ani ruchu C2.</li>
       </ul>
     </td>
   </tr>

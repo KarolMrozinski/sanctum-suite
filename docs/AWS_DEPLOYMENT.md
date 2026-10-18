@@ -9,13 +9,17 @@ This is a deployment runbook, not a deployed stack or a security certification. 
 - Private subnets for tasks; security groups allow task ingress only from the ALB.
 - Route 53 records for the dashboard and API hostnames.
 - ECR repositories for versioned, scanned container images.
-- Secrets Manager for `SANCTUM_API_KEY` and `SANCTUM_LEAD_WEBHOOK_TOKEN`.
+- Secrets Manager for `SANCTUM_API_KEY`, `SANCTUM_LICENSE_KEY`, `SANCTUM_LICENSE_PUBLIC_KEY`, the exact `SANCTUM_AUTHORIZED_TARGETS` allowlist, and `SANCTUM_LEAD_WEBHOOK_TOKEN`.
 - CloudWatch Logs, alarms, retention policies, and audit logging.
 - S3 with versioning and lifecycle/retention policy for required backups and release artifacts.
 
 ## API task configuration
 
-Build and push the root Dockerfile to ECR. The container listens on port 8000 and `/readyz` is healthy only when a valid API key is present. In the ECS task definition, configure `SANCTUM_API_KEY` using the `secrets` field referencing a Secrets Manager ARN. Do not place the value in task-definition plaintext or the container image.
+Build and push the root Dockerfile to ECR. The container listens on port 8000 and `/readyz` is healthy only when a valid API key is present. In the ECS task definition, configure service credentials using the `secrets` field referencing Secrets Manager ARNs. Do not place values in task-definition plaintext or the container image. Provide `SANCTUM_AUTHORIZED_TARGETS` as an operator-maintained exact-host allowlist; an empty value blocks active checks. Provide only short-lived/expiring signed entitlement tokens where possible.
+
+Mount durable, access-restricted storage for `SANCTUM_CONTROLS_DB` and `SANCTUM_BILLING_DB`, and include them in backup/restore testing. SQLite persistence is single-instance and is not a multi-tenant SaaS data-isolation design.
+
+If the ALB terminates TLS and forwards plain HTTP to the API task, set `SANCTUM_TRUST_TLS_TERMINATION_PROXY=true` only with a task security group that accepts port 8000 exclusively from the ALB security group. Otherwise provide TLS files to the task or keep the app on loopback behind a local proxy.
 
 Create a unique API key with at least 32 bytes of entropy, such as `secrets.token_urlsafe(48)`. Store it in Secrets Manager and grant the task execution role only the permissions required to read that secret. Restrict API routes at the ALB/network boundary; API key authentication does not replace TLS, authorization, tenant isolation, or rate limiting.
 

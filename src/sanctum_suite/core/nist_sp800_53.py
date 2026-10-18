@@ -1,17 +1,22 @@
-from typing import Dict, Any, List
+from typing import Any
 
 
 class NistSp80053ControlAssurance:
-    """Silnik weryfikacji standardów NIST SP 800-53 Rev. 5, DoD RMF oraz architektury Zero Trust (ZTA)."""
+    """Creates an unassessed review summary; it does not probe or enforce controls."""
 
-    def audit_security_controls(self) -> Dict[str, Any]:
-        """Ewaluuje kontrolę dostępu, polityki PDP/PEP oraz wymagania rządowe i wojskowe."""
-        controls_evaluated = ["AC-2", "AC-3", "SC-7", "SI-4", "CP-9"]
-        
+    def audit_security_controls(
+        self,
+        assessment_records: list[dict[str, Any]] | None = None,
+    ) -> dict[str, Any]:
+        records = assessment_records or []
         return {
-            "framework": "NIST SP 800-53 Rev. 5 & DoD RMF",
-            "zta_architecture": "FULLY_ENFORCED_PEP_PDP",
-            "controls_checked": len(controls_evaluated),
-            "compliance_rating": "MILITARY_GRADE_COMPLIANT",
-            "status": "NIST_CONTROLS_VERIFIED",
+            "framework": "NIST SP 800-53 Rev. 5",
+            "status": "NOT_ASSESSED",
+            "controls_checked": 0,
+            "assessment_records_supplied": len(records),
+            "zta_architecture": "NOT_ASSESSED",
+            "limitations": (
+                "This summary does not test deployed controls, validate a Zero Trust "
+                "architecture, or establish DoD/NIST compliance."
+            ),
         }

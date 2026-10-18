@@ -43,3 +43,5 @@ The project is considered production-ready for controlled deployment and commerc
 - CLI commands run without encoding or terminal failures
 - security reporting flow is documented
 - deployment environment and secrets model are reviewed by the operator
+
+This repository does not currently establish production readiness, compliance, certification, or multi-tenant isolation. Active HTTPS/TCP checks require an exact host in `SANCTUM_AUTHORIZED_TARGETS`, a written authorization reference, and a valid signed entitlement. Do not use wildcard scopes or run tests outside written authorization. Network egress controls are required as defense in depth.

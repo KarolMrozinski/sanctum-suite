@@ -18,8 +18,9 @@ class AutomatedPatchEngine:
         ]
 
         return {
-            "patch_applied": True,
+            "patch_applied": False,
+            "status": "PATCH_TEMPLATE_NOT_APPLIED",
             "target_file": "app/llm_router.py",
             "unified_diff": "\n".join(patch_lines),
-            "recommendation": "Review and merge Pull Request #SANCTUM-AUTO-FIX",
+            "recommendation": "Review this illustrative patch manually; no repository or pull request was modified.",
         }
