@@ -187,6 +187,7 @@ def test_signed_zk_proof_binds_complete_checkpoint_and_verifies_all_chunks(
         checkpoint_file=checkpoint_file,
         archive_directory=archive,
         checkpoint_public_key_file=signer.public_key_path,
+        checkpoint_pqc_public_key_file=signer.pqc_public_key_path,
         wasm_file=wasm_file,
         proving_key_file=proving_key_file,
         verification_key_file=verification_key_file,
@@ -205,6 +206,7 @@ def test_signed_zk_proof_binds_complete_checkpoint_and_verifies_all_chunks(
         checkpoint_file=checkpoint_file,
         archive_directory=archive,
         checkpoint_public_key_file=signer.public_key_path,
+        checkpoint_pqc_public_key_file=signer.pqc_public_key_path,
         verification_key_file=verification_key_file,
     )
     assert verified_binding == binding
@@ -217,5 +219,6 @@ def test_signed_zk_proof_binds_complete_checkpoint_and_verifies_all_chunks(
             checkpoint_file=checkpoint_file,
             archive_directory=archive,
             checkpoint_public_key_file=signer.public_key_path,
+            checkpoint_pqc_public_key_file=signer.pqc_public_key_path,
             verification_key_file=verification_key_file,
         )

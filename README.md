@@ -234,10 +234,10 @@ Podłączenie tej ścieżki nie uruchamia automatycznych reakcji ani nie zasila 
 
 W trybie produkcyjnym API zapisuje minimalne zdarzenia audytowe do wersjonowanego MinIO Object Lock.
 
-- `sanctum audit-checkpoint` — eksport wersji obiektów i podpisany RSA-PSS hash-chain checkpoint.
-- `sanctum audit-verify` — niezależna weryfikacja checkpointu, archiwum, podpisu i ciągłości łańcucha na osobnym hoście.
+- `sanctum audit-checkpoint` — eksport wersji obiektów i checkpoint podpisany hybrydowo RSA-PSS + ML-DSA-65.
+- `sanctum audit-verify` — niezależna weryfikacja checkpointu, archiwum, obu podpisów i ciągłości łańcucha na osobnym hoście.
 
-Checkpoint potwierdza konkretny spis wersji zaobserwowany podczas skanowania — nie jest globalnym licznikiem czasu rzeczywistego ani dowodem prawdziwości zdarzeń. Limity eksportu: 100 000 wersji, 64 KiB na rekord, 256 MB danych. Procedura uprawnień: [przewodnik instalacji](./docs/INSTALLATION.md#minio-immutable-access-audit).
+Checkpoint potwierdza konkretny spis wersji zaobserwowany podczas skanowania — nie jest globalnym licznikiem czasu rzeczywistego ani dowodem prawdziwości zdarzeń. Nowe checkpointy wymagają podczas weryfikacji osobno zaufanego klucza RSA i klucza ML-DSA-65 (`--pqc-public-key-file`); starsze checkpointy RSA pozostają weryfikowalne. Lokalny ledger udostępnia RFC 6962 Merkle tree heads i consistency proofs, ale administrator bazy może przepisać bazę, jeśli nie ma niezależnie zachowanego tree head. Limity eksportu: 100 000 wersji, 64 KiB na rekord, 256 MB danych. Procedura uprawnień: [przewodnik instalacji](./docs/INSTALLATION.md#minio-immutable-access-audit); ograniczenia ledgerów: [runbook ledger](./docs/PRIVATE_LEDGER.md).
 
 ## 📚 Dokumentacja
 

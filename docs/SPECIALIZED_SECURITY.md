@@ -96,6 +96,28 @@ sanctum pqc-inventory --inventory "C:\Lab\crypto-inventory.json"
 
 The command accepts at most 1,000 entries in a 1 MiB JSON file. It classifies recognized ML-KEM, ML-DSA, and SLH-DSA family names against NIST FIPS 203/204/205 and reports classical public-key algorithms and unknown names for review. `PQXDH` is identified as a reported key-establishment protocol and requires separate review of the selected specification, implementation, and interoperability; it is not a NIST-standardized algorithm. A classical key-establishment entry marked as requiring long-term confidentiality is flagged to prioritize a harvest-now/decrypt-later review. This is an explicitly supplied inventory and triage hint, not cryptographic discovery, implementation validation, migration advice for a specific system, or a compliance determination. Confirm algorithm variants, parameter sets, implementation, protocol negotiation, key lifecycle, hybrid transition, interoperability, and rollback with system owners and qualified cryptographic engineers.
 
+## Hybrid PQC signatures and encrypted checkpoint files
+
+New audit checkpoints are dual-signed with RSA-PSS/SHA-256 and NIST ML-DSA-65. Both signatures cover the same canonical checkpoint bytes, and verification requires independently trusted public keys for both algorithms. Legacy RSA-PSS checkpoints remain verifiable. In development, `SecurityReportSigner` creates local ML-DSA-65 keys beside its RSA keys. Production checkpoint signing requires the existing RSA key pair plus `SANCTUM_REPORT_SIGNING_MLDSA_PRIVATE_KEY_FILE` and `SANCTUM_REPORT_SIGNING_MLDSA_PUBLIC_KEY_FILE`; the private-key file contains the raw 32-byte ML-DSA-65 seed and the public-key file the raw ML-DSA-65 public key. Configure and retain the ML-DSA public key independently at each verifier.
+
+ML-KEM is a key-encapsulation mechanism, not a signature. The `pqc-kem-keygen`, `pqc-encrypt` and `pqc-decrypt` commands implement an authenticated file envelope combining NIST ML-KEM-768 and X25519 through HKDF-SHA-256 and AES-256-GCM:
+
+```powershell
+sanctum pqc-kem-keygen --key-directory C:\secure\recipient-keys
+sanctum pqc-encrypt `
+  --input-file C:\secure\audit-checkpoint.json `
+  --mlkem-public-key-file C:\secure\recipient-keys\mlkem768-public.bin `
+  --x25519-public-key-file C:\secure\recipient-keys\x25519-public.bin `
+  --output-file C:\secure\audit-checkpoint.json.hybrid.enc
+sanctum pqc-decrypt `
+  --input-file C:\secure\audit-checkpoint.json.hybrid.enc `
+  --mlkem-private-key-file C:\secure\recipient-keys\mlkem768-private.bin `
+  --x25519-private-key-file C:\secure\recipient-keys\x25519-private.bin `
+  --output-file C:\secure\audit-checkpoint.json
+```
+
+This encrypts only the explicitly supplied file; it does not encrypt the exported audit archive, replace checkpoint signatures, protect recipient private keys, or authenticate a recipient identity. Independently verify the checkpoint after decryption, and protect the archive and key material using the deployment's separate access-control and backup procedures. The implementation uses the installed `cryptography` provider's standardized primitives but has not undergone an independent cryptographic review or certification.
+
 ## Controlled offline-transfer manifest
 
 `AirGapDataDiodeBroker.prepare_offline_package` hashes the payload and emits a canonical JSON manifest digest. If a signature and PEM public key are supplied, the signature is checked over the payload and the public key's DER SubjectPublicKeyInfo SHA-256 is recorded. The command/module does not move the payload; transfer it through the organization's approved offline process and verify the payload digest, signature, and independently trusted signer-key fingerprint at the receiving boundary. A valid signature from a supplied key does not establish key ownership or trust. The manifest digest is not a signature and does not authenticate the manifest by itself.

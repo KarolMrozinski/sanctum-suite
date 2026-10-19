@@ -10,7 +10,11 @@ import pytest
 from typer.testing import CliRunner
 
 from sanctum_suite import main
-from sanctum_suite.core.audit_chain import canonical_json, create_audit_checkpoint
+from sanctum_suite.core.audit_chain import (
+    canonical_json,
+    create_audit_checkpoint,
+    verify_merkle_consistency_proof,
+)
 from sanctum_suite.core.private_ledger import (
     FabricGatewayLedger,
     LocalPrivateLedger,
@@ -99,6 +103,54 @@ def test_local_private_ledger_is_idempotent_and_detects_tampering(tmp_path):
         )
     with pytest.raises(PrivateLedgerError, match="hash chain is invalid"):
         ledger.verify()
+
+
+def test_local_ledger_exposes_verifiable_merkle_consistency_proofs(tmp_path):
+    ledger = LocalPrivateLedger(tmp_path / "private-ledger.sqlite")
+    ledger.anchor(_anchor("a" * 64))
+    old_head = ledger.verify()
+    ledger.anchor(_anchor("b" * 64))
+    ledger.anchor(_anchor("c" * 64))
+
+    result = ledger.consistency_proof(
+        old_tree_size=old_head["tree_size"],
+        old_tree_root_sha256=old_head["tree_root_sha256"],
+    )
+    assert result["old_tree_size"] == 1
+    assert result["new_tree_size"] == 3
+    assert verify_merkle_consistency_proof(
+        old_size=result["old_tree_size"],
+        new_size=result["new_tree_size"],
+        old_root=result["old_tree_root_sha256"],
+        new_root=result["new_tree_root_sha256"],
+        proof=result["proof"],
+    )
+    assert not verify_merkle_consistency_proof(
+        old_size=result["old_tree_size"],
+        new_size=result["new_tree_size"],
+        old_root=result["old_tree_root_sha256"],
+        new_root="f" * 64,
+        proof=result["proof"],
+    )
+    cli_result = CliRunner().invoke(
+        main.app,
+        [
+            "ledger-consistency",
+            "--database-file",
+            str(tmp_path / "private-ledger.sqlite"),
+            "--old-tree-size",
+            str(old_head["tree_size"]),
+            "--old-tree-root-sha256",
+            old_head["tree_root_sha256"],
+        ],
+    )
+    assert cli_result.exit_code == 0, cli_result.output
+    assert json.loads(cli_result.stdout)["proof"] == result["proof"]
+    with pytest.raises(PrivateLedgerError, match="does not match this ledger history"):
+        ledger.consistency_proof(
+            old_tree_size=old_head["tree_size"],
+            old_tree_root_sha256="f" * 64,
+        )
 
 
 def test_anchor_service_persists_only_checkpoint_digest_metadata(tmp_path):
@@ -291,6 +343,8 @@ def test_ledger_anchor_cli_verifies_checkpoint_and_requires_tee(
             str(archive),
             "--checkpoint-public-key-file",
             str(signer.public_key_path),
+            "--checkpoint-pqc-public-key-file",
+            str(signer.pqc_public_key_path),
             "--backend",
             "local",
             "--database-file",
@@ -332,6 +386,8 @@ def test_ledger_anchor_cli_rejects_invalid_checkpoint_before_attestation(
             str(archive),
             "--checkpoint-public-key-file",
             str(signer.public_key_path),
+            "--checkpoint-pqc-public-key-file",
+            str(signer.pqc_public_key_path),
             "--backend",
             "local",
             "--database-file",

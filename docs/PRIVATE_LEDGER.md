@@ -46,17 +46,28 @@ contract and platform-specific measurement formats.
 
 The local backend stores anchors in SQLite and appends a hash-linked sequence.
 Database triggers reject ordinary row updates/deletes; `ledger-verify` checks
-the complete current sequence. This is a local integrity demonstration only:
-it has no distributed consensus, independent witnesses, hardware-backed
-immutability, or protection from an administrator who can rewrite the
-database and its chain. It cannot prove that a database suffix was not removed
-without an independently retained head.
+the complete current sequence and returns an RFC 6962 SHA-256 Merkle tree head.
+`ledger-consistency` returns an RFC 6962 consistency proof from an earlier
+tree head to the current one. Retain the old tree size and root outside the
+ledger, and verify the proof with
+`sanctum_suite.core.audit_chain.verify_merkle_consistency_proof` before
+accepting the new head. A failed proof detects a rewritten or truncated prefix
+relative to that independently retained head.
+
+This is a local integrity demonstration only: it has no distributed
+consensus, independent witnesses, hardware-backed immutability, or protection
+from an administrator who can rewrite the database and its chain. It cannot
+prove that a database suffix was not removed unless a prior tree head was
+retained independently. Merkle proofs do not themselves publish, sign, or
+timestamp tree heads; use an independently operated witness or transparency
+service for cross-organization monitoring.
 
 ```powershell
 sanctum ledger-anchor `
   --checkpoint-file C:\secure\audit-checkpoint.json `
   --archive-directory C:\secure\audit-archive `
   --checkpoint-public-key-file C:\trusted\report-signing-public.pem `
+  --checkpoint-pqc-public-key-file C:\trusted\sanctum-mldsa65-public.bin `
   --backend local `
   --database-file C:\secure\private-ledger.sqlite
 
@@ -64,7 +75,20 @@ sanctum ledger-verify --database-file C:\secure\private-ledger.sqlite
 ```
 
 Repeating an anchor for an existing checkpoint digest is idempotent and
-returns the original sequence entry.
+returns the original sequence entry. Save the `tree_size` and
+`tree_root_sha256` from a verified result in a separately controlled system,
+then request a consistency proof after new anchors are added:
+
+```powershell
+sanctum ledger-consistency `
+  --database-file C:\secure\private-ledger.sqlite `
+  --old-tree-size 25 `
+  --old-tree-root-sha256 "<previously-retained-root>"
+```
+
+The result contains the old/new tree heads and the proof nodes. The verifier
+must independently confirm the proof and retain the accepted new tree head;
+do not trust a root supplied only by the same ledger operator.
 
 ## Hyperledger Fabric gateway
 
@@ -103,6 +127,7 @@ sanctum ledger-anchor `
   --checkpoint-file C:\secure\audit-checkpoint.json `
   --archive-directory C:\secure\audit-archive `
   --checkpoint-public-key-file C:\trusted\report-signing-public.pem `
+  --checkpoint-pqc-public-key-file C:\trusted\sanctum-mldsa65-public.bin `
   --backend fabric
 ```
 

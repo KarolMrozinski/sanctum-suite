@@ -126,6 +126,7 @@ def _load_verified_snapshot(
     checkpoint_file: Path,
     archive_directory: Path,
     public_key_file: Path,
+    pqc_public_key_file: Path | None,
 ) -> tuple[dict[str, Any], bytes, list[dict[str, int]]]:
     if checkpoint_file.stat().st_size > 256_000_000:
         raise ValueError("Audit checkpoint exceeds the 256-megabyte size limit")
@@ -138,6 +139,11 @@ def _load_verified_snapshot(
         checkpoint=checkpoint,
         archive_directory=archive_directory,
         public_key_pem=public_key_pem,
+        pqc_public_key=(
+            pqc_public_key_file.read_bytes()
+            if pqc_public_key_file is not None
+            else None
+        ),
     )
 
     archive_root = archive_directory.resolve()
@@ -172,6 +178,7 @@ def create_zk_audit_proof(
     checkpoint_file: Path,
     archive_directory: Path,
     checkpoint_public_key_file: Path,
+    checkpoint_pqc_public_key_file: Path | None = None,
     wasm_file: Path,
     proving_key_file: Path,
     verification_key_file: Path,
@@ -184,6 +191,7 @@ def create_zk_audit_proof(
         checkpoint_file,
         archive_directory,
         checkpoint_public_key_file,
+        checkpoint_pqc_public_key_file,
     )
     if not hmac.compare_digest(verified["signer_sha256"], signer.public_key_fingerprint or ""):
         raise ValueError(
@@ -316,6 +324,7 @@ def verify_zk_audit_proof(
     checkpoint_file: Path,
     archive_directory: Path,
     checkpoint_public_key_file: Path,
+    checkpoint_pqc_public_key_file: Path | None = None,
     verification_key_file: Path,
 ) -> dict[str, Any]:
     if proof_file.stat().st_size > _MAX_PROOF_BYTES:
@@ -324,6 +333,7 @@ def verify_zk_audit_proof(
         checkpoint_file,
         archive_directory,
         checkpoint_public_key_file,
+        checkpoint_pqc_public_key_file,
     )
     try:
         bundle = json.loads(proof_file.read_bytes())

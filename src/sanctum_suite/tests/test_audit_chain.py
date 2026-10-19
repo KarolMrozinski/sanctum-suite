@@ -8,6 +8,7 @@ from sanctum_suite import main
 from sanctum_suite.core.audit_chain import (
     canonical_json,
     create_audit_checkpoint,
+    verify_audit_checkpoint,
 )
 from sanctum_suite.core.signer import SecurityReportSigner
 
@@ -55,12 +56,32 @@ def test_signed_audit_checkpoint_verifies_offline(tmp_path):
             str(archive),
             "--public-key-file",
             str(signer.public_key_path),
+            "--pqc-public-key-file",
+            str(signer.pqc_public_key_path),
         ],
     )
 
     assert result.exit_code == 0, result.output
     assert "Verified 1 audit object version" in result.output
     assert checkpoint["chain_head_sha256"] != "0" * 64
+
+
+def test_legacy_rsa_checkpoint_remains_verifiable(tmp_path):
+    signer, archive, checkpoint, _checkpoint_path = _make_signed_checkpoint(tmp_path)
+    legacy = {key: value for key, value in checkpoint.items() if key != "signature"}
+    legacy["signature"] = {
+        "algorithm": "RSA-PSS-SHA256",
+        "signer_sha256": signer.public_key_fingerprint,
+        "signature_base64": signer.sign_bytes(canonical_json(legacy)),
+    }
+
+    result = verify_audit_checkpoint(
+        checkpoint=legacy,
+        archive_directory=archive,
+        public_key_pem=signer.public_key_path.read_bytes(),
+    )
+
+    assert result["record_count"] == 1
 
 
 def test_audit_verifier_rejects_tampered_archive_record(tmp_path):
@@ -79,6 +100,8 @@ def test_audit_verifier_rejects_tampered_archive_record(tmp_path):
             str(archive),
             "--public-key-file",
             str(signer.public_key_path),
+            "--pqc-public-key-file",
+            str(signer.pqc_public_key_path),
         ],
     )
 
@@ -100,6 +123,8 @@ def test_audit_verifier_rejects_modified_hash_link(tmp_path):
             str(archive),
             "--public-key-file",
             str(signer.public_key_path),
+            "--pqc-public-key-file",
+            str(signer.pqc_public_key_path),
         ],
     )
 

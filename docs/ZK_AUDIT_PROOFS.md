@@ -89,6 +89,7 @@ the signer of the checkpoint being proved.
 sanctum audit-zk-prove C:\secure\audit\checkpoint.json `
   --archive-directory C:\secure\audit\archive `
   --checkpoint-public-key-file C:\secure\keys\sanctum_public.pem `
+  --checkpoint-pqc-public-key-file C:\secure\keys\sanctum_mldsa65_public.bin `
   --wasm-file tools\zk-audit\circuits\audit_policy_main_js\audit_policy_main.wasm `
   --proving-key-file C:\secure\zk\audit_policy_final.zkey `
   --verification-key-file C:\secure\zk\verification_key.json `
@@ -98,6 +99,7 @@ sanctum audit-zk-verify C:\secure\audit\checkpoint.zk-proof.json `
   --checkpoint-file C:\secure\audit\checkpoint.json `
   --archive-directory C:\secure\audit\archive `
   --checkpoint-public-key-file C:\secure\keys\sanctum_public.pem `
+  --checkpoint-pqc-public-key-file C:\secure\keys\sanctum_mldsa65_public.bin `
   --verification-key-file C:\secure\zk\verification_key.json
 ```
 

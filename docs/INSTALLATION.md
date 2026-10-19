@@ -69,7 +69,7 @@ Create a dedicated random pseudonymization key of at least 32 bytes (for example
 
 The application verifies versioning and Object Lock at initialization and applies `COMPLIANCE` retention for seven years to each request-start and request-completion record. Production preflight writes and verifies a permanently retained canary object. The selected `fail-closed` policy records a minimal request-start event before a protected route runs; if that write fails, the route is not executed. Completion is written separately after the route. If that second write fails, the client receives HTTP 503 and the operation's outcome may be uncertain; the start record remains in WORM. Provision alerts and an operator recovery procedure for this state.
 
-Create a portable, signed hash-chain snapshot from an operator workstation with access to the versioned audit prefix:
+Create a portable, hybrid-signed hash-chain snapshot from an operator workstation with access to the versioned audit prefix:
 
 ```powershell
 sanctum audit-checkpoint `
@@ -77,16 +77,17 @@ sanctum audit-checkpoint `
   --checkpoint-file C:\secure\audit-checkpoint-2026-10-19.json
 ```
 
-The command requires the configured report-signing private key and reads every retained object version, refuses delete markers or invalid object digests/retention, and aborts if two consecutive complete version listings do not match. One checkpoint is limited to 100,000 object versions, 64 KiB per record, and 256 MB total record data; larger inventories must be archived in separately scoped checkpoints using an approved procedure rather than silently truncated. It exports version-pinned JSON records and writes a deterministic chain ordered by object key/version ID, with each entry linked to the prior hash. The checkpoint manifest is signed with RSA-PSS-SHA256. Keep the checkpoint and exported evidence in a separately protected location; do not store the only checkpoint copy beside the WORM bucket or rely on the archive alone. Exported audit records are privacy-sensitive. On a separate verifier host, use the trusted public key obtained independently:
+The command requires the configured RSA report-signing private key and ML-DSA-65 key pair. In production, provide ML-DSA key files with `SANCTUM_REPORT_SIGNING_MLDSA_PRIVATE_KEY_FILE` and `SANCTUM_REPORT_SIGNING_MLDSA_PUBLIC_KEY_FILE`; keep private key material in the approved key manager. It reads every retained object version, refuses delete markers or invalid object digests/retention, and aborts if two consecutive complete version listings do not match. One checkpoint is limited to 100,000 object versions, 64 KiB per record, and 256 MB total record data; larger inventories must be archived in separately scoped checkpoints using an approved procedure rather than silently truncated. It exports version-pinned JSON records and writes a deterministic chain ordered by object key/version ID, with each entry linked to the prior hash. The checkpoint manifest is signed with both RSA-PSS-SHA256 and ML-DSA-65. Keep both trusted public keys and the checkpoint/exported evidence in separately protected locations; do not store the only checkpoint copy beside the WORM bucket or rely on the archive alone. Exported audit records are privacy-sensitive. On a separate verifier host, use both trusted public keys obtained independently:
 
 ```powershell
 sanctum audit-verify `
   C:\secure\audit-checkpoint-2026-10-19.json `
   --archive-directory C:\secure\audit-archive-2026-10-19 `
-  --public-key-file C:\trusted\report-signing-public.pem
+  --public-key-file C:\trusted\report-signing-public.pem `
+  --pqc-public-key-file C:\trusted\sanctum-mldsa65-public.bin
 ```
 
-Verification checks the checkpoint signature and signer fingerprint, each archive record's canonical JSON digest and event identity, the complete hash-link sequence, and the declared chain head. A checkpoint is a signed snapshot of the object versions observed during its inventory scan, not a real-time sequence number or proof that no events arrived concurrently or after the snapshot. Repeat checkpoints on an approved schedule and investigate any inventory growth or verification failure. The writer remains append-only and concurrent request writes do not contend on a shared global chain counter; the chain order is a deterministic inventory order, not event chronology. This integrity mechanism does not prove event truth, eliminate operator/key compromise, or establish legal or regulatory compliance.
+Verification checks both checkpoint signatures and signer fingerprints, each archive record's canonical JSON digest and event identity, the complete hash-link sequence, and the declared chain head. A checkpoint is a signed snapshot of the object versions observed during its inventory scan, not a real-time sequence number or proof that no events arrived concurrently or after the snapshot. Repeat checkpoints on an approved schedule and investigate any inventory growth or verification failure. The writer remains append-only and concurrent request writes do not contend on a shared global chain counter; the chain order is a deterministic inventory order, not event chronology. This integrity mechanism does not prove event truth, eliminate operator/key compromise, or establish legal or regulatory compliance.
 
 To gate a checkpoint digest on fresh AMD SEV-SNP or Intel SGX attestation and anchor only that digest in a local demonstration ledger or Hyperledger Fabric gateway, see the [private-ledger runbook](./PRIVATE_LEDGER.md). The Fabric adapter/chaincode and Intel DCAP verifier are operator-managed components, not included in this repository.
 

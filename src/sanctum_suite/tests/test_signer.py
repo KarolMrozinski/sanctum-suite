@@ -71,6 +71,52 @@ def test_report_signer_rejects_tampered_report(monkeypatch, tmp_path):
         )
 
 
+def test_hybrid_signer_requires_both_classical_and_ml_dsa_signatures(
+    monkeypatch, tmp_path
+):
+    monkeypatch.delenv("SANCTUM_ENVIRONMENT", raising=False)
+    signer = SecurityReportSigner(key_dir=str(tmp_path / ".keys"))
+    content = b"long-lived audit checkpoint"
+    signature = signer.sign_hybrid_bytes(content)
+
+    assert signature["algorithm"] == "RSA-PSS-SHA256+ML-DSA-65"
+    signer.verify_hybrid_bytes(
+        content,
+        signature["signature_base64"],
+        signer.public_key_path.read_bytes(),
+        signature["pqc_signature_base64"],
+        signer.pqc_public_key_path.read_bytes(),
+    )
+
+    with pytest.raises(ValueError, match="ML-DSA signer does not match"):
+        from cryptography.hazmat.primitives.asymmetric import mldsa
+
+        other_key = mldsa.MLDSA65PrivateKey.generate().public_key().public_bytes_raw()
+        from sanctum_suite.core.audit_chain import (
+            create_audit_checkpoint,
+            verify_audit_checkpoint,
+        )
+
+        checkpoint = create_audit_checkpoint(
+            bucket="test",
+            records=[],
+            signer=signer,
+            created_at="2026-10-19T10:00:00+00:00",
+        )
+        with pytest.raises(ValueError, match="requires a trusted ML-DSA-65"):
+            verify_audit_checkpoint(
+                checkpoint=checkpoint,
+                archive_directory=tmp_path,
+                public_key_pem=signer.public_key_path.read_bytes(),
+            )
+        verify_audit_checkpoint(
+            checkpoint=checkpoint,
+            archive_directory=tmp_path,
+            public_key_pem=signer.public_key_path.read_bytes(),
+            pqc_public_key=other_key,
+        )
+
+
 def test_report_verify_cli_checks_digest_and_signature(monkeypatch, tmp_path):
     monkeypatch.delenv("SANCTUM_ENVIRONMENT", raising=False)
     signer = SecurityReportSigner(key_dir=str(tmp_path / ".keys"))

@@ -11,7 +11,12 @@ from urllib.parse import quote, urlparse
 
 import httpx
 
-from sanctum_suite.core.audit_chain import canonical_json
+from sanctum_suite.core.audit_chain import (
+    canonical_json,
+    merkle_consistency_proof,
+    merkle_tree_root,
+    verify_merkle_consistency_proof,
+)
 from sanctum_suite.core.tee_attestation import TEEAttestation
 
 
@@ -156,6 +161,30 @@ class LocalPrivateLedger:
             previous = expected_hash
         return previous
 
+    @staticmethod
+    def _transparency_leaves(connection: sqlite3.Connection) -> list[bytes]:
+        rows = connection.execute(
+            """
+            SELECT sequence, schema_version, checkpoint_sha256, anchored_at,
+                   previous_entry_sha256, entry_sha256
+            FROM ledger_anchors
+            ORDER BY sequence
+            """
+        )
+        return [
+            canonical_json(
+                {
+                    "sequence": row["sequence"],
+                    "schema_version": row["schema_version"],
+                    "checkpoint_sha256": row["checkpoint_sha256"],
+                    "anchored_at": row["anchored_at"],
+                    "previous_entry_sha256": row["previous_entry_sha256"],
+                    "entry_sha256": row["entry_sha256"],
+                }
+            )
+            for row in rows
+        ]
+
     def anchor(self, anchor: dict[str, Any]) -> dict[str, Any]:
         _validate_anchor(anchor)
         try:
@@ -218,16 +247,64 @@ class LocalPrivateLedger:
         try:
             with self._connect() as connection:
                 head = self._verify(connection)
-                count = connection.execute(
-                    "SELECT COUNT(*) FROM ledger_anchors"
-                ).fetchone()[0]
+                leaves = self._transparency_leaves(connection)
         except (OSError, sqlite3.Error) as error:
             raise PrivateLedgerError("Local private-ledger verification failed") from error
+        tree_root = merkle_tree_root(leaves)
         return {
             "status": "LOCAL_LEDGER_VERIFIED",
             "backend": "local-private-ledger-demo",
-            "record_count": count,
+            "record_count": len(leaves),
             "chain_head_sha256": head,
+            "tree_size": len(leaves),
+            "tree_root_sha256": tree_root,
+        }
+
+    def consistency_proof(
+        self,
+        *,
+        old_tree_size: int,
+        old_tree_root_sha256: str,
+    ) -> dict[str, Any]:
+        if (
+            isinstance(old_tree_size, bool)
+            or not isinstance(old_tree_size, int)
+            or old_tree_size < 0
+            or not isinstance(old_tree_root_sha256, str)
+            or not _SHA256.fullmatch(old_tree_root_sha256)
+        ):
+            raise PrivateLedgerError("Previous transparency tree head is invalid")
+        try:
+            with self._connect() as connection:
+                self._verify(connection)
+                leaves = self._transparency_leaves(connection)
+        except (OSError, sqlite3.Error) as error:
+            raise PrivateLedgerError("Local ledger consistency proof failed") from error
+        if old_tree_size > len(leaves):
+            raise PrivateLedgerError("Previous transparency tree size exceeds current size")
+        actual_old_root = merkle_tree_root(leaves[:old_tree_size])
+        if actual_old_root != old_tree_root_sha256:
+            raise PrivateLedgerError(
+                "Previous transparency tree head does not match this ledger history"
+            )
+        proof = merkle_consistency_proof(leaves, old_tree_size)
+        current_root = merkle_tree_root(leaves)
+        if not verify_merkle_consistency_proof(
+            old_size=old_tree_size,
+            new_size=len(leaves),
+            old_root=old_tree_root_sha256,
+            new_root=current_root,
+            proof=proof,
+        ):
+            raise PrivateLedgerError("Generated transparency consistency proof is invalid")
+        return {
+            "status": "LOCAL_LEDGER_CONSISTENCY_PROOF",
+            "backend": "local-private-ledger-demo",
+            "old_tree_size": old_tree_size,
+            "old_tree_root_sha256": old_tree_root_sha256,
+            "new_tree_size": len(leaves),
+            "new_tree_root_sha256": current_root,
+            "proof": proof,
         }
 
 

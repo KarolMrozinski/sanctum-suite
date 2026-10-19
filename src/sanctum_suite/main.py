@@ -282,6 +282,157 @@ def pqc_inventory_cmd(
     _print_json_report(result)
 
 
+@app.command(name="pqc-kem-keygen")
+def pqc_kem_keygen_cmd(
+    key_directory: Path = typer.Option(
+        ...,
+        "--key-directory",
+        file_okay=False,
+        help="New directory for ML-KEM-768 and X25519 recipient keys",
+    ),
+) -> None:
+    """Generate recipient keys for hybrid ML-KEM-768 and X25519 encryption."""
+    from sanctum_suite.core.post_quantum_pqc import (
+        generate_hybrid_encryption_key_pair,
+    )
+
+    if key_directory.exists():
+        raise typer.BadParameter("Recipient key directory must not already exist")
+    try:
+        keys = generate_hybrid_encryption_key_pair()
+        key_directory.mkdir(parents=True, exist_ok=False)
+        if os.name != "nt":
+            key_directory.chmod(0o700)
+        for key_name, filename in (
+            ("mlkem_private_key", "mlkem768-private.bin"),
+            ("mlkem_public_key", "mlkem768-public.bin"),
+            ("x25519_private_key", "x25519-private.bin"),
+            ("x25519_public_key", "x25519-public.bin"),
+        ):
+            path = key_directory / filename
+            if "private" in key_name:
+                _write_private_audit_file(path, keys[key_name])
+            else:
+                with path.open("xb") as output:
+                    output.write(keys[key_name])
+    except OSError as error:
+        raise typer.BadParameter(f"Hybrid KEM key generation failed: {error}") from error
+    _print_json_report(
+        {
+            "status": "HYBRID_KEM_KEY_PAIR_CREATED",
+            "algorithms": ["ML-KEM-768", "X25519"],
+            "key_directory": str(key_directory),
+            "private_keys_must_remain_confidential": True,
+        }
+    )
+
+
+@app.command(name="pqc-encrypt")
+def pqc_encrypt_cmd(
+    input_file: Path = typer.Option(
+        ...,
+        "--input-file",
+        exists=True,
+        file_okay=True,
+        dir_okay=False,
+        readable=True,
+    ),
+    mlkem_public_key_file: Path = typer.Option(
+        ...,
+        "--mlkem-public-key-file",
+        exists=True,
+        file_okay=True,
+        dir_okay=False,
+        readable=True,
+    ),
+    x25519_public_key_file: Path = typer.Option(
+        ...,
+        "--x25519-public-key-file",
+        exists=True,
+        file_okay=True,
+        dir_okay=False,
+        readable=True,
+    ),
+    output_file: Path = typer.Option(
+        ...,
+        "--output-file",
+        file_okay=True,
+        dir_okay=False,
+    ),
+) -> None:
+    """Encrypt a file using hybrid ML-KEM-768 and X25519 key establishment."""
+    from sanctum_suite.core.post_quantum_pqc import encrypt_hybrid
+
+    if output_file.exists():
+        raise typer.BadParameter("Encrypted output file must not already exist")
+    try:
+        if input_file.stat().st_size > 256_000_000:
+            raise ValueError("Checkpoint plaintext exceeds the 256-megabyte size limit")
+        envelope = encrypt_hybrid(
+            input_file.read_bytes(),
+            mlkem_public_key=mlkem_public_key_file.read_bytes(),
+            x25519_public_key=x25519_public_key_file.read_bytes(),
+        )
+        output_file.parent.mkdir(parents=True, exist_ok=True)
+        _write_private_audit_file(output_file, envelope)
+    except (OSError, TypeError, ValueError) as error:
+        raise typer.BadParameter(f"Hybrid encryption failed: {error}") from error
+    typer.echo(f"Created authenticated hybrid-encryption envelope: {output_file}")
+
+
+@app.command(name="pqc-decrypt")
+def pqc_decrypt_cmd(
+    input_file: Path = typer.Option(
+        ...,
+        "--input-file",
+        exists=True,
+        file_okay=True,
+        dir_okay=False,
+        readable=True,
+    ),
+    mlkem_private_key_file: Path = typer.Option(
+        ...,
+        "--mlkem-private-key-file",
+        exists=True,
+        file_okay=True,
+        dir_okay=False,
+        readable=True,
+    ),
+    x25519_private_key_file: Path = typer.Option(
+        ...,
+        "--x25519-private-key-file",
+        exists=True,
+        file_okay=True,
+        dir_okay=False,
+        readable=True,
+    ),
+    output_file: Path = typer.Option(
+        ...,
+        "--output-file",
+        file_okay=True,
+        dir_okay=False,
+    ),
+) -> None:
+    """Authenticate and decrypt a hybrid ML-KEM-768 and X25519 envelope."""
+    from sanctum_suite.core.post_quantum_pqc import decrypt_hybrid
+
+    if output_file.exists():
+        raise typer.BadParameter("Decrypted output file must not already exist")
+    try:
+        if input_file.stat().st_size > 260_000_000:
+            raise ValueError("Encrypted checkpoint exceeds the 260-megabyte size limit")
+        plaintext = decrypt_hybrid(
+            input_file.read_bytes(),
+            mlkem_private_key=mlkem_private_key_file.read_bytes(),
+            x25519_private_key=x25519_private_key_file.read_bytes(),
+        )
+        output_file.parent.mkdir(parents=True, exist_ok=True)
+        _write_private_audit_file(output_file, plaintext)
+    except (OSError, TypeError, ValueError) as error:
+        raise typer.BadParameter(f"Hybrid decryption failed: {error}") from error
+    typer.echo(f"Decrypted and authenticated file: {output_file}")
+
+
 @app.command(name="security-readiness")
 def security_readiness_cmd(
     input_file: Path = typer.Option(
@@ -1116,6 +1267,15 @@ def audit_verify_cmd(
         dir_okay=False,
         readable=True,
     ),
+    pqc_public_key_file: Path | None = typer.Option(
+        None,
+        "--pqc-public-key-file",
+        exists=True,
+        file_okay=True,
+        dir_okay=False,
+        readable=True,
+        help="Independently trusted raw ML-DSA-65 public key for hybrid checkpoints",
+    ),
 ) -> None:
     """Verify an exported WORM audit chain using an independently trusted key."""
     try:
@@ -1129,6 +1289,11 @@ def audit_verify_cmd(
             checkpoint=checkpoint,
             archive_directory=archive_directory,
             public_key_pem=public_key_pem,
+            pqc_public_key=(
+                pqc_public_key_file.read_bytes()
+                if pqc_public_key_file is not None
+                else None
+            ),
         )
     except (OSError, UnicodeDecodeError, json.JSONDecodeError, TypeError, ValueError) as error:
         raise typer.BadParameter(str(error)) from error
@@ -1165,6 +1330,15 @@ def ledger_anchor_cmd(
         file_okay=True,
         dir_okay=False,
         readable=True,
+    ),
+    checkpoint_pqc_public_key_file: Path | None = typer.Option(
+        None,
+        "--checkpoint-pqc-public-key-file",
+        exists=True,
+        file_okay=True,
+        dir_okay=False,
+        readable=True,
+        help="Independently trusted ML-DSA-65 key for hybrid checkpoints",
     ),
     backend: str = typer.Option(..., "--backend", help="Ledger backend: local or fabric"),
     database_file: Path | None = typer.Option(
@@ -1227,6 +1401,11 @@ def ledger_anchor_cmd(
             checkpoint=checkpoint,
             archive_directory=archive_directory,
             public_key_pem=checkpoint_public_key_file.read_bytes(),
+            pqc_public_key=(
+                checkpoint_pqc_public_key_file.read_bytes()
+                if checkpoint_pqc_public_key_file is not None
+                else None
+            ),
         )
         if backend == "local":
             if database_file is None:
@@ -1316,6 +1495,44 @@ def ledger_verify_cmd(
     _print_json_report(result)
 
 
+@app.command(name="ledger-consistency")
+def ledger_consistency_cmd(
+    database_file: Path = typer.Option(
+        ...,
+        "--database-file",
+        exists=True,
+        file_okay=True,
+        dir_okay=False,
+        readable=True,
+    ),
+    old_tree_size: int = typer.Option(
+        ...,
+        "--old-tree-size",
+        min=0,
+        help="Previously retained Merkle tree size",
+    ),
+    old_tree_root_sha256: str = typer.Option(
+        ...,
+        "--old-tree-root-sha256",
+        help="Previously retained Merkle root in lowercase SHA-256 hex",
+    ),
+) -> None:
+    """Produce a consistency proof from a previously retained local-ledger tree head."""
+    from sanctum_suite.core.private_ledger import (
+        LocalPrivateLedger,
+        PrivateLedgerError,
+    )
+
+    try:
+        result = LocalPrivateLedger(database_file).consistency_proof(
+            old_tree_size=old_tree_size,
+            old_tree_root_sha256=old_tree_root_sha256,
+        )
+    except (OSError, RuntimeError, PrivateLedgerError) as error:
+        raise typer.BadParameter(str(error)) from error
+    _print_json_report(result)
+
+
 @app.command(name="smpc-aggregate-demo")
 def smpc_aggregate_demo_cmd(
     party_0_input_file: Path = typer.Option(
@@ -1394,6 +1611,15 @@ def audit_zk_prove_cmd(
         dir_okay=False,
         readable=True,
     ),
+    checkpoint_pqc_public_key_file: Path | None = typer.Option(
+        None,
+        "--checkpoint-pqc-public-key-file",
+        exists=True,
+        file_okay=True,
+        dir_okay=False,
+        readable=True,
+        help="Independently trusted ML-DSA-65 key for hybrid checkpoints",
+    ),
     wasm_file: Path = typer.Option(
         ...,
         "--wasm-file",
@@ -1432,6 +1658,7 @@ def audit_zk_prove_cmd(
             checkpoint_file=checkpoint_file,
             archive_directory=archive_directory,
             checkpoint_public_key_file=checkpoint_public_key_file,
+            checkpoint_pqc_public_key_file=checkpoint_pqc_public_key_file,
             wasm_file=wasm_file,
             proving_key_file=proving_key_file,
             verification_key_file=verification_key_file,
@@ -1478,6 +1705,15 @@ def audit_zk_verify_cmd(
         dir_okay=False,
         readable=True,
     ),
+    checkpoint_pqc_public_key_file: Path | None = typer.Option(
+        None,
+        "--checkpoint-pqc-public-key-file",
+        exists=True,
+        file_okay=True,
+        dir_okay=False,
+        readable=True,
+        help="Independently trusted ML-DSA-65 key for hybrid checkpoints",
+    ),
     verification_key_file: Path = typer.Option(
         ...,
         "--verification-key-file",
@@ -1494,6 +1730,7 @@ def audit_zk_verify_cmd(
             checkpoint_file=checkpoint_file,
             archive_directory=archive_directory,
             checkpoint_public_key_file=checkpoint_public_key_file,
+            checkpoint_pqc_public_key_file=checkpoint_pqc_public_key_file,
             verification_key_file=verification_key_file,
         )
     except (OSError, TypeError, ValueError, RuntimeError) as error:

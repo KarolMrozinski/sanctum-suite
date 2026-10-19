@@ -1,6 +1,16 @@
+import base64
+import hashlib
+import json
+import os
 import re
 from collections.abc import Mapping, Sequence
 from typing import Any
+
+from cryptography.exceptions import InvalidTag, UnsupportedAlgorithm
+from cryptography.hazmat.primitives import hashes
+from cryptography.hazmat.primitives.asymmetric import mlkem, x25519
+from cryptography.hazmat.primitives.ciphers.aead import AESGCM
+from cryptography.hazmat.primitives.kdf.hkdf import HKDF
 
 
 _STANDARDIZED_PQC = {
@@ -38,6 +48,193 @@ _SYMMETRIC_OR_HASH = {
     "SHA3-512",
 }
 _USE_CASES = {"key_establishment", "digital_signature", "other", "unknown"}
+_ENVELOPE_FORMAT = "sanctum-hybrid-encrypted-v1"
+_ENVELOPE_ALGORITHMS = {
+    "format",
+    "kem",
+    "classical_kem",
+    "aead",
+    "mlkem_recipient_sha256",
+    "x25519_recipient_sha256",
+    "mlkem_ciphertext",
+    "ephemeral_x25519_public_key",
+    "kdf_salt",
+    "nonce",
+    "ciphertext",
+}
+_MAX_PLAINTEXT_BYTES = 256_000_000
+_MAX_ENVELOPE_BYTES = 260_000_000
+
+
+def generate_hybrid_encryption_key_pair() -> dict[str, bytes]:
+    """Generate recipient key material for ML-KEM-768 + X25519 hybrid encryption."""
+    try:
+        pq_private_key = mlkem.MLKEM768PrivateKey.generate()
+    except UnsupportedAlgorithm as error:
+        raise ValueError(
+            "The cryptography backend does not support ML-KEM-768"
+        ) from error
+    classical_private_key = x25519.X25519PrivateKey.generate()
+    return {
+        "mlkem_private_key": pq_private_key.private_bytes_raw(),
+        "mlkem_public_key": pq_private_key.public_key().public_bytes_raw(),
+        "x25519_private_key": classical_private_key.private_bytes_raw(),
+        "x25519_public_key": classical_private_key.public_key().public_bytes_raw(),
+    }
+
+
+def _canonical_envelope(document: dict[str, Any]) -> bytes:
+    return json.dumps(
+        document,
+        ensure_ascii=True,
+        sort_keys=True,
+        separators=(",", ":"),
+    ).encode("utf-8")
+
+
+def _decode_envelope_bytes(value: Any, field: str) -> bytes:
+    if not isinstance(value, str):
+        raise ValueError(f"Encrypted checkpoint field {field} is invalid")
+    try:
+        return base64.b64decode(value, validate=True)
+    except (ValueError, TypeError) as error:
+        raise ValueError(f"Encrypted checkpoint field {field} is invalid") from error
+
+
+def encrypt_hybrid(
+    plaintext: bytes,
+    *,
+    mlkem_public_key: bytes,
+    x25519_public_key: bytes,
+) -> bytes:
+    """Encrypt bytes using ML-KEM-768 and X25519 combined into an AES-256-GCM key."""
+    if not isinstance(plaintext, bytes) or len(plaintext) > _MAX_PLAINTEXT_BYTES:
+        raise ValueError("Checkpoint plaintext exceeds the 256-megabyte size limit")
+    try:
+        pq_recipient = mlkem.MLKEM768PublicKey.from_public_bytes(mlkem_public_key)
+        classical_recipient = x25519.X25519PublicKey.from_public_bytes(
+            x25519_public_key
+        )
+    except (TypeError, ValueError, UnsupportedAlgorithm) as error:
+        raise ValueError("Hybrid encryption recipient key is invalid") from error
+
+    try:
+        pq_shared_secret, pq_ciphertext = pq_recipient.encapsulate()
+    except UnsupportedAlgorithm as error:
+        raise ValueError(
+            "The cryptography backend does not support ML-KEM-768"
+        ) from error
+    ephemeral_classical = x25519.X25519PrivateKey.generate()
+    classical_shared_secret = ephemeral_classical.exchange(classical_recipient)
+    classical_ephemeral_public = ephemeral_classical.public_key().public_bytes_raw()
+    salt = os.urandom(32)
+    nonce = os.urandom(12)
+    pq_fingerprint = hashlib.sha256(mlkem_public_key).hexdigest()
+    classical_fingerprint = hashlib.sha256(x25519_public_key).hexdigest()
+    header: dict[str, Any] = {
+        "format": _ENVELOPE_FORMAT,
+        "kem": "ML-KEM-768",
+        "classical_kem": "X25519",
+        "aead": "AES-256-GCM",
+        "mlkem_recipient_sha256": pq_fingerprint,
+        "x25519_recipient_sha256": classical_fingerprint,
+        "mlkem_ciphertext": base64.b64encode(pq_ciphertext).decode("ascii"),
+        "ephemeral_x25519_public_key": base64.b64encode(
+            classical_ephemeral_public
+        ).decode("ascii"),
+        "kdf_salt": base64.b64encode(salt).decode("ascii"),
+        "nonce": base64.b64encode(nonce).decode("ascii"),
+    }
+    key = HKDF(
+        algorithm=hashes.SHA256(),
+        length=32,
+        salt=salt,
+        info=b"SANCTUM-HYBRID-KEM-v1:ML-KEM-768+X25519",
+    ).derive(classical_shared_secret + pq_shared_secret)
+    ciphertext = AESGCM(key).encrypt(nonce, plaintext, _canonical_envelope(header))
+    return _canonical_envelope(
+        {**header, "ciphertext": base64.b64encode(ciphertext).decode("ascii")}
+    )
+
+
+def decrypt_hybrid(
+    envelope_bytes: bytes,
+    *,
+    mlkem_private_key: bytes,
+    x25519_private_key: bytes,
+) -> bytes:
+    """Authenticate and decrypt an ML-KEM-768 + X25519 hybrid envelope."""
+    if not isinstance(envelope_bytes, bytes) or len(envelope_bytes) > _MAX_ENVELOPE_BYTES:
+        raise ValueError("Encrypted checkpoint exceeds the 256-megabyte size limit")
+    try:
+        document = json.loads(envelope_bytes)
+    except (UnicodeDecodeError, json.JSONDecodeError) as error:
+        raise ValueError("Encrypted checkpoint envelope is not valid JSON") from error
+    if (
+        not isinstance(document, dict)
+        or set(document) != _ENVELOPE_ALGORITHMS
+        or document.get("format") != _ENVELOPE_FORMAT
+        or document.get("kem") != "ML-KEM-768"
+        or document.get("classical_kem") != "X25519"
+        or document.get("aead") != "AES-256-GCM"
+        or _canonical_envelope(document) != envelope_bytes
+    ):
+        raise ValueError("Encrypted checkpoint envelope format or algorithms are invalid")
+    pq_fingerprint = document["mlkem_recipient_sha256"]
+    classical_fingerprint = document["x25519_recipient_sha256"]
+    if (
+        not isinstance(pq_fingerprint, str)
+        or not re.fullmatch(r"[0-9a-f]{64}", pq_fingerprint)
+        or not isinstance(classical_fingerprint, str)
+        or not re.fullmatch(r"[0-9a-f]{64}", classical_fingerprint)
+    ):
+        raise ValueError("Encrypted checkpoint recipient fingerprints are invalid")
+    try:
+        pq_private = mlkem.MLKEM768PrivateKey.from_seed_bytes(mlkem_private_key)
+        classical_private = x25519.X25519PrivateKey.from_private_bytes(
+            x25519_private_key
+        )
+    except (TypeError, ValueError, UnsupportedAlgorithm) as error:
+        raise ValueError("Hybrid decryption recipient key is invalid") from error
+    pq_public_bytes = pq_private.public_key().public_bytes_raw()
+    classical_public_bytes = classical_private.public_key().public_bytes_raw()
+    if (
+        hashlib.sha256(pq_public_bytes).hexdigest() != pq_fingerprint
+        or hashlib.sha256(classical_public_bytes).hexdigest()
+        != classical_fingerprint
+    ):
+        raise ValueError("Encrypted checkpoint was not addressed to these recipient keys")
+
+    pq_ciphertext = _decode_envelope_bytes(
+        document["mlkem_ciphertext"], "mlkem_ciphertext"
+    )
+    ephemeral_public_bytes = _decode_envelope_bytes(
+        document["ephemeral_x25519_public_key"], "ephemeral_x25519_public_key"
+    )
+    salt = _decode_envelope_bytes(document["kdf_salt"], "kdf_salt")
+    nonce = _decode_envelope_bytes(document["nonce"], "nonce")
+    ciphertext = _decode_envelope_bytes(document["ciphertext"], "ciphertext")
+    if len(salt) != 32 or len(nonce) != 12:
+        raise ValueError("Encrypted checkpoint KDF salt or nonce has an invalid size")
+    try:
+        pq_shared_secret = pq_private.decapsulate(pq_ciphertext)
+        ephemeral_public = x25519.X25519PublicKey.from_public_bytes(
+            ephemeral_public_bytes
+        )
+        classical_shared_secret = classical_private.exchange(ephemeral_public)
+    except (TypeError, ValueError, UnsupportedAlgorithm) as error:
+        raise ValueError("Encrypted checkpoint key encapsulation is invalid") from error
+    header = {key: value for key, value in document.items() if key != "ciphertext"}
+    key = HKDF(
+        algorithm=hashes.SHA256(),
+        length=32,
+        salt=salt,
+        info=b"SANCTUM-HYBRID-KEM-v1:ML-KEM-768+X25519",
+    ).derive(classical_shared_secret + pq_shared_secret)
+    try:
+        return AESGCM(key).decrypt(nonce, ciphertext, _canonical_envelope(header))
+    except InvalidTag as error:
+        raise ValueError("Encrypted checkpoint authentication failed") from error
 
 
 class PostQuantumCryptographicAssuranceEngine:
