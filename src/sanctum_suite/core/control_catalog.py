@@ -132,6 +132,7 @@ _CONTROLS: tuple[Control, ...] = (
 
 _CONTROL_BY_ID = {control.control_id: control for control in _CONTROLS}
 _SHA256_PATTERN = re.compile(r"^[0-9a-f]{64}$")
+CATALOG_VERSION = "1.0.0"
 
 
 def _utc_now() -> str:
@@ -169,6 +170,7 @@ class ControlCatalog:
                 CREATE TABLE IF NOT EXISTS control_assessments (
                     assessment_id TEXT PRIMARY KEY,
                     control_id TEXT NOT NULL,
+                    catalog_version TEXT NOT NULL DEFAULT '1.0.0',
                     state TEXT NOT NULL CHECK (
                         state IN ('verified', 'failed', 'needs_review', 'not_assessed', 'not_applicable')
                     ),
@@ -178,6 +180,17 @@ class ControlCatalog:
                 )
                 """
             )
+            assessment_columns = {
+                row["name"]
+                for row in connection.execute(
+                    "PRAGMA table_info(control_assessments)"
+                ).fetchall()
+            }
+            if "catalog_version" not in assessment_columns:
+                connection.execute(
+                    "ALTER TABLE control_assessments ADD COLUMN "
+                    "catalog_version TEXT NOT NULL DEFAULT '1.0.0'"
+                )
             connection.execute(
                 """
                 CREATE TABLE IF NOT EXISTS control_evidence (
@@ -194,6 +207,62 @@ class ControlCatalog:
                 "CREATE INDEX IF NOT EXISTS idx_assessments_control_created "
                 "ON control_assessments(control_id, created_at DESC)"
             )
+            connection.execute(
+                """
+                CREATE TABLE IF NOT EXISTS control_catalog_mappings (
+                    mapping_id TEXT PRIMARY KEY,
+                    catalog_version TEXT NOT NULL,
+                    control_id TEXT NOT NULL,
+                    framework TEXT NOT NULL,
+                    framework_version TEXT NOT NULL,
+                    source_reference TEXT NOT NULL,
+                    mapping_type TEXT NOT NULL,
+                    recorded_at TEXT NOT NULL,
+                    UNIQUE (
+                        catalog_version, control_id, framework,
+                        framework_version, source_reference, mapping_type
+                    )
+                )
+                """
+            )
+            self._record_catalog_mappings(connection)
+
+    @staticmethod
+    def _record_catalog_mappings(connection: sqlite3.Connection) -> None:
+        recorded_at = _utc_now()
+        for control in _CONTROLS:
+            for reference in control.references:
+                stable_identity = "\x1f".join(
+                    (
+                        CATALOG_VERSION,
+                        control.control_id,
+                        reference.framework,
+                        reference.version,
+                        reference.reference,
+                        reference.mapping_type,
+                    )
+                )
+                mapping_id = hashlib.sha256(
+                    stable_identity.encode("utf-8")
+                ).hexdigest()
+                connection.execute(
+                    """
+                    INSERT OR IGNORE INTO control_catalog_mappings (
+                        mapping_id, catalog_version, control_id, framework,
+                        framework_version, source_reference, mapping_type, recorded_at
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        mapping_id,
+                        CATALOG_VERSION,
+                        control.control_id,
+                        reference.framework,
+                        reference.version,
+                        reference.reference,
+                        reference.mapping_type,
+                        recorded_at,
+                    ),
+                )
 
     @staticmethod
     def list_controls(framework: str | None = None) -> list[dict[str, Any]]:
@@ -243,10 +312,18 @@ class ControlCatalog:
             connection.execute(
                 """
                 INSERT INTO control_assessments
-                    (assessment_id, control_id, state, summary, assessed_by, created_at)
-                VALUES (?, ?, ?, ?, ?, ?)
+                    (assessment_id, control_id, catalog_version, state, summary, assessed_by, created_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
                 """,
-                (assessment_id, control_id, state.value, summary, assessed_by, created_at),
+                (
+                    assessment_id,
+                    control_id,
+                    CATALOG_VERSION,
+                    state.value,
+                    summary,
+                    assessed_by,
+                    created_at,
+                ),
             )
             for item in evidence:
                 connection.execute(
@@ -268,6 +345,103 @@ class ControlCatalog:
         if assessment is None:
             raise RuntimeError("Assessment was saved but could not be read back")
         return assessment
+
+    def list_mapping_history(
+        self,
+        *,
+        framework: str | None = None,
+        limit: int = 500,
+    ) -> list[dict[str, Any]]:
+        if not 1 <= limit <= 2_000:
+            raise ValueError("limit must be between 1 and 2000")
+        with self._connect() as connection:
+            if framework:
+                rows = connection.execute(
+                    """
+                    SELECT * FROM control_catalog_mappings
+                    WHERE framework = ? COLLATE NOCASE
+                    ORDER BY catalog_version DESC, framework_version, control_id,
+                        mapping_id
+                    LIMIT ?
+                    """,
+                    (framework.strip(), limit),
+                ).fetchall()
+            else:
+                rows = connection.execute(
+                    """
+                    SELECT * FROM control_catalog_mappings
+                    ORDER BY catalog_version DESC, framework, framework_version,
+                        control_id, mapping_id
+                    LIMIT ?
+                    """,
+                    (limit,),
+                ).fetchall()
+        return [dict(row) for row in rows]
+
+    def get_coverage_report(
+        self,
+        *,
+        framework: str | None = None,
+    ) -> dict[str, Any]:
+        mappings = self.list_mapping_history(framework=framework, limit=2_000)
+        mappings = [
+            mapping
+            for mapping in mappings
+            if mapping["catalog_version"] == CATALOG_VERSION
+        ]
+        if framework and not mappings:
+            raise ValueError(f"Unknown framework mapping: {framework}")
+
+        latest_assessments: dict[str, dict[str, Any] | None] = {}
+        rows: list[dict[str, Any]] = []
+        for mapping in mappings:
+            control_id = mapping["control_id"]
+            if control_id not in latest_assessments:
+                assessments = self.list_assessments(control_id, limit=1)
+                latest_assessments[control_id] = assessments[0] if assessments else None
+            assessment = latest_assessments[control_id]
+            rows.append(
+                {
+                    **mapping,
+                    "control_title": _CONTROL_BY_ID[control_id].title,
+                    "assessment_state": (
+                        assessment["state"] if assessment else "not_assessed"
+                    ),
+                    "assessment_id": (
+                        assessment["assessment_id"] if assessment else None
+                    ),
+                    "assessed_at": assessment["created_at"] if assessment else None,
+                    "assessed_by": assessment["assessed_by"] if assessment else None,
+                    "evidence_reference_count": (
+                        len(assessment["evidence"]) if assessment else 0
+                    ),
+                    "assessment_catalog_version": (
+                        assessment["catalog_version"] if assessment else None
+                    ),
+                    "mapping_interpretation": "RELATED_NOT_EQUIVALENT",
+                }
+            )
+        state_counts = {
+            state.value: sum(row["assessment_state"] == state.value for row in rows)
+            for state in AssessmentState
+        }
+        state_counts["not_assessed"] = sum(
+            row["assessment_state"] == "not_assessed" for row in rows
+        )
+        return {
+            "catalog_version": CATALOG_VERSION,
+            "framework_filter": framework,
+            "mapping_count": len(rows),
+            "state_counts": state_counts,
+            "mappings": rows,
+            "certification_status": "NOT_ASSESSED",
+            "limitations": [
+                "Mappings are scoped discovery relationships, not equivalence to official requirements.",
+                "Control assessments are operator-entered and apply at control level, not independently to each mapped publication clause.",
+                "An assessment state of verified records an operator assertion with evidence references; it is not proof of compliance or certification.",
+                "The report does not determine legal applicability or independently inspect systems or evidence.",
+            ],
+        }
 
     def get_assessment(self, assessment_id: str) -> dict[str, Any] | None:
         with self._connect() as connection:

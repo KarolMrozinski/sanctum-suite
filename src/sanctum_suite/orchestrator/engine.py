@@ -211,7 +211,7 @@ class SanctumUnifiedOrchestrator:
         poly_payload = self.polymorphic_fuzzer.generate_polymorphic_payload("ignore previous instructions")
         sbom_audit = self.supply_chain_sbom.audit_software_bill_of_materials("sbom.json")
 
-        # Uruchomienie tunelu Cyber Plumber, mikro-kontenera Parrot Sec i AnonSurf
+        # Placeholder integrations: the Parrot container adapter only returns a non-executing plan.
         plumber_tunnel = self.cyber_plumber.establish_multihop_tunnel("entry-node.proxy", "exit-node.proxy")
         parrot_container = self.parrot_containers.spawn_parrot_microcontainer("DEEP_SCAN")
         anonsurf_status = self.anonsurf.enable_anonsurf_tunnel()

@@ -35,12 +35,26 @@ class IncidentGovernanceStore:
                     audit_id TEXT PRIMARY KEY,
                     occurred_at TEXT NOT NULL,
                     credential_fingerprint TEXT,
+                    subject_id TEXT,
+                    tenant_id TEXT,
+                    authentication_method TEXT,
                     action TEXT NOT NULL,
                     outcome_code INTEGER NOT NULL,
                     record_type TEXT NOT NULL
                 )
                 """
             )
+            columns = {
+                row["name"]
+                for row in connection.execute(
+                    "PRAGMA table_info(incident_access_audit)"
+                ).fetchall()
+            }
+            for column in ("subject_id", "tenant_id", "authentication_method"):
+                if column not in columns:
+                    connection.execute(
+                        f"ALTER TABLE incident_access_audit ADD COLUMN {column} TEXT"
+                    )
             connection.execute(
                 "CREATE INDEX IF NOT EXISTS idx_incident_access_audit_time "
                 "ON incident_access_audit(occurred_at DESC, audit_id)"
@@ -50,6 +64,9 @@ class IncidentGovernanceStore:
         self,
         *,
         credential_fingerprint: str | None,
+        subject_id: str | None = None,
+        tenant_id: str | None = None,
+        authentication_method: str | None = None,
         action: str,
         outcome_code: int,
     ) -> None:
@@ -59,18 +76,27 @@ class IncidentGovernanceStore:
             raise ValueError("action must contain between 1 and 256 characters")
         if not 100 <= outcome_code <= 599:
             raise ValueError("outcome_code must be a valid HTTP status code")
+        if subject_id is not None and (not subject_id or len(subject_id) > 255):
+            raise ValueError("subject_id must contain between 1 and 255 characters")
+        if tenant_id is not None and (not tenant_id or len(tenant_id) > 128):
+            raise ValueError("tenant_id must contain between 1 and 128 characters")
+        if authentication_method not in {None, "api_key", "oidc", "event_source"}:
+            raise ValueError("authentication_method is not supported")
         with self._connect() as connection:
             connection.execute(
                 """
                 INSERT INTO incident_access_audit (
-                    audit_id, occurred_at, credential_fingerprint, action,
-                    outcome_code, record_type
-                ) VALUES (?, ?, ?, ?, ?, 'api_access')
+                    audit_id, occurred_at, credential_fingerprint, subject_id,
+                    tenant_id, authentication_method, action, outcome_code, record_type
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'api_access')
                 """,
                 (
                     str(uuid.uuid4()),
                     _utc_now().isoformat(),
                     credential_fingerprint,
+                    subject_id,
+                    tenant_id,
+                    authentication_method,
                     action,
                     outcome_code,
                 ),
@@ -83,7 +109,8 @@ class IncidentGovernanceStore:
             return [
                 dict(row)
                 for row in connection.execute(
-                    "SELECT audit_id, occurred_at, credential_fingerprint, action, "
+                "SELECT audit_id, occurred_at, credential_fingerprint, subject_id, "
+                "tenant_id, authentication_method, action, "
                     "outcome_code, record_type FROM incident_access_audit "
                     "ORDER BY occurred_at DESC, audit_id DESC LIMIT ?",
                     (limit,),

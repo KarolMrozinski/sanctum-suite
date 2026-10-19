@@ -1,4 +1,5 @@
 import base64
+import hashlib
 import json
 import time
 
@@ -282,16 +283,28 @@ async def test_api_key_verification_fails_closed(monkeypatch):
         }
     )
     monkeypatch.delenv("SANCTUM_API_KEY", raising=False)
+
+    async def resolve_identity(api_key):
+        dependency = verify_api_key(request, api_key, None)
+        try:
+            return await anext(dependency)
+        finally:
+            await dependency.aclose()
+
     with pytest.raises(HTTPException) as missing_config:
-        await verify_api_key(request, "a" * 32)
+        await resolve_identity("a" * 32)
     assert missing_config.value.status_code == 503
 
     monkeypatch.setenv("SANCTUM_API_KEY", "b" * 32)
     with pytest.raises(HTTPException) as incorrect_key:
-        await verify_api_key(request, "a" * 32)
+        await resolve_identity("a" * 32)
     assert incorrect_key.value.status_code == 401
 
-    assert await verify_api_key(request, "b" * 32) == "b" * 32
+    identity = await resolve_identity("b" * 32)
+    assert identity.authentication_method == "api_key"
+    assert identity.credential_fingerprint == hashlib.sha256(
+        ("b" * 32).encode("utf-8")
+    ).hexdigest()[:16]
 
 def test_task_queue_manager():
     queue = AsyncTaskQueueManager()

@@ -1,3 +1,4 @@
+import hashlib
 import json
 import sqlite3
 
@@ -116,6 +117,116 @@ def test_push_ingestion_authenticates_source_and_correlates_across_batches(
     assert "external-user-123" not in persisted
     assert "external-flow-456" not in persisted
     assert TOKEN not in persisted
+
+
+def test_telemetry_to_purple_team_report_workflow(monkeypatch, tmp_path):
+    client, _ = configure_telemetry(monkeypatch, tmp_path)
+    source_headers = {
+        "X-Sanctum-Source-ID": "identity-provider",
+        "X-Sanctum-Source-Key": SOURCE_KEY,
+    }
+    ingest = client.post(
+        "/api/v1/telemetry/ingest",
+        headers=source_headers,
+        json={
+            "events": [
+                {
+                    "source_event_id": "alert-1",
+                    "event_type": "detection.alert",
+                    "observed_at": TIMESTAMP,
+                    "severity": "HIGH",
+                    "correlation_token": TOKEN,
+                    "detection_scenario_id": "identity-change-review",
+                    "detection_rule_id": "ID-PRIV-CHANGE",
+                },
+                {
+                    "source_event_id": "event-2",
+                    "event_type": "identity.privilege_change",
+                    "observed_at": "2026-10-18T10:01:00Z",
+                    "correlation_token": TOKEN,
+                },
+            ]
+        },
+    )
+    assert ingest.status_code == 200, ingest.text
+    assert len(ingest.json()["correlations"]) == 1
+    timeline = ingest.json()["correlations"][0]["timeline"]
+    detection = next(event for event in timeline if event["detection_rule_id"])
+    assert detection["detection_scenario_id"] == "identity-change-review"
+    assert detection["detection_rule_id"] == "ID-PRIV-CHANGE"
+
+    headers = {"X-API-Key": API_KEY}
+    created = client.post(
+        "/api/v1/cases",
+        headers=headers,
+        json={
+            "title": "Identity change detection replay",
+            "summary": "Review normalized identity and detection telemetry.",
+            "created_by": "analyst-1",
+            "priority": "HIGH",
+            "correlation_id": ingest.json()["correlations"][0]["correlation_id"],
+            "priority_reasons": ["Source-reported HIGH severity."],
+            "timeline": timeline,
+        },
+    )
+    assert created.status_code == 201, created.text
+    case_id = created.json()["case_id"]
+
+    replay = client.post(
+        f"/api/v1/cases/{case_id}/purple-team/replays",
+        headers=headers,
+        json={
+            "scenario_id": "identity-change-review",
+            "expected_rule_id": "ID-PRIV-CHANGE",
+            "evaluated_by": "analyst-1",
+        },
+    )
+    assert replay.status_code == 201, replay.text
+    replay_record = replay.json()
+    assert replay_record["result"]["detection_verified"] is True
+    assert replay_record["result"]["matched_alert"]["event_id"] == detection["event_id"]
+    assert replay_record["result"]["execution_mode"] == "OFFLINE_EVALUATION_ONLY"
+
+    missing_detection = client.post(
+        f"/api/v1/cases/{case_id}/purple-team/replays",
+        headers=headers,
+        json={
+            "scenario_id": "identity-change-review",
+            "expected_rule_id": "UNEXPECTED-RULE",
+            "evaluated_by": "analyst-1",
+        },
+    )
+    assert missing_detection.status_code == 201
+    assert missing_detection.json()["result"]["detection_verified"] is False
+
+    case = client.get(f"/api/v1/cases/{case_id}", headers=headers)
+    assert case.status_code == 200
+    assert len(case.json()["purple_team_replays"]) == 2
+    report_response = client.get(
+        f"/api/v1/cases/{case_id}/report",
+        headers=headers,
+    )
+    assert report_response.status_code == 200
+    report = report_response.json()
+    digest = report.pop("report_sha256")
+    assert digest == hashlib.sha256(
+        json.dumps(report, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode()
+    ).hexdigest()
+    assert report["case"]["case_id"] == case_id
+    assert len(report["case"]["purple_team_replays"]) == 2
+    assert "truth" in " ".join(report["limitations"])
+
+    invalid_replay = client.post(
+        f"/api/v1/cases/{case_id}/purple-team/replays",
+        headers=headers,
+        json={
+            "scenario_id": "identity-change-review",
+            "expected_rule_id": "ID-PRIV-CHANGE",
+            "evaluated_by": "analyst-1",
+            "observed_alerts": [],
+        },
+    )
+    assert invalid_replay.status_code == 422
 
 
 def test_file_import_supports_json_jsonl_and_cef_without_echoing_payload(

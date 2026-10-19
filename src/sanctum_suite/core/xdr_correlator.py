@@ -29,6 +29,8 @@ class RealtimeXdrMeshCorrelator:
             observed_at = self._normalize_timestamp(event.get("observed_at"))
             source = event.get("source")
             severity = event.get("severity")
+            detection_scenario_id = event.get("detection_scenario_id")
+            detection_rule_id = event.get("detection_rule_id")
             normalized_severity = severity.upper() if isinstance(severity, str) else None
             if (
                 not isinstance(event_id, str)
@@ -48,6 +50,18 @@ class RealtimeXdrMeshCorrelator:
                     severity is not None
                     and normalized_severity not in self.REPORTED_SEVERITIES
                 )
+                or ((detection_scenario_id is None) != (detection_rule_id is None))
+                or (
+                    detection_scenario_id is not None
+                    and (
+                        not isinstance(detection_scenario_id, str)
+                        or not detection_scenario_id.strip()
+                        or len(detection_scenario_id) > 128
+                        or not isinstance(detection_rule_id, str)
+                        or not detection_rule_id.strip()
+                        or len(detection_rule_id) > 128
+                    )
+                )
             ):
                 rejected += 1
                 continue
@@ -58,6 +72,8 @@ class RealtimeXdrMeshCorrelator:
                     "source": source,
                     "observed_at": observed_at,
                     "reported_severity": normalized_severity,
+                    "detection_scenario_id": detection_scenario_id,
+                    "detection_rule_id": detection_rule_id,
                 }
             )
             accepted += 1

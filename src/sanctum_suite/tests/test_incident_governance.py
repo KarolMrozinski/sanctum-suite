@@ -105,7 +105,7 @@ def test_access_audit_records_only_credential_fingerprint_and_route_metadata(
     )
 
     assert audit_response.status_code == 200
-    assert "not an individual" in audit_response.json()["limitations"]
+    assert "shared credential" in audit_response.json()["limitations"]
     records = audit_response.json()["records"]
     assert any(record["action"] == "GET /api/v1/cases/{case_id}" for record in records)
     assert any(record["action"] == "POST /api/v1/cases" for record in records)

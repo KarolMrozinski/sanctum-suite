@@ -77,6 +77,8 @@ class TelemetryEventStore:
                     event_type TEXT NOT NULL,
                     observed_at TEXT NOT NULL,
                     reported_severity TEXT,
+                    detection_scenario_id TEXT,
+                    detection_rule_id TEXT,
                     correlation_token_sha256 TEXT,
                     ingested_at TEXT NOT NULL,
                     batch_id TEXT NOT NULL REFERENCES telemetry_ingestion_batches(batch_id)
@@ -85,6 +87,22 @@ class TelemetryEventStore:
                 )
                 """
             )
+            event_columns = {
+                row["name"]
+                for row in connection.execute(
+                    "PRAGMA table_info(normalized_telemetry_events)"
+                ).fetchall()
+            }
+            if "detection_scenario_id" not in event_columns:
+                connection.execute(
+                    "ALTER TABLE normalized_telemetry_events "
+                    "ADD COLUMN detection_scenario_id TEXT"
+                )
+            if "detection_rule_id" not in event_columns:
+                connection.execute(
+                    "ALTER TABLE normalized_telemetry_events "
+                    "ADD COLUMN detection_rule_id TEXT"
+                )
             connection.execute(
                 "CREATE INDEX IF NOT EXISTS idx_telemetry_events_time "
                 "ON normalized_telemetry_events(ingested_at DESC, event_id)"
@@ -120,6 +138,8 @@ class TelemetryEventStore:
             event_type = event.get("event_type")
             observed_at = event.get("observed_at")
             severity = event.get("severity")
+            detection_scenario_id = event.get("detection_scenario_id")
+            detection_rule_id = event.get("detection_rule_id")
             correlation_token = event.get("correlation_token")
             if (
                 not isinstance(source_event_id, str)
@@ -139,6 +159,19 @@ class TelemetryEventStore:
                 "INFO",
             }:
                 raise ValueError("severity is not supported")
+            if (detection_scenario_id is None) != (detection_rule_id is None):
+                raise ValueError(
+                    "detection_scenario_id and detection_rule_id must be provided together"
+                )
+            if detection_scenario_id is not None and (
+                not isinstance(detection_scenario_id, str)
+                or not detection_scenario_id.strip()
+                or len(detection_scenario_id) > 128
+                or not isinstance(detection_rule_id, str)
+                or not detection_rule_id.strip()
+                or len(detection_rule_id) > 128
+            ):
+                raise ValueError("detection identifiers must contain 1 to 128 characters")
             normalized_events.append(
                 {
                     "event_id": str(uuid.uuid4()),
@@ -148,6 +181,14 @@ class TelemetryEventStore:
                     "event_type": event_type.strip(),
                     "observed_at": normalize_timestamp(observed_at),
                     "reported_severity": severity,
+                    "detection_scenario_id": (
+                        detection_scenario_id.strip()
+                        if detection_scenario_id is not None
+                        else None
+                    ),
+                    "detection_rule_id": (
+                        detection_rule_id.strip() if detection_rule_id is not None else None
+                    ),
                     "correlation_token_sha256": self.correlation_digest(correlation_token),
                 }
             )
@@ -170,9 +211,9 @@ class TelemetryEventStore:
                     """
                     INSERT OR IGNORE INTO normalized_telemetry_events (
                         event_id, source_id, source_event_id_sha256, event_type,
-                        observed_at, reported_severity, correlation_token_sha256,
-                        ingested_at, batch_id
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        observed_at, reported_severity, detection_scenario_id,
+                        detection_rule_id, correlation_token_sha256, ingested_at, batch_id
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
                     (
                         event["event_id"],
@@ -181,6 +222,8 @@ class TelemetryEventStore:
                         event["event_type"],
                         event["observed_at"],
                         event["reported_severity"],
+                        event["detection_scenario_id"],
+                        event["detection_rule_id"],
                         event["correlation_token_sha256"],
                         received_at,
                         batch_id,
@@ -217,7 +260,8 @@ class TelemetryEventStore:
                 rows = connection.execute(
                     """
                     SELECT event_id, source_id, event_type, observed_at,
-                        reported_severity, correlation_token_sha256, ingested_at
+                        reported_severity, detection_scenario_id, detection_rule_id,
+                        correlation_token_sha256, ingested_at
                     FROM normalized_telemetry_events
                     ORDER BY observed_at DESC, event_id LIMIT ?
                     """,
@@ -228,7 +272,8 @@ class TelemetryEventStore:
                 rows = connection.execute(
                     """
                     SELECT event_id, source_id, event_type, observed_at,
-                        reported_severity, correlation_token_sha256, ingested_at
+                        reported_severity, detection_scenario_id, detection_rule_id,
+                        correlation_token_sha256, ingested_at
                     FROM normalized_telemetry_events
                     WHERE source_id = ?
                     ORDER BY observed_at DESC, event_id LIMIT ?
@@ -252,7 +297,8 @@ class TelemetryEventStore:
             rows = connection.execute(
                 """
                 SELECT event_id, source_id, event_type, observed_at,
-                    reported_severity, correlation_token_sha256
+                    reported_severity, detection_scenario_id, detection_rule_id,
+                    correlation_token_sha256
                 FROM normalized_telemetry_events
                 WHERE correlation_token_sha256 IS NOT NULL AND ingested_at >= ?
                 ORDER BY ingested_at DESC, event_id

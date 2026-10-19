@@ -67,8 +67,37 @@ class IncidentCaseStore:
                     source TEXT,
                     observed_at TEXT,
                     reported_severity TEXT,
+                    detection_scenario_id TEXT,
+                    detection_rule_id TEXT,
                     created_at TEXT NOT NULL,
                     UNIQUE(case_id, event_id)
+                )
+                """
+            )
+            event_columns = {
+                row["name"]
+                for row in connection.execute(
+                    "PRAGMA table_info(incident_case_events)"
+                ).fetchall()
+            }
+            if "detection_scenario_id" not in event_columns:
+                connection.execute(
+                    "ALTER TABLE incident_case_events ADD COLUMN detection_scenario_id TEXT"
+                )
+            if "detection_rule_id" not in event_columns:
+                connection.execute(
+                    "ALTER TABLE incident_case_events ADD COLUMN detection_rule_id TEXT"
+                )
+            connection.execute(
+                """
+                CREATE TABLE IF NOT EXISTS incident_purple_team_replays (
+                    replay_id TEXT PRIMARY KEY,
+                    case_id TEXT NOT NULL REFERENCES incident_cases(case_id) ON DELETE CASCADE,
+                    scenario_id TEXT NOT NULL,
+                    expected_rule_id TEXT NOT NULL,
+                    evaluated_by TEXT NOT NULL,
+                    result_json TEXT NOT NULL,
+                    created_at TEXT NOT NULL
                 )
                 """
             )
@@ -143,6 +172,26 @@ class IncidentCaseStore:
                 or not isinstance(event.get("event_type"), str)
                 or not event["event_type"]
                 or len(event["event_type"]) > 128
+                or (
+                    event.get("detection_scenario_id") is not None
+                    and (
+                        not isinstance(event["detection_scenario_id"], str)
+                        or not event["detection_scenario_id"].strip()
+                        or len(event["detection_scenario_id"]) > 128
+                    )
+                )
+                or (
+                    event.get("detection_rule_id") is not None
+                    and (
+                        not isinstance(event["detection_rule_id"], str)
+                        or not event["detection_rule_id"].strip()
+                        or len(event["detection_rule_id"]) > 128
+                    )
+                )
+                or (
+                    (event.get("detection_scenario_id") is None)
+                    != (event.get("detection_rule_id") is None)
+                )
             ):
                 raise ValueError("timeline events require valid event_id and event_type")
             if event["event_id"] in event_ids:
@@ -177,8 +226,9 @@ class IncidentCaseStore:
                         """
                         INSERT INTO incident_case_events (
                             case_event_id, case_id, event_id, event_type, source,
-                            observed_at, reported_severity, created_at
-                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                            observed_at, reported_severity, detection_scenario_id,
+                            detection_rule_id, created_at
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                         """,
                         (
                             str(uuid.uuid4()),
@@ -188,6 +238,8 @@ class IncidentCaseStore:
                             event.get("source"),
                             event.get("observed_at"),
                             event.get("reported_severity"),
+                            event.get("detection_scenario_id"),
+                            event.get("detection_rule_id"),
                             created_at,
                         ),
                     )
@@ -231,6 +283,7 @@ class IncidentCaseStore:
                 dict(event)
                 for event in connection.execute(
                     "SELECT event_id, event_type, source, observed_at, reported_severity "
+                    ", detection_scenario_id, detection_rule_id "
                     "FROM incident_case_events WHERE case_id = ? "
                     "ORDER BY observed_at IS NULL, observed_at, case_event_id",
                     (case_id,),
@@ -253,6 +306,9 @@ class IncidentCaseStore:
                     (case_id,),
                 ).fetchall()
             ]
+            result["purple_team_replays"] = self.list_purple_team_replays(
+                case_id, connection=connection
+            )
             return result
 
     @staticmethod
@@ -274,6 +330,91 @@ class IncidentCaseStore:
             "event_count": event_count,
             "created_at": row["created_at"],
             "updated_at": row["updated_at"],
+        }
+
+    def add_purple_team_replay(
+        self,
+        case_id: str,
+        *,
+        scenario_id: str,
+        expected_rule_id: str,
+        evaluated_by: str,
+        result: dict[str, Any],
+    ) -> dict[str, Any] | None:
+        self._validate_text(scenario_id, "scenario_id", 128)
+        self._validate_text(expected_rule_id, "expected_rule_id", 128)
+        self._validate_text(evaluated_by, "evaluated_by", 200)
+        if result.get("scenario_id") != scenario_id or result.get(
+            "expected_rule_id"
+        ) != expected_rule_id:
+            raise ValueError("Purple Team result identifiers do not match the request")
+        created_at = _utc_now()
+        replay_id = str(uuid.uuid4())
+        with self._connect() as connection:
+            if connection.execute(
+                "SELECT 1 FROM incident_cases WHERE case_id = ?", (case_id,)
+            ).fetchone() is None:
+                return None
+            connection.execute(
+                """
+                INSERT INTO incident_purple_team_replays (
+                    replay_id, case_id, scenario_id, expected_rule_id, evaluated_by,
+                    result_json, created_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    replay_id,
+                    case_id,
+                    scenario_id.strip(),
+                    expected_rule_id.strip(),
+                    evaluated_by.strip(),
+                    json.dumps(result, ensure_ascii=False, sort_keys=True),
+                    created_at,
+                ),
+            )
+            connection.execute(
+                "UPDATE incident_cases SET updated_at = ? WHERE case_id = ?",
+                (created_at, case_id),
+            )
+        replay = self.get_purple_team_replay(replay_id)
+        if replay is None:
+            raise RuntimeError("Purple Team replay was saved but could not be read back")
+        return replay
+
+    def list_purple_team_replays(
+        self,
+        case_id: str,
+        *,
+        connection: sqlite3.Connection | None = None,
+    ) -> list[dict[str, Any]]:
+        if connection is not None:
+            rows = connection.execute(
+                "SELECT * FROM incident_purple_team_replays "
+                "WHERE case_id = ? ORDER BY created_at, replay_id",
+                (case_id,),
+            ).fetchall()
+            return [self._purple_team_replay(row) for row in rows]
+        with self._connect() as owned_connection:
+            return self.list_purple_team_replays(case_id, connection=owned_connection)
+
+    def get_purple_team_replay(self, replay_id: str) -> dict[str, Any] | None:
+        with self._connect() as connection:
+            row = connection.execute(
+                "SELECT * FROM incident_purple_team_replays WHERE replay_id = ?",
+                (replay_id,),
+            ).fetchone()
+            return self._purple_team_replay(row) if row is not None else None
+
+    @staticmethod
+    def _purple_team_replay(row: sqlite3.Row) -> dict[str, Any]:
+        return {
+            "replay_id": row["replay_id"],
+            "case_id": row["case_id"],
+            "scenario_id": row["scenario_id"],
+            "expected_rule_id": row["expected_rule_id"],
+            "evaluated_by": row["evaluated_by"],
+            "result": json.loads(row["result_json"]),
+            "created_at": row["created_at"],
         }
 
     def update_case(

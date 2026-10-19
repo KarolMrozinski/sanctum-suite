@@ -3,7 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.exceptions import RequestValidationError
 from fastapi.exception_handlers import request_validation_exception_handler
 from fastapi.responses import JSONResponse
-from fastapi.security import APIKeyHeader
+from fastapi.security import APIKeyHeader, HTTPAuthorizationCredentials, HTTPBearer
 from pydantic import AwareDatetime, BaseModel, Field, ValidationError, field_validator
 from typing import Dict, Any, List, Literal
 from fastapi import Response
@@ -13,8 +13,8 @@ import json
 import os
 import re
 from pathlib import Path
-from datetime import timezone
-from pydantic import ConfigDict
+from datetime import datetime, timezone
+from pydantic import ConfigDict, model_validator
 from starlette.concurrency import run_in_threadpool
 
 from sanctum_suite.orchestrator.engine import SanctumUnifiedOrchestrator
@@ -23,6 +23,7 @@ from sanctum_suite.core.sigma_yara import DetectionRuleGenerator
 from sanctum_suite.core.anomaly import MLAnomalyDetector
 from sanctum_suite.core.control_catalog import (
     AssessmentState,
+    CATALOG_VERSION,
     ControlCatalog,
     EvidenceInput,
 )
@@ -36,6 +37,15 @@ from sanctum_suite.core.telemetry_store import (
     validate_source_id,
 )
 from sanctum_suite.core.xdr_correlator import RealtimeXdrMeshCorrelator
+from sanctum_suite.core.purple_team import PurpleTeamEmulationCoordinator
+from sanctum_suite.core.oidc import (
+    AuthenticatedIdentity,
+    OIDCAuthenticationError,
+    current_identity,
+    oidc_configuration,
+    oidc_token_verifier,
+    tenant_database_path,
+)
 from sanctum_suite.core.methodology_catalog import list_methodology_references
 from sanctum_suite.core.target_authorization import TargetAuthorizationError, require_authorized_target
 from sanctum_suite.core.billing import CommercialLicenseManager
@@ -82,15 +92,21 @@ if cors_origins:
         allow_origins=cors_origins,
         allow_credentials=False,
         allow_methods=["GET", "POST", "PATCH"],
-        allow_headers=["X-API-Key", "Content-Type"],
+        allow_headers=["X-API-Key", "Authorization", "Content-Type"],
     )
 
 api_key_header = APIKeyHeader(name="X-API-Key", auto_error=False)
+bearer_scheme = HTTPBearer(auto_error=False)
 _CORRELATION_TOKEN_PATTERN = r"^[0-9a-f]{64}$"
 
 
 def get_telemetry_event_store() -> TelemetryEventStore:
     global telemetry_event_store
+    tenant_path = tenant_database_path("cases")
+    if tenant_path is not None:
+        if tenant_path not in _tenant_telemetry_stores:
+            _tenant_telemetry_stores[tenant_path] = TelemetryEventStore(tenant_path)
+        return _tenant_telemetry_stores[tenant_path]
     if telemetry_event_store is None:
         telemetry_event_store = TelemetryEventStore(
             get_incident_case_store().db_path
@@ -146,6 +162,13 @@ def require_event_retention(source_keys: Dict[str, str]) -> int:
 
 def get_incident_governance_store() -> IncidentGovernanceStore:
     global incident_governance_store
+    tenant_path = tenant_database_path("cases")
+    if tenant_path is not None:
+        if tenant_path not in _tenant_governance_stores:
+            _tenant_governance_stores[tenant_path] = IncidentGovernanceStore(
+                tenant_path
+            )
+        return _tenant_governance_stores[tenant_path]
     if incident_governance_store is None:
         incident_governance_store = IncidentGovernanceStore(
             get_incident_case_store().db_path
@@ -203,7 +226,60 @@ def apply_configured_incident_retention() -> Dict[str, int]:
 async def verify_api_key(
     request: Request,
     api_key: str = Security(api_key_header),
+    bearer: HTTPAuthorizationCredentials | None = Security(bearer_scheme),
 ):
+    try:
+        configured_oidc = oidc_configuration()
+    except OIDCAuthenticationError as error:
+        raise HTTPException(status_code=503, detail=str(error)) from error
+    identity: AuthenticatedIdentity
+    if bearer is not None and bearer.scheme.casefold() == "bearer":
+        if configured_oidc is None:
+            raise HTTPException(
+                status_code=503,
+                detail="Configure OIDC issuer and audience before using bearer tokens",
+            )
+        try:
+            identity = await oidc_token_verifier.authenticate(bearer.credentials)
+        except OIDCAuthenticationError as error:
+            raise HTTPException(status_code=401, detail=str(error)) from error
+    elif configured_oidc is not None:
+        legacy_enabled = os.environ.get(
+            "SANCTUM_ALLOW_LEGACY_API_KEY", ""
+        ).casefold() in {"1", "true", "yes"}
+        if not legacy_enabled:
+            raise HTTPException(
+                status_code=401,
+                detail="A valid OIDC bearer token is required",
+            )
+        identity = _authenticate_legacy_api_key(api_key)
+    else:
+        identity = _authenticate_legacy_api_key(api_key)
+
+    _authorize_identity(request, identity)
+    context_token = current_identity.set(identity)
+    request.state.credential_fingerprint = identity.credential_fingerprint
+    request.state.identity_subject = identity.subject
+    request.state.identity_tenant = identity.tenant_id
+    request.state.authentication_method = identity.authentication_method
+    request.state.authenticated_identity = identity
+    try:
+        if request.url.path.startswith(
+            (
+                "/api/v1/cases",
+                "/api/v1/playbooks",
+                "/api/v1/governance",
+                "/api/v1/events/correlate",
+                "/api/v1/telemetry",
+            )
+        ) and request.url.path != "/api/v1/governance/retention/purge":
+            apply_configured_incident_retention()
+        yield identity
+    finally:
+        current_identity.reset(context_token)
+
+
+def _authenticate_legacy_api_key(api_key: str | None) -> AuthenticatedIdentity:
     expected_key = os.environ.get("SANCTUM_API_KEY", "")
     if len(expected_key.encode("utf-8")) < 32:
         raise HTTPException(
@@ -217,20 +293,50 @@ async def verify_api_key(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid or missing X-API-Key header",
         )
-    request.state.credential_fingerprint = hashlib.sha256(
-        api_key.encode("utf-8")
-    ).hexdigest()[:16]
-    if request.url.path.startswith(
+    fingerprint = hashlib.sha256(api_key.encode("utf-8")).hexdigest()[:16]
+    return AuthenticatedIdentity(
+        subject=f"api-key:{fingerprint}",
+        tenant_id="legacy",
+        roles=frozenset({"ADMIN"}),
+        credential_fingerprint=fingerprint,
+        authentication_method="api_key",
+    )
+
+
+def _authorize_identity(request: Request, identity: AuthenticatedIdentity) -> None:
+    if identity.authentication_method != "oidc":
+        return
+    if request.url.path in {"/api/v1/audit", "/api/v1/analytics"}:
+        raise HTTPException(
+            status_code=403,
+            detail=(
+                "This legacy audit/analytics surface is not tenant-scoped; "
+                "use the isolated case, telemetry, and control workflows"
+            ),
+        )
+    if "ADMIN" in identity.roles or request.method in {"GET", "HEAD", "OPTIONS"}:
+        return
+    is_auditor_workflow = request.url.path.startswith(
         (
+            "/api/v1/controls/",
             "/api/v1/cases",
             "/api/v1/playbooks",
-            "/api/v1/governance",
-            "/api/v1/events/correlate",
-            "/api/v1/telemetry",
+            "/api/v1/governance/retention/purge",
         )
-    ) and request.url.path != "/api/v1/governance/retention/purge":
-        apply_configured_incident_retention()
-    return api_key
+    )
+    if "AUDITOR" in identity.roles and is_auditor_workflow:
+        return
+    raise HTTPException(
+        status_code=403,
+        detail="The authenticated OIDC role is not authorized for this operation",
+    )
+
+
+def _authenticated_actor_label(requested_label: str) -> str:
+    identity = current_identity.get()
+    if identity is not None and identity.authentication_method == "oidc":
+        return identity.subject
+    return requested_label
 
 
 async def verify_event_source(
@@ -254,15 +360,52 @@ async def verify_event_source(
     ).hexdigest()[:16]
     request.state.telemetry_source_id = source_id
     try:
-        get_telemetry_event_store().delete_expired_events(
-            retention_days=retention_days
-        )
-    except ValueError as error:
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="Event retention configuration is invalid",
-        ) from error
-    return source_id
+        configured_oidc = oidc_configuration()
+    except OIDCAuthenticationError as error:
+        raise HTTPException(status_code=503, detail=str(error)) from error
+    tenant_id = "legacy"
+    if configured_oidc is not None:
+        serialized_tenants = os.environ.get("SANCTUM_EVENT_SOURCE_TENANTS", "").strip()
+        try:
+            source_tenants = json.loads(serialized_tenants) if serialized_tenants else {}
+        except json.JSONDecodeError as error:
+            raise HTTPException(
+                status_code=503,
+                detail="SANCTUM_EVENT_SOURCE_TENANTS must contain a JSON object",
+            ) from error
+        tenant_id = source_tenants.get(source_id) if isinstance(source_tenants, dict) else None
+        if not isinstance(tenant_id, str) or not re.fullmatch(
+            r"[A-Za-z0-9][A-Za-z0-9_.-]{0,127}", tenant_id
+        ):
+            raise HTTPException(
+                status_code=503,
+                detail="Map every configured event source to a tenant in SANCTUM_EVENT_SOURCE_TENANTS",
+            )
+    source_identity = AuthenticatedIdentity(
+        subject=f"event-source:{source_id}",
+        tenant_id=tenant_id,
+        roles=frozenset({"ADMIN"}),
+        credential_fingerprint=request.state.credential_fingerprint,
+        authentication_method="event_source",
+    )
+    context_token = current_identity.set(source_identity)
+    request.state.identity_subject = source_identity.subject
+    request.state.identity_tenant = source_identity.tenant_id
+    request.state.authentication_method = source_identity.authentication_method
+    request.state.authenticated_identity = source_identity
+    try:
+        try:
+            get_telemetry_event_store().delete_expired_events(
+                retention_days=retention_days
+            )
+        except ValueError as error:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="Event retention configuration is invalid",
+            ) from error
+        yield source_id
+    finally:
+        current_identity.reset(context_token)
 
 
 @app.middleware("http")
@@ -281,17 +424,30 @@ async def audit_incident_api_access(request: Request, call_next):
             "/api/v1/events/correlate",
             "/api/v1/lab",
             "/api/v1/telemetry",
+            "/api/v1/controls",
+            "/api/v1/frameworks",
         )
     )
     if is_audited_route:
         source_id = getattr(request.state, "telemetry_source_id", None)
         if source_id is not None:
             action = f"{action} source={source_id}"
-        get_incident_governance_store().record_access(
-            credential_fingerprint=credential_fingerprint,
-            action=f"{request.method} {action}",
-            outcome_code=response.status_code,
-        )
+        identity = getattr(request.state, "authenticated_identity", None)
+        context_token = current_identity.set(identity) if identity is not None else None
+        try:
+            get_incident_governance_store().record_access(
+                credential_fingerprint=credential_fingerprint,
+                subject_id=getattr(request.state, "identity_subject", None),
+                tenant_id=getattr(request.state, "identity_tenant", None),
+                authentication_method=getattr(
+                    request.state, "authentication_method", None
+                ),
+                action=f"{request.method} {action}",
+                outcome_code=response.status_code,
+            )
+        finally:
+            if context_token is not None:
+                current_identity.reset(context_token)
     return response
 
 
@@ -304,7 +460,13 @@ incident_case_store: IncidentCaseStore | None = None
 incident_governance_store: IncidentGovernanceStore | None = None
 incident_playbook_store: IncidentPlaybookStore | None = None
 telemetry_event_store: TelemetryEventStore | None = None
+_tenant_control_catalogs: Dict[str, ControlCatalog] = {}
+_tenant_case_stores: Dict[str, IncidentCaseStore] = {}
+_tenant_governance_stores: Dict[str, IncidentGovernanceStore] = {}
+_tenant_playbook_stores: Dict[str, IncidentPlaybookStore] = {}
+_tenant_telemetry_stores: Dict[str, TelemetryEventStore] = {}
 xdr_correlator = RealtimeXdrMeshCorrelator()
+purple_team_coordinator = PurpleTeamEmulationCoordinator()
 synthetic_incident_lab = SyntheticIncidentLab(xdr_correlator)
 telemetry_adapter_registry = TelemetryAdapterRegistry()
 license_manager = CommercialLicenseManager()
@@ -313,6 +475,11 @@ audits_total = 0
 
 def get_control_catalog() -> ControlCatalog:
     global control_catalog
+    tenant_path = tenant_database_path("controls")
+    if tenant_path is not None:
+        if tenant_path not in _tenant_control_catalogs:
+            _tenant_control_catalogs[tenant_path] = ControlCatalog(tenant_path)
+        return _tenant_control_catalogs[tenant_path]
     if control_catalog is None:
         default_controls_db = Path.home() / ".sanctum-suite" / "controls.sqlite3"
         control_catalog = ControlCatalog(
@@ -323,6 +490,11 @@ def get_control_catalog() -> ControlCatalog:
 
 def get_incident_case_store() -> IncidentCaseStore:
     global incident_case_store
+    tenant_path = tenant_database_path("cases")
+    if tenant_path is not None:
+        if tenant_path not in _tenant_case_stores:
+            _tenant_case_stores[tenant_path] = IncidentCaseStore(tenant_path)
+        return _tenant_case_stores[tenant_path]
     if incident_case_store is None:
         default_cases_db = Path.home() / ".sanctum-suite" / "cases.sqlite3"
         incident_case_store = IncidentCaseStore(
@@ -333,6 +505,11 @@ def get_incident_case_store() -> IncidentCaseStore:
 
 def get_incident_playbook_store() -> IncidentPlaybookStore:
     global incident_playbook_store
+    tenant_path = tenant_database_path("cases")
+    if tenant_path is not None:
+        if tenant_path not in _tenant_playbook_stores:
+            _tenant_playbook_stores[tenant_path] = IncidentPlaybookStore(tenant_path)
+        return _tenant_playbook_stores[tenant_path]
     if incident_playbook_store is None:
         case_store = get_incident_case_store()
         incident_playbook_store = IncidentPlaybookStore(case_store.db_path)
@@ -388,6 +565,8 @@ class NormalizedTelemetryEvent(BaseModel):
     event_type: str = Field(min_length=1, max_length=128)
     observed_at: AwareDatetime
     severity: Literal["CRITICAL", "HIGH", "MEDIUM", "LOW", "INFO"] | None = None
+    detection_scenario_id: str | None = Field(default=None, min_length=1, max_length=128)
+    detection_rule_id: str | None = Field(default=None, min_length=1, max_length=128)
     correlation_token: str | None = Field(
         default=None, pattern=_CORRELATION_TOKEN_PATTERN
     )
@@ -398,6 +577,23 @@ class NormalizedTelemetryEvent(BaseModel):
         if not value.strip():
             raise ValueError("Value cannot be blank")
         return value
+
+    @model_validator(mode="after")
+    def require_detection_identifier_pair(self):
+        if (self.detection_scenario_id is None) != (self.detection_rule_id is None):
+            raise ValueError(
+                "detection_scenario_id and detection_rule_id must be provided together"
+            )
+        if (
+            self.detection_scenario_id is not None
+            and (
+                not self.detection_scenario_id.strip()
+                or not self.detection_rule_id
+                or not self.detection_rule_id.strip()
+            )
+        ):
+            raise ValueError("detection identifiers cannot be blank")
+        return self
 
 class TelemetryIngestRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
@@ -424,6 +620,31 @@ class CaseTimelineEvent(BaseModel):
     source: str | None = Field(default=None, min_length=1, max_length=128)
     observed_at: AwareDatetime | None = None
     reported_severity: Literal["CRITICAL", "HIGH", "MEDIUM", "LOW", "INFO"] | None = None
+    detection_scenario_id: str | None = Field(default=None, min_length=1, max_length=128)
+    detection_rule_id: str | None = Field(default=None, min_length=1, max_length=128)
+
+    @model_validator(mode="after")
+    def require_detection_identifier_pair(self):
+        if (self.detection_scenario_id is None) != (self.detection_rule_id is None):
+            raise ValueError(
+                "detection_scenario_id and detection_rule_id must be provided together"
+            )
+        return self
+
+
+class PurpleTeamReplayRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    scenario_id: str = Field(min_length=1, max_length=128)
+    expected_rule_id: str = Field(min_length=1, max_length=128)
+    evaluated_by: str = Field(min_length=1, max_length=200)
+
+    @field_validator("scenario_id", "expected_rule_id", "evaluated_by")
+    @classmethod
+    def reject_blank_identifiers(cls, value: str) -> str:
+        if not value.strip():
+            raise ValueError("Value cannot be blank")
+        return value
 
 class IncidentCaseCreateRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
@@ -514,7 +735,46 @@ async def get_analytics(target: str = Query(..., description="Domena docelowa"))
 @app.get("/api/v1/controls", dependencies=[Security(verify_api_key)])
 async def list_controls(framework: str | None = Query(default=None, max_length=100)) -> Dict[str, Any]:
     """Lists versioned control definitions without claiming compliance."""
-    return {"controls": get_control_catalog().list_controls(framework)}
+    return {
+        "catalog_version": CATALOG_VERSION,
+        "controls": get_control_catalog().list_controls(framework),
+    }
+
+
+@app.get("/api/v1/controls/coverage", dependencies=[Security(verify_api_key)])
+async def get_control_coverage_report(
+    framework: str | None = Query(default=None, max_length=100),
+) -> Dict[str, Any]:
+    """Returns a versioned assessment-gap report, not a compliance determination."""
+    try:
+        report = get_control_catalog().get_coverage_report(framework=framework)
+    except ValueError as error:
+        raise HTTPException(status_code=404, detail=str(error)) from error
+    report["generated_at"] = datetime.now(timezone.utc).isoformat()
+    canonical_report = json.dumps(
+        report, ensure_ascii=False, sort_keys=True, separators=(",", ":")
+    )
+    report["report_sha256"] = hashlib.sha256(
+        canonical_report.encode("utf-8")
+    ).hexdigest()
+    return report
+
+
+@app.get(
+    "/api/v1/controls/mappings/history",
+    dependencies=[Security(verify_api_key)],
+)
+async def list_control_mapping_history(
+    framework: str | None = Query(default=None, max_length=100),
+    limit: int = Query(default=500, ge=1, le=2_000),
+) -> Dict[str, Any]:
+    """Returns append-only catalog mapping snapshots across internal catalog versions."""
+    return {
+        "catalog_version": CATALOG_VERSION,
+        "mappings": get_control_catalog().list_mapping_history(
+            framework=framework, limit=limit
+        ),
+    }
 
 
 @app.get("/api/v1/frameworks", dependencies=[Security(verify_api_key)])
@@ -536,7 +796,7 @@ async def create_control_assessment(
             control_id=control_id,
             state=payload.state,
             summary=payload.summary,
-            assessed_by=payload.assessed_by,
+            assessed_by=_authenticated_actor_label(payload.assessed_by),
             evidence=[
                 EvidenceInput(source=item.source, reference=item.reference, sha256=item.sha256)
                 for item in payload.evidence
@@ -680,6 +940,8 @@ async def correlate_ingested_telemetry(
                 "source": event["source_id"],
                 "observed_at": event["observed_at"],
                 "severity": event["reported_severity"],
+                "detection_scenario_id": event["detection_scenario_id"],
+                "detection_rule_id": event["detection_rule_id"],
             }
             for event in events
         ]
@@ -712,6 +974,8 @@ def _telemetry_store_events(
                 .replace("+00:00", "Z")
             ),
             "severity": event.severity,
+            "detection_scenario_id": event.detection_scenario_id,
+            "detection_rule_id": event.detection_rule_id,
             "correlation_token": event.correlation_token,
         }
         for event in events
@@ -729,6 +993,8 @@ def _telemetry_store_events(
             "source": event["source_id"],
             "observed_at": event["observed_at"],
             "severity": event["reported_severity"],
+            "detection_scenario_id": event["detection_scenario_id"],
+            "detection_rule_id": event["detection_rule_id"],
         }
         for event in related_events
     ]
@@ -801,7 +1067,7 @@ async def create_incident_case(payload: IncidentCaseCreateRequest) -> Dict[str, 
         return get_incident_case_store().create_case(
             title=payload.title,
             summary=payload.summary,
-            created_by=payload.created_by,
+            created_by=_authenticated_actor_label(payload.created_by),
             priority=payload.priority,
             correlation_id=payload.correlation_id,
             priority_reasons=payload.priority_reasons,
@@ -846,6 +1112,74 @@ async def get_incident_case(case_id: str) -> Dict[str, Any]:
     return case
 
 
+@app.post(
+    "/api/v1/cases/{case_id}/purple-team/replays",
+    status_code=status.HTTP_201_CREATED,
+    dependencies=[Security(verify_api_key)],
+)
+async def evaluate_case_purple_team_replay(
+    case_id: str,
+    payload: PurpleTeamReplayRequest,
+) -> Dict[str, Any]:
+    case_store = get_incident_case_store()
+    case = case_store.get_case(case_id)
+    if case is None:
+        raise HTTPException(status_code=404, detail="Incident case not found")
+    observed_alerts = [
+        {
+            "scenario_id": event["detection_scenario_id"],
+            "rule_id": event["detection_rule_id"],
+            "event_id": event["event_id"],
+            "event_type": event["event_type"],
+            "source": event["source"],
+        }
+        for event in case["timeline"]
+        if event.get("detection_scenario_id") is not None
+        and event.get("detection_rule_id") is not None
+    ]
+    result = purple_team_coordinator.coordinate_emulation_cycle(
+        payload.scenario_id,
+        payload.expected_rule_id,
+        observed_alerts,
+    )
+    replay = case_store.add_purple_team_replay(
+        case_id,
+        scenario_id=payload.scenario_id,
+        expected_rule_id=payload.expected_rule_id,
+        evaluated_by=_authenticated_actor_label(payload.evaluated_by),
+        result=result,
+    )
+    if replay is None:
+        raise HTTPException(status_code=404, detail="Incident case not found")
+    return replay
+
+
+@app.get("/api/v1/cases/{case_id}/report", dependencies=[Security(verify_api_key)])
+async def export_incident_case_report(case_id: str) -> Dict[str, Any]:
+    case = get_incident_case_store().get_case(case_id)
+    if case is None:
+        raise HTTPException(status_code=404, detail="Incident case not found")
+    report: Dict[str, Any] = {
+        "schema_version": "1.0",
+        "generated_at": datetime.now(timezone.utc).isoformat(),
+        "data_classification": "OPERATOR_PROVIDED",
+        "case": case,
+        "limitations": [
+            "The report contains operator-provided metadata and evidence references, not evidence contents.",
+            "Source-reported severities and Purple Team alert identifiers are not independently verified.",
+            "Detection replay evaluates recorded alert metadata only; it does not execute attack behavior or contact an EDR/XDR service.",
+            "A report digest identifies these serialized report contents; it does not establish their truth, completeness, or authenticity.",
+        ],
+    }
+    canonical_report = json.dumps(
+        report, ensure_ascii=False, sort_keys=True, separators=(",", ":")
+    )
+    report["report_sha256"] = hashlib.sha256(
+        canonical_report.encode("utf-8")
+    ).hexdigest()
+    return report
+
+
 @app.patch("/api/v1/cases/{case_id}", dependencies=[Security(verify_api_key)])
 async def update_incident_case(
     case_id: str,
@@ -874,7 +1208,9 @@ async def add_incident_case_note(
 ) -> Dict[str, Any]:
     try:
         case = get_incident_case_store().add_note(
-            case_id, author=payload.author, body=payload.body
+            case_id,
+            author=_authenticated_actor_label(payload.author),
+            body=payload.body,
         )
     except ValueError as error:
         raise HTTPException(status_code=422, detail=str(error)) from error
@@ -893,7 +1229,7 @@ async def add_incident_case_evidence(
             case_id,
             source=payload.source,
             reference=payload.reference,
-            added_by=payload.added_by,
+            added_by=_authenticated_actor_label(payload.added_by),
             sha256=payload.sha256,
         )
     except ValueError as error:
@@ -914,7 +1250,7 @@ async def simulate_incident_playbook(
 ) -> Dict[str, Any]:
     try:
         plan = get_incident_playbook_store().simulate(
-            case_id, simulated_by=payload.simulated_by
+            case_id, simulated_by=_authenticated_actor_label(payload.simulated_by)
         )
     except ValueError as error:
         raise HTTPException(status_code=422, detail=str(error)) from error
@@ -957,7 +1293,7 @@ async def decide_incident_playbook(
         plan = get_incident_playbook_store().record_decision(
             plan_id,
             decision=payload.decision,
-            reviewer=payload.reviewer,
+            reviewer=_authenticated_actor_label(payload.reviewer),
             rationale=payload.rationale,
         )
     except ValueError as error:
@@ -977,9 +1313,10 @@ async def list_incident_access_log(
     return {
         "records": get_incident_governance_store().list_access(limit=limit),
         "limitations": (
-            "The fingerprint identifies the shared API credential, not an individual "
-            "operator. Request bodies, API keys, client IP addresses, and query strings "
-            "are not stored."
+            "OIDC subject/tenant values come from validated token claims; legacy API-key "
+            "requests identify only a shared credential fingerprint. Request bodies, "
+            "credentials, client IP addresses, and query strings are not stored. This "
+            "SQLite audit is operational metadata, not a tamper-proof immutable log."
         ),
     }
 
@@ -1067,14 +1404,28 @@ async def healthz():
 
 @app.get("/readyz", status_code=200)
 async def readyz():
-    """Readiness probe checks that API authentication is configured."""
-    if len(os.environ.get("SANCTUM_API_KEY", "").encode("utf-8")) < 32:
+    """Readiness probe checks that at least one complete authentication mode is configured."""
+    try:
+        configured_oidc = oidc_configuration()
+    except OIDCAuthenticationError:
+        configured_oidc = None
+        oidc_invalid = True
+    else:
+        oidc_invalid = False
+    legacy_configured = len(os.environ.get("SANCTUM_API_KEY", "").encode("utf-8")) >= 32
+    if oidc_invalid or (configured_oidc is None and not legacy_configured):
         return Response(
             content='{"status":"NOT_READY","reason":"API authentication is not configured"}',
             status_code=503,
             media_type="application/json",
         )
-    return {"status": "READY", "api_auth_configured": True}
+    return {
+        "status": "READY",
+        "api_auth_configured": True,
+        "authentication_modes": (
+            ["oidc"] if configured_oidc is not None else ["legacy_api_key"]
+        ),
+    }
 
 @app.get("/metrics")
 async def metrics():

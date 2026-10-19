@@ -83,6 +83,8 @@ interface IncidentTimelineEntry {
   source: string | null;
   observed_at: string | null;
   reported_severity: string | null;
+  detection_scenario_id?: string | null;
+  detection_rule_id?: string | null;
 }
 
 interface CorrelatedIncident {
@@ -129,6 +131,26 @@ interface IncidentCaseRecord {
     added_by: string;
     created_at: string;
   }>;
+  purple_team_replays?: PurpleTeamReplay[];
+}
+
+interface PurpleTeamReplay {
+  replay_id: string;
+  case_id: string;
+  scenario_id: string;
+  expected_rule_id: string;
+  evaluated_by: string;
+  result: {
+    detection_verified: boolean;
+    status: string;
+    matched_alert: {
+      event_id?: string;
+      event_type?: string;
+      source?: string;
+    } | null;
+    execution_mode: "OFFLINE_EVALUATION_ONLY";
+  };
+  created_at: string;
 }
 
 interface PlaybookStep {
@@ -188,7 +210,40 @@ interface NormalizedTelemetryEvent {
   event_type: string;
   observed_at: string;
   reported_severity: string | null;
+  detection_scenario_id: string | null;
+  detection_rule_id: string | null;
   ingested_at: string;
+}
+
+interface ControlCoverageRow {
+  mapping_id: string;
+  catalog_version: string;
+  control_id: string;
+  framework: string;
+  framework_version: string;
+  source_reference: string;
+  mapping_type: string;
+  recorded_at: string;
+  control_title: string;
+  assessment_state: "verified" | "failed" | "needs_review" | "not_assessed" | "not_applicable";
+  assessment_id: string | null;
+  assessed_at: string | null;
+  assessed_by: string | null;
+  evidence_reference_count: number;
+  assessment_catalog_version: string | null;
+  mapping_interpretation: "RELATED_NOT_EQUIVALENT";
+}
+
+interface ControlCoverageReport {
+  catalog_version: string;
+  framework_filter: string | null;
+  mapping_count: number;
+  state_counts: Record<string, number>;
+  mappings: ControlCoverageRow[];
+  certification_status: "NOT_ASSESSED";
+  limitations: string[];
+  generated_at: string;
+  report_sha256: string;
 }
 
 function isTelemetryConnectorCatalog(value: unknown): value is TelemetryConnectorCatalog {
@@ -214,6 +269,50 @@ function isTelemetryConnectorCatalog(value: unknown): value is TelemetryConnecto
   );
 }
 
+function isControlCoverageRow(value: unknown): value is ControlCoverageRow {
+  if (!isRecord(value)) return false;
+  return (
+    typeof value.mapping_id === "string" &&
+    typeof value.catalog_version === "string" &&
+    typeof value.control_id === "string" &&
+    typeof value.framework === "string" &&
+    typeof value.framework_version === "string" &&
+    typeof value.source_reference === "string" &&
+    typeof value.mapping_type === "string" &&
+    typeof value.recorded_at === "string" &&
+    typeof value.control_title === "string" &&
+    ["verified", "failed", "needs_review", "not_assessed", "not_applicable"].includes(
+      String(value.assessment_state),
+    ) &&
+    (typeof value.assessment_id === "string" || value.assessment_id === null) &&
+    (typeof value.assessed_at === "string" || value.assessed_at === null) &&
+    (typeof value.assessed_by === "string" || value.assessed_by === null) &&
+    typeof value.evidence_reference_count === "number" &&
+    (typeof value.assessment_catalog_version === "string" ||
+      value.assessment_catalog_version === null) &&
+    value.mapping_interpretation === "RELATED_NOT_EQUIVALENT"
+  );
+}
+
+function isControlCoverageReport(value: unknown): value is ControlCoverageReport {
+  return (
+    isRecord(value) &&
+    typeof value.catalog_version === "string" &&
+    (typeof value.framework_filter === "string" || value.framework_filter === null) &&
+    typeof value.mapping_count === "number" &&
+    isRecord(value.state_counts) &&
+    Object.values(value.state_counts).every((count) => typeof count === "number") &&
+    Array.isArray(value.mappings) &&
+    value.mappings.every(isControlCoverageRow) &&
+    value.certification_status === "NOT_ASSESSED" &&
+    Array.isArray(value.limitations) &&
+    value.limitations.every((item) => typeof item === "string") &&
+    typeof value.generated_at === "string" &&
+    typeof value.report_sha256 === "string" &&
+    /^[0-9a-f]{64}$/.test(value.report_sha256)
+  );
+}
+
 function isNormalizedTelemetryEvent(value: unknown): value is NormalizedTelemetryEvent {
   return (
     isRecord(value) &&
@@ -222,6 +321,8 @@ function isNormalizedTelemetryEvent(value: unknown): value is NormalizedTelemetr
     typeof value.event_type === "string" &&
     typeof value.observed_at === "string" &&
     (typeof value.reported_severity === "string" || value.reported_severity === null) &&
+    (typeof value.detection_scenario_id === "string" || value.detection_scenario_id === null) &&
+    (typeof value.detection_rule_id === "string" || value.detection_rule_id === null) &&
     typeof value.ingested_at === "string"
   );
 }
@@ -251,18 +352,40 @@ function isIncidentCase(value: unknown): value is IncidentCaseRecord {
     typeof value.created_at === "string" &&
     typeof value.updated_at === "string" &&
     (value.notes === undefined || Array.isArray(value.notes)) &&
-    (value.evidence === undefined || Array.isArray(value.evidence))
+    (value.evidence === undefined || Array.isArray(value.evidence)) &&
+    (value.purple_team_replays === undefined ||
+      (Array.isArray(value.purple_team_replays) &&
+        value.purple_team_replays.every(isPurpleTeamReplay)))
   );
 }
 
-async function sendCaseRequest(apiKey: string, path: string, init: RequestInit = {}): Promise<unknown> {
+function isPurpleTeamReplay(value: unknown): value is PurpleTeamReplay {
+  if (!isRecord(value) || !isRecord(value.result)) return false;
+  return (
+    typeof value.replay_id === "string" &&
+    typeof value.case_id === "string" &&
+    typeof value.scenario_id === "string" &&
+    typeof value.expected_rule_id === "string" &&
+    typeof value.evaluated_by === "string" &&
+    typeof value.created_at === "string" &&
+    typeof value.result.detection_verified === "boolean" &&
+    typeof value.result.status === "string" &&
+    (isRecord(value.result.matched_alert) || value.result.matched_alert === null) &&
+    value.result.execution_mode === "OFFLINE_EVALUATION_ONLY"
+  );
+}
+
+async function sendCaseRequest(credential: string, path: string, init: RequestInit = {}): Promise<unknown> {
   const apiUrl = process.env.NEXT_PUBLIC_SANCTUM_API_URL ??
     `${window.location.protocol === "https:" ? "https:" : "http:"}//${window.location.hostname}:8000`;
+  const isBearerToken = credential.startsWith("Bearer ");
   const response = await fetch(`${apiUrl.replace(/\/$/, "")}${path}`, {
     ...init,
     headers: {
       "Content-Type": "application/json",
-      "X-API-Key": apiKey,
+      ...(isBearerToken
+        ? { Authorization: credential }
+        : { "X-API-Key": credential }),
       ...init.headers,
     },
   });
@@ -296,7 +419,13 @@ function isCorrelatedIncident(value: unknown): value is CorrelatedIncident {
         typeof entry.event_type === "string" &&
         (typeof entry.source === "string" || entry.source === null) &&
         (typeof entry.observed_at === "string" || entry.observed_at === null) &&
-        (typeof entry.reported_severity === "string" || entry.reported_severity === null),
+        (typeof entry.reported_severity === "string" || entry.reported_severity === null) &&
+        (entry.detection_scenario_id === undefined ||
+          typeof entry.detection_scenario_id === "string" ||
+          entry.detection_scenario_id === null) &&
+        (entry.detection_rule_id === undefined ||
+          typeof entry.detection_rule_id === "string" ||
+          entry.detection_rule_id === null),
     )
   );
 }
@@ -399,6 +528,18 @@ export default function WorkbenchPage() {
   const [telemetryFileName, setTelemetryFileName] = useState("");
   const [telemetryFileContent, setTelemetryFileContent] = useState("");
   const [telemetryMessage, setTelemetryMessage] = useState("");
+  const [purpleScenarioId, setPurpleScenarioId] = useState("");
+  const [purpleExpectedRuleId, setPurpleExpectedRuleId] = useState("");
+  const [controlCoverage, setControlCoverage] = useState<ControlCoverageReport | null>(null);
+  const [coverageFramework, setCoverageFramework] = useState("");
+  const [controlAssessmentDraft, setControlAssessmentDraft] = useState({
+    control_id: "",
+    state: "needs_review" as ControlCoverageRow["assessment_state"],
+    summary: "",
+    evidence_source: "",
+    evidence_reference: "",
+    evidence_sha256: "",
+  });
   const telemetryFileInput = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -587,6 +728,87 @@ export default function WorkbenchPage() {
     }
   }
 
+  async function runPurpleTeamReplay(caseId: string) {
+    if (!createdBy.trim() || !purpleScenarioId.trim() || !purpleExpectedRuleId.trim()) {
+      setCaseMessage("Enter your analyst name, scenario ID, and expected detection rule ID.");
+      return;
+    }
+    setCaseBusy(true);
+    setCaseMessage("");
+    try {
+      const result: unknown = await sendCaseRequest(
+        apiKey,
+        `/api/v1/cases/${encodeURIComponent(caseId)}/purple-team/replays`,
+        {
+          method: "POST",
+          body: JSON.stringify({
+            scenario_id: purpleScenarioId.trim(),
+            expected_rule_id: purpleExpectedRuleId.trim(),
+            evaluated_by: createdBy.trim(),
+          }),
+        },
+      );
+      if (!isPurpleTeamReplay(result)) {
+        throw new Error("The API returned an invalid Purple Team replay.");
+      }
+      setCaseRecords((previous) =>
+        previous.map((item) =>
+          item.case_id === caseId
+            ? {
+                ...item,
+                purple_team_replays: [
+                  ...(item.purple_team_replays ?? []),
+                  result,
+                ],
+              }
+            : item,
+        ),
+      );
+      setCaseMessage(
+        result.result.detection_verified
+          ? "Expected detection metadata found in the recorded case timeline."
+          : "Expected detection metadata not found in the recorded case timeline.",
+      );
+    } catch (error) {
+      setCaseMessage(error instanceof Error ? error.message : "Unable to run Purple Team replay.");
+    } finally {
+      setCaseBusy(false);
+    }
+  }
+
+  async function downloadCaseReport(caseId: string) {
+    setCaseBusy(true);
+    setCaseMessage("");
+    try {
+      const report: unknown = await sendCaseRequest(
+        apiKey,
+        `/api/v1/cases/${encodeURIComponent(caseId)}/report`,
+      );
+      if (
+        !isRecord(report) ||
+        report.schema_version !== "1.0" ||
+        typeof report.report_sha256 !== "string" ||
+        !/^[0-9a-f]{64}$/.test(report.report_sha256)
+      ) {
+        throw new Error("The API returned an invalid case report.");
+      }
+      const blob = new Blob([JSON.stringify(report, null, 2)], {
+        type: "application/json",
+      });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `sanctum-case-${caseId}.json`;
+      link.click();
+      URL.revokeObjectURL(url);
+      setCaseMessage(`Downloaded report for case ${caseId}.`);
+    } catch (error) {
+      setCaseMessage(error instanceof Error ? error.message : "Unable to export case report.");
+    } finally {
+      setCaseBusy(false);
+    }
+  }
+
   async function loadCasePlaybooks(caseId: string) {
     setCaseBusy(true);
     setCaseMessage("");
@@ -710,6 +932,98 @@ export default function WorkbenchPage() {
       setTelemetryMessage(
         error instanceof Error ? error.message : "Unable to load telemetry configuration.",
       );
+    } finally {
+      setCaseBusy(false);
+    }
+  }
+
+  async function loadControlCoverage(): Promise<boolean> {
+    setCaseBusy(true);
+    setCaseMessage("");
+    try {
+      const result: unknown = await sendCaseRequest(
+        apiKey,
+        "/api/v1/controls/coverage",
+      );
+      if (!isControlCoverageReport(result)) {
+        throw new Error("The API returned an invalid control coverage report.");
+      }
+      setControlCoverage(result);
+      setControlAssessmentDraft((previous) => ({
+        ...previous,
+        control_id:
+          result.mappings.find((mapping) => mapping.assessment_state === "not_assessed")
+            ?.control_id ?? result.mappings[0]?.control_id ?? "",
+      }));
+      setCaseMessage(
+        `Loaded ${result.mapping_count} related mapping(s) from catalog ${result.catalog_version}.`,
+      );
+      return true;
+    } catch (error) {
+      setCaseMessage(error instanceof Error ? error.message : "Unable to load control coverage.");
+      return false;
+    } finally {
+      setCaseBusy(false);
+    }
+  }
+
+  async function submitControlAssessment() {
+    const draft = controlAssessmentDraft;
+    if (!createdBy.trim() || !draft.control_id || !draft.summary.trim()) {
+      setCaseMessage("Enter your assessor name, select a control, and provide an assessment summary.");
+      return;
+    }
+    const evidenceValues = [
+      draft.evidence_source.trim(),
+      draft.evidence_reference.trim(),
+      draft.evidence_sha256.trim(),
+    ];
+    const hasEvidence = evidenceValues.some(Boolean);
+    if (
+      hasEvidence &&
+      evidenceValues.some((value) => !value)
+    ) {
+      setCaseMessage("Provide the evidence source, reference, and SHA-256 digest together.");
+      return;
+    }
+    if (draft.state === "verified" && !hasEvidence) {
+      setCaseMessage("A verified assessment requires an evidence reference and digest.");
+      return;
+    }
+    setCaseBusy(true);
+    setCaseMessage("");
+    try {
+      const result: unknown = await sendCaseRequest(
+        apiKey,
+        `/api/v1/controls/${encodeURIComponent(draft.control_id)}/assessments`,
+        {
+          method: "POST",
+          body: JSON.stringify({
+            state: draft.state,
+            summary: draft.summary.trim(),
+            assessed_by: createdBy.trim(),
+            evidence: hasEvidence
+              ? [
+                  {
+                    source: draft.evidence_source.trim(),
+                    reference: draft.evidence_reference.trim(),
+                    sha256: draft.evidence_sha256.trim(),
+                  },
+                ]
+              : [],
+          }),
+        },
+      );
+      if (!isRecord(result) || typeof result.assessment_id !== "string") {
+        throw new Error("The API returned an invalid control assessment.");
+      }
+      setControlAssessmentDraft((previous) => ({ ...previous, summary: "" }));
+      if (!(await loadControlCoverage())) {
+        throw new Error("Assessment saved, but the refreshed coverage report could not be loaded.");
+      }
+      setCaseMessage(`Recorded assessment ${result.assessment_id}.`);
+    } catch (error) {
+      setCaseMessage(error instanceof Error ? error.message : "Unable to record assessment.");
     } finally {
       setCaseBusy(false);
     }
@@ -982,7 +1296,7 @@ export default function WorkbenchPage() {
         <section className="mt-4 rounded-lg border border-slate-800 bg-slate-900 p-6 md:col-span-3">
           <div className="flex flex-wrap items-end gap-4">
             <label className="min-w-64 flex-1 text-xs text-slate-300">
-              API key (held in memory only)
+              API key or OIDC bearer token (prefix token with &quot;Bearer &quot;; held in memory only)
               <input
                 type="password"
                 autoComplete="off"
@@ -1032,6 +1346,149 @@ export default function WorkbenchPage() {
               </ul>
             )}
             {syntheticLimitations && <p className="mt-3 text-xs text-violet-200">{syntheticLimitations}</p>}
+          </div>
+          <div className="mb-5 rounded border border-amber-900/60 bg-amber-950/20 p-4">
+            <div className="flex flex-wrap items-end gap-3">
+              <div className="min-w-64 flex-1">
+                <h3 className="font-semibold text-amber-200">Versioned control coverage</h3>
+                <p className="mt-1 text-xs text-slate-400">
+                  Operator-entered assessments and related source mappings; not a compliance or certification result.
+                </p>
+              </div>
+              <label className="text-xs text-slate-400">
+                Framework filter
+                <select
+                  aria-label="Control coverage framework"
+                  value={coverageFramework}
+                  disabled={caseBusy}
+                  onChange={(event) => setCoverageFramework(event.target.value)}
+                  className="ml-2 rounded border border-slate-700 bg-slate-950 px-3 py-2 text-slate-100"
+                >
+                  <option value="">All mapped frameworks</option>
+                  {[...new Set((controlCoverage?.mappings ?? []).map((item) => item.framework))]
+                    .sort()
+                    .map((framework) => <option key={framework} value={framework}>{framework}</option>)}
+                </select>
+              </label>
+              <button
+                type="button"
+                disabled={!apiKey || caseBusy}
+                onClick={() => void loadControlCoverage()}
+                className="rounded border border-amber-800 px-3 py-2 text-amber-200 disabled:opacity-50"
+              >
+                Load coverage report
+              </button>
+            </div>
+            {controlCoverage && (
+              <>
+                <p className="mt-3 text-xs text-slate-300">
+                  Catalog v{controlCoverage.catalog_version} · {controlCoverage.mapping_count} related mappings
+                  {" · "}not assessed: {controlCoverage.state_counts.not_assessed ?? 0}
+                  {" · "}certification: {controlCoverage.certification_status}
+                </p>
+                <div className="mt-3 max-h-56 overflow-auto rounded border border-slate-800 bg-slate-950 p-3">
+                  <ul className="space-y-2 text-xs text-slate-400">
+                    {controlCoverage.mappings
+                      .filter((mapping) => !coverageFramework || mapping.framework === coverageFramework)
+                      .map((mapping) => (
+                      <li key={mapping.mapping_id}>
+                        <span className="text-slate-200">{mapping.control_id} · {mapping.control_title}</span>
+                        {" → "}{mapping.framework} {mapping.framework_version}: {mapping.source_reference}
+                        {" · "}<span className={mapping.assessment_state === "not_assessed" ? "text-amber-300" : "text-cyan-200"}>
+                          {mapping.assessment_state}
+                        </span>
+                        {mapping.assessment_id
+                          ? ` · ${mapping.evidence_reference_count} evidence reference(s) · ${mapping.assessed_at}`
+                          : ""}
+                        {" · RELATED, not equivalent"}
+                      </li>
+                      ))}
+                  </ul>
+                </div>
+                <p className="mt-2 break-all text-[10px] text-slate-500">
+                  Report SHA-256 {controlCoverage.report_sha256} · generated {controlCoverage.generated_at}
+                </p>
+                <div className="mt-4 border-t border-slate-800 pt-3">
+                  <h4 className="text-xs font-semibold text-slate-200">Record control assessment</h4>
+                  <div className="mt-2 grid gap-2 sm:grid-cols-2">
+                    <label className="text-xs text-slate-400">
+                      Control
+                      <select
+                        aria-label="Control to assess"
+                        value={controlAssessmentDraft.control_id}
+                        disabled={caseBusy}
+                        onChange={(event) => setControlAssessmentDraft((previous) => ({ ...previous, control_id: event.target.value }))}
+                        className="mt-1 w-full rounded border border-slate-700 bg-slate-950 px-3 py-2 text-slate-100"
+                      >
+                        {[...new Map(controlCoverage.mappings
+                          .filter((item) => !coverageFramework || item.framework === coverageFramework)
+                          .map((item) => [item.control_id, item])).values()]
+                          .map((item) => <option key={item.control_id} value={item.control_id}>{item.control_id} · {item.control_title}</option>)}
+                      </select>
+                    </label>
+                    <label className="text-xs text-slate-400">
+                      Assessment state
+                      <select
+                        aria-label="Assessment state"
+                        value={controlAssessmentDraft.state}
+                        disabled={caseBusy}
+                        onChange={(event) => setControlAssessmentDraft((previous) => ({ ...previous, state: event.target.value as ControlCoverageRow["assessment_state"] }))}
+                        className="mt-1 w-full rounded border border-slate-700 bg-slate-950 px-3 py-2 text-slate-100"
+                      >
+                        {["verified", "failed", "needs_review", "not_assessed", "not_applicable"].map((state) => <option key={state} value={state}>{state}</option>)}
+                      </select>
+                    </label>
+                    <label className="text-xs text-slate-400 sm:col-span-2">
+                      Assessment summary
+                      <textarea
+                        aria-label="Assessment summary"
+                        value={controlAssessmentDraft.summary}
+                        disabled={caseBusy}
+                        onChange={(event) => setControlAssessmentDraft((previous) => ({ ...previous, summary: event.target.value }))}
+                        maxLength={4000}
+                        rows={2}
+                        className="mt-1 w-full rounded border border-slate-700 bg-slate-950 p-2 text-slate-100"
+                      />
+                    </label>
+                    <input
+                      aria-label="Evidence source"
+                      placeholder="Evidence source"
+                      value={controlAssessmentDraft.evidence_source}
+                      disabled={caseBusy}
+                      onChange={(event) => setControlAssessmentDraft((previous) => ({ ...previous, evidence_source: event.target.value }))}
+                      className="rounded border border-slate-700 bg-slate-950 px-3 py-2 text-xs"
+                    />
+                    <input
+                      aria-label="Evidence reference"
+                      placeholder="Evidence reference (no file upload)"
+                      value={controlAssessmentDraft.evidence_reference}
+                      disabled={caseBusy}
+                      onChange={(event) => setControlAssessmentDraft((previous) => ({ ...previous, evidence_reference: event.target.value }))}
+                      className="rounded border border-slate-700 bg-slate-950 px-3 py-2 text-xs"
+                    />
+                    <input
+                      aria-label="Evidence SHA-256"
+                      placeholder="Evidence SHA-256 (64 lowercase hex)"
+                      value={controlAssessmentDraft.evidence_sha256}
+                      disabled={caseBusy}
+                      onChange={(event) => setControlAssessmentDraft((previous) => ({ ...previous, evidence_sha256: event.target.value }))}
+                      className="rounded border border-slate-700 bg-slate-950 px-3 py-2 text-xs sm:col-span-2"
+                    />
+                  </div>
+                  <button
+                    type="button"
+                    disabled={!apiKey || !createdBy.trim() || caseBusy || !controlCoverage.mappings.length}
+                    onClick={() => void submitControlAssessment()}
+                    className="mt-2 rounded bg-amber-300 px-3 py-2 text-xs font-semibold text-slate-950 disabled:opacity-50"
+                  >
+                    Save assessment
+                  </button>
+                </div>
+                <ul className="mt-3 list-disc space-y-1 pl-5 text-[10px] text-slate-500">
+                  {controlCoverage.limitations.map((limitation) => <li key={limitation}>{limitation}</li>)}
+                </ul>
+              </>
+            )}
           </div>
           <div className="mb-5 rounded border border-teal-900/60 bg-teal-950/20 p-4">
             <div className="flex flex-wrap items-end gap-3">
@@ -1295,6 +1752,62 @@ export default function WorkbenchPage() {
                     >
                       Save assignment
                     </button>
+                  </div>
+                  <div className="mt-4 rounded border border-violet-900/60 bg-violet-950/20 p-3">
+                    <h4 className="font-semibold text-violet-200">Purple Team detection replay · offline</h4>
+                    <p className="mt-1 text-slate-400">
+                      Checks recorded, source-provided detection IDs in this case only. It does not execute a scenario or contact an EDR/XDR service.
+                    </p>
+                    <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                      <input
+                        aria-label={`Purple Team scenario ID for ${item.title}`}
+                        value={purpleScenarioId}
+                        onChange={(event) => setPurpleScenarioId(event.target.value)}
+                        placeholder="Scenario ID"
+                        className="rounded border border-slate-700 bg-slate-900 px-3 py-2"
+                      />
+                      <input
+                        aria-label={`Expected detection rule ID for ${item.title}`}
+                        value={purpleExpectedRuleId}
+                        onChange={(event) => setPurpleExpectedRuleId(event.target.value)}
+                        placeholder="Expected detection rule ID"
+                        className="rounded border border-slate-700 bg-slate-900 px-3 py-2"
+                      />
+                    </div>
+                    <div className="mt-2 flex flex-wrap gap-2">
+                      <button
+                        type="button"
+                        disabled={!apiKey || caseBusy}
+                        onClick={() => void runPurpleTeamReplay(item.case_id)}
+                        className="rounded border border-violet-800 px-3 py-2 text-violet-200 disabled:opacity-50"
+                      >
+                        Record detection replay
+                      </button>
+                      <button
+                        type="button"
+                        disabled={!apiKey || caseBusy}
+                        onClick={() => void downloadCaseReport(item.case_id)}
+                        className="rounded border border-slate-700 px-3 py-2 text-slate-200 disabled:opacity-50"
+                      >
+                        Export case report (JSON)
+                      </button>
+                    </div>
+                    {(item.purple_team_replays ?? []).length > 0 && (
+                      <ul className="mt-3 space-y-2 border-t border-slate-800 pt-3 text-slate-400">
+                        {item.purple_team_replays?.map((replay) => (
+                          <li key={replay.replay_id}>
+                            <span className={replay.result.detection_verified ? "text-emerald-300" : "text-amber-300"}>
+                              {replay.result.status}
+                            </span>
+                            {" · "}{replay.scenario_id} / {replay.expected_rule_id}
+                            {replay.result.matched_alert?.event_id
+                              ? ` · matched event ${replay.result.matched_alert.event_id}`
+                              : ""}
+                            {" · "}{replay.created_at}
+                          </li>
+                        ))}
+                      </ul>
+                    )}
                   </div>
                   <div className="mt-4 grid gap-3 md:grid-cols-2">
                     <div>

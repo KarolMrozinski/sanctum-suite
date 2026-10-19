@@ -16,6 +16,8 @@ Narzędzia CLI, API i dashboard wspierające wybrane procesy audytowe, analizę 
 
 [Instalacja](./docs/INSTALLATION.md) ·
 [Katalog kontroli](./docs/CONTROL_CATALOG.md) ·
+[Laboratorium Parrot](./docs/PARROT_LAB.md) ·
+[Przepływy specjalistyczne](./docs/SPECIALIZED_SECURITY.md) ·
 [Bezpieczeństwo](./SECURITY.md) ·
 [Licencja](./LICENSE)
 
@@ -32,7 +34,7 @@ Projekt ma status **beta**. Zakres, dojrzałość i wymagania zależą od konkre
 ## Możliwości
 
 - **Audyt i testy** — wybrane, jawnie autoryzowane testy HTTPS/TCP z kontrolą dozwolonych celów.
-- **Analiza i obsługa incydentów** — lokalna korelacja zdarzeń, trwałe sprawy SQLite, przypisania, statusy, notatki i odnośniki do dowodów, symulowane rekomendacje reakcji, audyt dostępu, opcjonalna retencja, fikcyjne scenariusze demonstracyjne oraz przygotowany, domyślnie wyłączony przepływ ingestii telemetrii przez push API i import JSON/JSONL/CEF. Brak domyślnie aktywnych integracji dostawców i automatycznych reakcji.
+- **Analiza i obsługa incydentów** — lokalna korelacja zdarzeń, trwałe sprawy SQLite, przypisania, statusy, notatki i odnośniki do dowodów, symulowane rekomendacje reakcji, audyt dostępu, opcjonalna retencja, fikcyjne scenariusze demonstracyjne oraz przygotowany, domyślnie wyłączony przepływ ingestii telemetrii przez push API i import JSON/JSONL/CEF. Opcjonalne OIDC zapewnia tokenową tożsamość użytkownika, role i oddzielne magazyny SQLite dla tenantów. Brak domyślnie aktywnych integracji dostawców i automatycznych reakcji.
 - **AI safety** — moduły do analizy promptów i eksperymentów z zabezpieczeniami modeli.
 - **Interfejsy** — CLI w Pythonie, REST API i WebSocket oraz osobny dashboard oparty na Next.js.
 - **Kontrole i entitlementy** — mapowanie kontroli oraz weryfikacja podpisanych uprawnień do użycia.
@@ -42,6 +44,8 @@ Projekt ma status **beta**. Zakres, dojrzałość i wymagania zależą od konkre
 Część modułów jest eksperymentalna, zależna od platformy lub stanowi jedynie punkt integracji. Repozytorium nie dostarcza działających integracji dla skanowania kontenerów/SBOM, analizy firmware i pamięci, telemetrii EDR/XDR, inspekcji GPU, sprzętowych enklaw ani magazynowania danych niejawnych. Funkcje kampanii red-team, C2/covert-channel, spoofingu satelitarnego, biometrii, hot-patchingu i dead-man switch nie wykonują opisanych działań. Brak integracji jest raportowany jako brak oceny, a nie jako pozytywny wynik.
 
 Dashboard nie otrzymuje obecnie rzeczywistej telemetrii przez WebSocket. Znormalizowane dane można po jawnej konfiguracji źródła importować przez zabezpieczone API i przeglądać w Workbench; nie jest skonfigurowany konkretny dostawca ani harmonogram pull. Pomocnicze szyfrowanie kopertowe `ZeroTrustKMSVault` wykorzystuje klucz efemeryczny przechowywany w pamięci procesu i **nie zastępuje produkcyjnego KMS**.
+
+OIDC wymaga jawnej konfiguracji issuer, audience, mapowania claimów oraz zabezpieczonego katalogu tenantów; nie zawiera interaktywnego logowania ani odświeżania tokenów. Legacy API i analytics endpoints nie są dostępne dla tożsamości OIDC, ponieważ ich raportowanie nie jest tenant-scoped. SQLite access audit nie jest immutable/tamper-proof i wymaga eksportu do niezależnego systemu, jeżeli jest używany jako dowód audytowy. Szczegóły i ograniczenia opisuje [przewodnik instalacji](./docs/INSTALLATION.md#oidc-users-roles-and-tenant-scoped-data).
 
 Konfigurację i ograniczenia przygotowanego ingestu opisuje [przewodnik instalacji](./docs/INSTALLATION.md#preparing-external-telemetry-ingestion).
 

@@ -26,6 +26,7 @@ from sanctum_suite.core.target_authorization import (
 )
 from sanctum_suite.core.billing import CommercialLicenseManager, LicenseTier
 from sanctum_suite.core.license_issuer import issue_license_token
+from sanctum_suite.core.parrot_lab import ParrotLabPreflight
 
 _ASCII_TRANSLATION = {
     ord("ą"): "a",
@@ -69,6 +70,10 @@ def _build_console() -> Console:
         except (AttributeError, ValueError):
             stream = sys.stdout
     return Console(file=stream, emoji=False, legacy_windows=False)
+
+
+def _print_json_report(report: dict[str, object]) -> None:
+    print(json.dumps(report, indent=2))
 
 
 app = typer.Typer(help=_safe_text("SANCTUM-SUITE: Enterprise Cyber Resilience Platform"))
@@ -202,6 +207,59 @@ def scan_ports_cmd(
         console.print(table)
     else:
         console.print(_safe_text("[dim yellow]Nie znaleziono otwartych portow w standardowym zakresie.[/dim yellow]"))
+
+
+@app.command(name="parrot-lab-preflight")
+def parrot_lab_preflight_cmd(
+    iso: Path = typer.Option(..., "--iso", help="Local Parrot ISO downloaded from the official source"),
+    sha256: str = typer.Option(..., "--sha256", help="Expected SHA-256 from an independently verified official manifest"),
+    edition: str = typer.Option(..., "--edition", help="Parrot edition, for example Security"),
+    version: str = typer.Option(..., "--version", help="Exact version shown by the official download source"),
+    architecture: str = typer.Option(..., "--architecture", help="Image architecture, for example amd64"),
+) -> None:
+    """Verify a local Parrot ISO digest and report a non-executing lab preflight."""
+    try:
+        result = ParrotLabPreflight().inspect(
+            iso_path=iso,
+            expected_sha256=sha256,
+            edition=edition,
+            version=version,
+            architecture=architecture,
+        )
+    except ValueError as error:
+        raise typer.BadParameter(str(error)) from error
+    _print_json_report(result)
+
+
+@app.command(name="pqc-inventory")
+def pqc_inventory_cmd(
+    inventory_file: Path = typer.Option(
+        ...,
+        "--inventory",
+        exists=True,
+        file_okay=True,
+        dir_okay=False,
+        readable=True,
+        help="UTF-8 JSON array of operator-supplied cryptographic inventory entries",
+    ),
+) -> None:
+    """Review a declared cryptographic inventory for PQC migration planning."""
+    from sanctum_suite.core.post_quantum_pqc import (
+        PostQuantumCryptographicAssuranceEngine,
+    )
+
+    try:
+        if inventory_file.stat().st_size > 1_048_576:
+            raise ValueError("Inventory file must not exceed 1 MiB")
+        inventory = json.loads(inventory_file.read_text(encoding="utf-8"))
+        if not isinstance(inventory, list) or len(inventory) > 1_000:
+            raise ValueError("Inventory must be a JSON array with at most 1000 entries")
+        result = PostQuantumCryptographicAssuranceEngine().audit_cryptographic_primitives(
+            inventory
+        )
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError, ValueError) as error:
+        raise typer.BadParameter(str(error)) from error
+    _print_json_report(result)
 
 
 @app.command(name="issue-license")
