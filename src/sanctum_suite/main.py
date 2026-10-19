@@ -389,6 +389,69 @@ def supply_chain_verify_cmd(
     _print_json_report(report)
 
 
+@app.command(name="telemetry-archive")
+def telemetry_archive_cmd(
+    database: Path = typer.Option(
+        ...,
+        "--database",
+        exists=True,
+        file_okay=True,
+        dir_okay=False,
+        readable=True,
+        help="Local SQLite database containing normalized telemetry events",
+    ),
+    output: Path = typer.Option(
+        ...,
+        "--output",
+        help="Output Apache Parquet file",
+    ),
+    source_id: str | None = typer.Option(
+        None,
+        "--source-id",
+        help="Optional configured telemetry source identifier",
+    ),
+    limit: int = typer.Option(
+        100_000,
+        "--limit",
+        min=1,
+        max=1_000_000,
+        help="Maximum number of events to archive",
+    ),
+    wasm_module: Path | None = typer.Option(
+        None,
+        "--wasm-module",
+        exists=True,
+        file_okay=True,
+        dir_okay=False,
+        readable=True,
+        help="Optional untrusted Wasm transform module",
+    ),
+    otlp_endpoint: str | None = typer.Option(
+        None,
+        "--otlp-endpoint",
+        help="Explicit OTLP/HTTP trace Collector URL; no export by default",
+    ),
+) -> None:
+    """Archive normalized telemetry to Parquet with optional Wasm and OTel."""
+    from sanctum_suite.core.telemetry_pipeline import (
+        TelemetryPipelineError,
+        archive_telemetry,
+    )
+
+    try:
+        report = archive_telemetry(
+            database=database,
+            output=output,
+            source_id=source_id,
+            limit=limit,
+            wasm_module=wasm_module,
+            otlp_endpoint=otlp_endpoint,
+        )
+    except TelemetryPipelineError as error:
+        raise typer.BadParameter(str(error)) from error
+    _print_json_report(report)
+
+
 @app.command(name="generate-executive-report")
 def generate_executive_report_cmd(
     readiness_report: Path = typer.Option(

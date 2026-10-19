@@ -41,6 +41,13 @@ dependencies = [
 test = [
     "hypothesis>=6.112.0",
 ]
+telemetry = [
+    "opentelemetry-api>=1.25.0",
+    "opentelemetry-sdk>=1.25.0",
+    "opentelemetry-exporter-otlp-proto-http>=1.25.0",
+    "pyarrow>=16.0.0",
+    "wasmtime>=30.0.0",
+]
 
 [project.scripts]
 sanctum = "sanctum_suite.main:app"

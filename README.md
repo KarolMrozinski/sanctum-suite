@@ -27,6 +27,7 @@ Narzędzia CLI, API i dashboard wspierające wybrane procesy audytowe, analizę 
 [Pakiet offline](./docs/OFFLINE_RELEASE.md) ·
 [Wdrożenie air-gapped/Podman](./docs/PODMAN_AIRGAP.md) ·
 [Runbook DEPLOYMENT.md](./DEPLOYMENT.md) ·
+[Pipeline telemetrii Wasm/Arrow/OTel](./docs/TELEMETRY_PIPELINE.md) ·
 [Bramki CI/CD](./docs/SECURE_CICD.md) ·
 [Bezpieczeństwo](./SECURITY.md) ·
 [Licencja](./LICENSE)
@@ -51,6 +52,7 @@ Projekt ma status **beta**. Zakres, dojrzałość i wymagania zależą od konkre
 - **Przegląd gotowości eBPF / Rust / SPIFFE-SPIRE / PQC** — polecenie CLI tworzy raport JSON na podstawie jawnie podanych deklaracji i inwentarza kryptografii, w tym rozpoznaje PQXDH jako protokół wymagający osobnego przeglądu. Nie bada działającego kernela, projektu Rust, wdrożenia SPIRE ani użycia kryptografii.
 - **Weryfikacja łańcucha dostaw** — CLI może sprawdzić Cosign/Sigstore in-toto attestation dla lokalnego artefaktu względem jawnie wskazanej tożsamości/issuera oraz podsumować dostarczone raporty Trivy i Grype. Nie uruchamia skanerów ani nie uznaje raportów za kryptograficznie uwierzytelnione.
 - **Raport wykonawczy audytu** — `sanctum generate-executive-report` scala raporty gotowości, weryfikacji łańcucha dostaw oraz testów OPA do plików JSON i Markdown; nie zastępuje eksperckiego przeglądu ani oceny zgodności. Kroki pracy offline opisuje [runbook wdrożeniowy](./DEPLOYMENT.md).
+- **Lokalne archiwum telemetrii** — opcjonalne `sanctum telemetry-archive` eksportuje znormalizowane zdarzenia do Parquet (Arrow), może uruchomić transformację w sandboxie Wasmtime oraz wysłać ograniczone ślady OTel do jawnie skonfigurowanego Collectora. Szczegóły i granice bezpieczeństwa opisuje [dokumentacja pipeline'u](./docs/TELEMETRY_PIPELINE.md).
 - **Dane on-chain (eksperymentalne)** — jawnie konfigurowane, tylko do odczytu klienty Bitcoin Core i Ethereum JSON-RPC udostępniają wspólny model bloków i transakcji, graf sprawy, obserwacje zdarzeń `Transfer` i ograniczone ślady `callTracer`. Case-scoped Crypto OSINT korzysta wyłącznie z importowanych, niezweryfikowanych raportów; opcjonalne snapshoty bloków są domyślnie wyłączone i zachowują wrażliwe adresy. Endpointy nie deklarują zgodności AML/MiCA, a demonstracyjny dowód ZK nie jest powiązany z dowodami on-chain. Ograniczenia opisuje [dokumentacja](./docs/ONCHAIN_ANALYSIS.md).
 - **Checklist AML/MiCA dla spraw CASP w UE (starter)** — checklist sprawy i append-only rejestr referencji dowodów dla przeglądu MiCA, AMLR, TFR i polskiej ustawy AML. Nie ocenia zgodności, a wszystkie sprawy zachowują status `NOT_ASSESSED`; zakres i ograniczenia opisuje [dokumentacja checklisty](./docs/AML_MICA_CASE_REVIEW.md).
 - **Eksperymentalny dowód ZK dla ocen on-chain** — osobny obwód Groth16 może dowieść, że prywatnie zakodowane oceny dostawcy nie przekraczają progu `medium`, bez publikowania ocen. Dowód nie uwierzytelnia dostawcy ani raportu i nie jest połączony z przypadkiem; wymagany jest niezależny ceremony setup. Szczegóły i ograniczenia opisuje [dokumentacja dowodów ZK](./docs/ZK_AUDIT_PROOFS.md).
