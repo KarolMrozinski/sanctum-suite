@@ -1152,7 +1152,7 @@ class RegulatoryCaseControlUpdateRequest(BaseModel):
     summary: str | None = Field(default=None, min_length=1, max_length=4_000)
 
     @model_validator(mode="after")
-    def validate_update(self) -> RegulatoryCaseControlUpdateRequest:
+    def validate_update(self) -> "RegulatoryCaseControlUpdateRequest":
         if self.applicability is None and self.review_state is None and self.summary is None:
             raise ValueError("At least one review field must be provided")
         if self.applicability == "out_of_scope" and self.summary is None:
