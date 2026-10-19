@@ -1,8 +1,8 @@
 pragma circom 2.1.6;
 
-include "poseidon.circom";
-include "bitify.circom";
-include "comparators.circom";
+include "circomlib/poseidon.circom";
+include "circomlib/bitify.circom";
+include "circomlib/comparators.circom";
 
 template AuditPolicyBatch(BATCH_SIZE, PATH_DEPTH) {
     signal input globalRoot;

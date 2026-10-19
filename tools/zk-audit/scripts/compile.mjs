@@ -1,4 +1,4 @@
-import { rm } from "node:fs/promises";
+import { cp, rm } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -13,6 +13,7 @@ const circomlibDirectory = path.join(
   "circomlib",
   "circuits",
 );
+const localCircomlibDirectory = path.join(circuitDirectory, "circomlib");
 const mode = process.argv[2];
 const targets = {
   production: "audit_policy_main",
@@ -40,22 +41,28 @@ await Promise.all([
 ]);
 
 const compiler = path.join(packageDirectory, "node_modules", "circom2", "cli.js");
-const result = spawnSync(
-  process.execPath,
-  [
-    compiler,
-    `${circuitName}.circom`,
-    "--r1cs",
-    "--wasm",
-    "--sym",
-    "-l",
-    circomlibDirectory,
-  ],
-  {
-    cwd: circuitDirectory,
-    stdio: "inherit",
-  },
-);
+await rm(localCircomlibDirectory, { recursive: true, force: true });
+await cp(circomlibDirectory, localCircomlibDirectory, { recursive: true });
+
+let result;
+try {
+  result = spawnSync(
+    process.execPath,
+    [
+      compiler,
+      `${circuitName}.circom`,
+      "--r1cs",
+      "--wasm",
+      "--sym",
+    ],
+    {
+      cwd: circuitDirectory,
+      stdio: "inherit",
+    },
+  );
+} finally {
+  await rm(localCircomlibDirectory, { recursive: true, force: true });
+}
 
 if (result.error) {
   throw result.error;
