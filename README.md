@@ -9,8 +9,8 @@
 CLI, API i dashboard dla audytów autoryzowanych, analizy zdarzeń, weryfikacji supply chain oraz eksperymentów z privacy-enhancing technologies i AI safety.
 
 <p>
-  <a href="https://github.com/KarolMrozinski/sanctum-suite/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/KarolMrozinski/sanctum-suite/ci.yml?branch=main&style=for-the-badge&label=CI&logo=githubactions&logoColor=white" alt="CI"></a>
-  <a href="https://github.com/KarolMrozinski/sanctum-suite/actions/workflows/security.yml"><img src="https://img.shields.io/github/actions/workflow/status/KarolMrozinski/sanctum-suite/security.yml?branch=main&style=for-the-badge&label=Security&logo=github&logoColor=white" alt="Security"></a>
+  <a href="https://github.com/KarolMrozinski/sanctum-suite/actions/workflows/ci.yml"><img src="https://img.shields.io/badge/CI-workflow%20configured-2088FF?style=for-the-badge&logo=githubactions&logoColor=white" alt="CI workflow configured"></a>
+  <a href="https://github.com/KarolMrozinski/sanctum-suite/actions/workflows/security.yml"><img src="https://img.shields.io/badge/Security-workflow%20configured-2088FF?style=for-the-badge&logo=github&logoColor=white" alt="Security workflow configured"></a>
   <img src="https://img.shields.io/badge/wersja-6.0.0-2563eb?style=for-the-badge" alt="Wersja 6.0.0">
   <img src="https://img.shields.io/badge/status-beta-f59e0b?style=for-the-badge" alt="Status beta">
 </p>
