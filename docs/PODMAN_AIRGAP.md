@@ -31,7 +31,7 @@ podman secret create sanctum-audit-pseudonym-key /secure/audit-pseudonym.key
 
 Create the Keylime verifier CA and dedicated mTLS client certificate/key as
 Podman secrets as described in the [TPM/Measured Boot guide](./TPM_MEASURED_BOOT.md).
-Create the Trustee gateway CA/client credentials and approved SNP/TDX claims
+Create the TEE claims gateway CA/client credentials and approved SNP/TDX/SGX claims
 file as Podman secrets as described in the
 [Confidential Computing guide](./CONFIDENTIAL_COMPUTING.md).
 
@@ -121,7 +121,7 @@ podman run --detach \
   <approved-image-reference>
 ```
 
-The API uses TLS in the container and is published only on host loopback. Place an explicitly configured TLS-terminating proxy in front of it if remote clients are required; do not publish the API directly to a general network. Check `https://localhost:8000/readyz` from the host. Production readiness requires OIDC, Vault Transit, the audit pseudonymization key, a valid RSA report-signing key pair, reachable MinIO Object Lock configuration, a fresh passing Keylime measured-boot attestation, and fresh Trustee SNP/TDX claims matching approved baselines. Each authenticated API request checks both external verifiers; stale, failed, or mismatched evidence blocks the operation. The first authenticated API operation additionally verifies its WORM write; on failure, that operation is not executed.
+The API uses TLS in the container and is published only on host loopback. Place an explicitly configured TLS-terminating proxy in front of it if remote clients are required; do not publish the API directly to a general network. Check `https://localhost:8000/readyz` from the host. Production readiness requires OIDC, Vault Transit, the audit pseudonymization key, a valid RSA report-signing key pair, reachable MinIO Object Lock configuration, a fresh passing Keylime measured-boot attestation, and fresh TEE claims matching approved SNP/TDX/SGX baselines. Each authenticated API request checks both external verifiers; stale, failed, or mismatched evidence blocks the operation. The first authenticated API operation additionally verifies its WORM write; on failure, that operation is not executed.
 
 ## Recovery and operation
 

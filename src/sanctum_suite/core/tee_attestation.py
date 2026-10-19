@@ -1,4 +1,4 @@
-"""Fail-closed client for an operator-managed Trustee claims gateway."""
+"""Fail-closed client for operator-managed confidential-computing claims."""
 
 from __future__ import annotations
 
@@ -20,14 +20,22 @@ _MAX_RESPONSE_BYTES = 32 * 1024
 _MAX_ALLOWLIST_BYTES = 64 * 1024
 _CLOCK_SKEW_SECONDS = 5
 _DEFAULT_MAX_AGE_SECONDS = 120
-_TEE_TYPES = {"snp", "tdx"}
+_LEGACY_TEE_TYPES = {"snp", "tdx"}
+_TEE_TYPES = _LEGACY_TEE_TYPES | {"sgx"}
+_TEE_PROFILE_SETS = (
+    _LEGACY_TEE_TYPES,
+    {"snp", "sgx"},
+    _TEE_TYPES,
+)
 _MEASUREMENT_SHA384 = re.compile(r"^[0-9a-fA-F]{96}$")
+_MEASUREMENT_SHA256 = re.compile(r"^[0-9a-fA-F]{64}$")
 _WORKLOAD_DIGEST_SHA256 = re.compile(r"^[0-9a-fA-F]{64}$")
+_OPERATION_DIGEST_SHA256 = re.compile(r"^[0-9a-fA-F]{64}$")
 _WORKLOAD_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$")
 
 
 class TEEAttestationConfigurationError(ValueError):
-    """Raised when the Trustee claims gateway configuration is invalid."""
+    """Raised when the TEE claims gateway configuration is invalid."""
 
 
 class TEEAttestationUnavailable(RuntimeError):
@@ -41,6 +49,7 @@ class TEEAttestation:
     measurement: str
     workload_digest: str
     verified_at: datetime
+    operation_digest: str | None = None
 
 
 def _validated_allowlist(path: Path) -> dict[str, dict[str, frozenset[str]]]:
@@ -56,35 +65,46 @@ def _validated_allowlist(path: Path) -> dict[str, dict[str, frozenset[str]]]:
         raise TEEAttestationConfigurationError(
             "SANCTUM_TEE_EXPECTED_CLAIMS_FILE is unreadable or invalid JSON"
         ) from error
-    if not isinstance(document, dict) or set(document) != _TEE_TYPES:
+    if (
+        not isinstance(document, dict)
+        or set(document) not in _TEE_PROFILE_SETS
+    ):
         raise TEEAttestationConfigurationError(
-            "TEE claims allowlist must define exactly the snp and tdx platforms"
+            "TEE claims allowlist must define snp with either tdx, sgx, or both"
         )
 
     validated: dict[str, dict[str, frozenset[str]]] = {}
-    for tee_type in _TEE_TYPES:
+    for tee_type in sorted(document):
+        measurement_field = (
+            "measurement_sha256" if tee_type == "sgx" else "measurement_sha384"
+        )
         platform = document[tee_type]
         if not isinstance(platform, dict) or set(platform) != {
-            "measurement_sha384",
+            measurement_field,
             "workload_digest_sha256",
         }:
             raise TEEAttestationConfigurationError(
                 f"TEE claims allowlist entry for {tee_type} has an invalid schema"
             )
 
-        measurements = platform["measurement_sha384"]
+        measurements = platform[measurement_field]
         workload_digests = platform["workload_digest_sha256"]
+        measurement_pattern = (
+            _MEASUREMENT_SHA256
+            if tee_type == "sgx"
+            else _MEASUREMENT_SHA384
+        )
         if (
             not isinstance(measurements, list)
             or not measurements
             or any(
                 not isinstance(value, str)
-                or not _MEASUREMENT_SHA384.fullmatch(value)
+                or not measurement_pattern.fullmatch(value)
                 for value in measurements
             )
         ):
             raise TEEAttestationConfigurationError(
-                f"TEE claims allowlist has invalid {tee_type} SHA-384 measurements"
+                f"TEE claims allowlist has invalid {tee_type} {measurement_field} values"
             )
         if (
             not isinstance(workload_digests, list)
@@ -99,7 +119,7 @@ def _validated_allowlist(path: Path) -> dict[str, dict[str, frozenset[str]]]:
                 f"TEE claims allowlist has invalid {tee_type} workload digests"
             )
         validated[tee_type] = {
-            "measurement_sha384": frozenset(
+            measurement_field: frozenset(
                 value.lower() for value in measurements
             ),
             "workload_digest_sha256": frozenset(
@@ -108,7 +128,7 @@ def _validated_allowlist(path: Path) -> dict[str, dict[str, frozenset[str]]]:
         }
     return validated
 
-class TrusteeClaimsClient:
+class TEEClaimsClient:
     def __init__(
         self,
         *,
@@ -135,7 +155,7 @@ class TrusteeClaimsClient:
         self._nonce_factory = nonce_factory
 
     @classmethod
-    def from_environment(cls, *, required: bool) -> TrusteeClaimsClient | None:
+    def from_environment(cls, *, required: bool) -> TEEClaimsClient | None:
         values = {
             "SANCTUM_TEE_VERIFIER_URL": os.environ.get(
                 "SANCTUM_TEE_VERIFIER_URL", ""
@@ -163,13 +183,13 @@ class TrusteeClaimsClient:
         if not configured:
             if required:
                 raise TEEAttestationConfigurationError(
-                    "Production requires a Trustee TEE claims verifier"
+                    "Production requires a TEE claims verifier"
                 )
             return None
 
         if any(not value for value in values.values()):
             raise TEEAttestationConfigurationError(
-                "Trustee configuration requires SANCTUM_TEE_VERIFIER_URL, "
+                "TEE claims configuration requires SANCTUM_TEE_VERIFIER_URL, "
                 "SANCTUM_TEE_WORKLOAD_ID, SANCTUM_TEE_CA_CERT_FILE, "
                 "SANCTUM_TEE_CLIENT_CERT_FILE, SANCTUM_TEE_CLIENT_KEY_FILE, "
                 "and SANCTUM_TEE_EXPECTED_CLAIMS_FILE"
@@ -244,8 +264,22 @@ class TrusteeClaimsClient:
             ),
         )
 
-    async def verify_readiness(self) -> TEEAttestation:
+    async def verify_readiness(
+        self, *, operation_digest: str | None = None
+    ) -> TEEAttestation:
+        if operation_digest is not None and not _OPERATION_DIGEST_SHA256.fullmatch(
+            operation_digest
+        ):
+            raise TEEAttestationUnavailable(
+                "TEE operation digest must be a SHA-256 hexadecimal value"
+            )
         challenge = self._nonce_factory()
+        request_body = {
+            "workload_id": self._workload_id,
+            "challenge": challenge,
+        }
+        if operation_digest is not None:
+            request_body["operation_digest"] = operation_digest.lower()
         try:
             async with httpx.AsyncClient(
                 verify=self._ca_cert_file,
@@ -258,38 +292,35 @@ class TrusteeClaimsClient:
                     "POST",
                     self._endpoint,
                     headers={"Accept": "application/json"},
-                    json={
-                        "workload_id": self._workload_id,
-                        "challenge": challenge,
-                    },
+                    json=request_body,
                 ) as response:
                     if response.status_code != 200:
                         raise TEEAttestationUnavailable(
-                            f"Trustee gateway returned HTTP {response.status_code}"
+                            f"TEE claims gateway returned HTTP {response.status_code}"
                         )
                     body = bytearray()
                     async for chunk in response.aiter_bytes(chunk_size=4_096):
                         body.extend(chunk)
                         if len(body) > _MAX_RESPONSE_BYTES:
                             raise TEEAttestationUnavailable(
-                                "Trustee gateway response exceeded its size limit"
+                                "TEE claims gateway response exceeded its size limit"
                             )
         except TEEAttestationUnavailable:
             raise
         except httpx.HTTPError as error:
             raise TEEAttestationUnavailable(
-                "Trustee gateway request failed"
+                "TEE claims gateway request failed"
             ) from error
 
         try:
             document = json.loads(body)
         except (json.JSONDecodeError, UnicodeDecodeError) as error:
             raise TEEAttestationUnavailable(
-                "Trustee gateway returned invalid JSON"
+                "TEE claims gateway returned invalid JSON"
             ) from error
         if not isinstance(document, dict):
             raise TEEAttestationUnavailable(
-                "Trustee gateway response must be a JSON object"
+                "TEE claims gateway response must be a JSON object"
             )
 
         tee_type = document.get("tee_type")
@@ -298,41 +329,54 @@ class TrusteeClaimsClient:
             or document.get("evidence_sig") != "valid"
             or document.get("workload_id") != self._workload_id
             or document.get("challenge") != challenge
+            or (
+                operation_digest is not None
+                and document.get("operation_digest") != operation_digest.lower()
+            )
             or not isinstance(tee_type, str)
             or tee_type not in _TEE_TYPES
+            or tee_type not in self._expected_claims
             or document.get("debug_enabled") is not False
         ):
             raise TEEAttestationUnavailable(
-                "Trustee gateway claims failed identity, signature, or debug checks"
+                "TEE claims gateway claims failed identity, signature, or debug checks"
             )
 
         measurement = document.get("measurement")
         workload_digest = document.get("workload_digest")
+        measurement_field = (
+            "measurement_sha256" if tee_type == "sgx" else "measurement_sha384"
+        )
+        measurement_pattern = (
+            _MEASUREMENT_SHA256
+            if tee_type == "sgx"
+            else _MEASUREMENT_SHA384
+        )
         if (
             not isinstance(measurement, str)
-            or not _MEASUREMENT_SHA384.fullmatch(measurement)
+            or not measurement_pattern.fullmatch(measurement)
             or not isinstance(workload_digest, str)
             or not _WORKLOAD_DIGEST_SHA256.fullmatch(workload_digest)
         ):
             raise TEEAttestationUnavailable(
-                "Trustee gateway claims contain invalid measurement digests"
+                "TEE claims gateway claims contain invalid measurement digests"
             )
         normalized_measurement = measurement.lower()
         normalized_digest = workload_digest.lower()
         expected = self._expected_claims[tee_type]
-        if normalized_measurement not in expected["measurement_sha384"]:
+        if normalized_measurement not in expected[measurement_field]:
             raise TEEAttestationUnavailable(
-                "Trustee gateway measurement is not in the approved baseline"
+                "TEE claims gateway measurement is not in the approved baseline"
             )
         if normalized_digest not in expected["workload_digest_sha256"]:
             raise TEEAttestationUnavailable(
-                "Trustee gateway workload digest is not in the approved baseline"
+                "TEE claims gateway workload digest is not in the approved baseline"
             )
 
         verified_at_raw = document.get("verified_at")
         if not isinstance(verified_at_raw, str):
             raise TEEAttestationUnavailable(
-                "Trustee gateway claims have no verification timestamp"
+                "TEE claims gateway claims have no verification timestamp"
             )
         try:
             verified_at = datetime.fromisoformat(
@@ -342,11 +386,11 @@ class TrusteeClaimsClient:
             )
         except ValueError as error:
             raise TEEAttestationUnavailable(
-                "Trustee gateway returned an invalid verification timestamp"
+                "TEE claims gateway returned an invalid verification timestamp"
             ) from error
         if verified_at.tzinfo is None or verified_at.utcoffset() is None:
             raise TEEAttestationUnavailable(
-                "Trustee gateway verification timestamp must include a timezone"
+                "TEE claims gateway verification timestamp must include a timezone"
             )
         age_seconds = self._clock() - verified_at.timestamp()
         if (
@@ -354,7 +398,7 @@ class TrusteeClaimsClient:
             or age_seconds > self._max_age_seconds
         ):
             raise TEEAttestationUnavailable(
-                "Trustee gateway claims are stale or have an invalid timestamp"
+                "TEE claims gateway claims are stale or have an invalid timestamp"
             )
 
         return TEEAttestation(
@@ -363,4 +407,10 @@ class TrusteeClaimsClient:
             measurement=normalized_measurement,
             workload_digest=normalized_digest,
             verified_at=verified_at.astimezone(timezone.utc),
+            operation_digest=(
+                operation_digest.lower() if operation_digest is not None else None
+            ),
         )
+
+
+TrusteeClaimsClient = TEEClaimsClient

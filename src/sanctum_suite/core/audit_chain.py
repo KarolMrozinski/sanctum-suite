@@ -31,6 +31,11 @@ _AUTHORIZATION_ENGINES = {
     "trustee+opa+rbac",
     "keylime+trustee+local_rbac",
     "keylime+trustee+opa+rbac",
+    "tee_verifier",
+    "tee_verifier+local_rbac",
+    "tee_verifier+opa+rbac",
+    "keylime+tee_verifier+local_rbac",
+    "keylime+tee_verifier+opa+rbac",
 }
 _OBJECT_KEY_PATTERN = re.compile(
     r"^api-access/\d{4}/\d{2}/\d{2}/"

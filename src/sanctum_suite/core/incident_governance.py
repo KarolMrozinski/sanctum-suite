@@ -108,6 +108,11 @@ class IncidentGovernanceStore:
             "trustee+opa+rbac",
             "keylime+trustee+local_rbac",
             "keylime+trustee+opa+rbac",
+            "tee_verifier",
+            "tee_verifier+local_rbac",
+            "tee_verifier+opa+rbac",
+            "keylime+tee_verifier+local_rbac",
+            "keylime+tee_verifier+opa+rbac",
         }:
             raise ValueError("authorization_engine is not supported")
         if authorization_decision not in {None, "allow", "deny", "error"}:

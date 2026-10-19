@@ -97,7 +97,7 @@ from sanctum_suite.core.tpm_attestation import (
 from sanctum_suite.core.tee_attestation import (
     TEEAttestationConfigurationError,
     TEEAttestationUnavailable,
-    TrusteeClaimsClient,
+    TEEClaimsClient,
 )
 from sanctum_suite.core.methodology_catalog import list_methodology_references
 from sanctum_suite.core.target_authorization import TargetAuthorizationError, require_authorized_target
@@ -285,8 +285,8 @@ def get_tpm_attestation_client(
 
 def get_tee_attestation_client(
     *, required: bool
-) -> TrusteeClaimsClient | None:
-    return TrusteeClaimsClient.from_environment(required=required)
+) -> TEEClaimsClient | None:
+    return TEEClaimsClient.from_environment(required=required)
 
 
 def get_audit_pseudonymizer() -> AuditPseudonymizer:
@@ -504,7 +504,7 @@ def _authorization_engine(
     if tpm_attested:
         factors.append("keylime")
     if tee_attested:
-        factors.append("trustee")
+        factors.append("tee_verifier")
     factors.append("opa+rbac" if policy_enabled else "local_rbac")
     return "+".join(factors)
 
@@ -550,7 +550,7 @@ async def _verify_tee_attestation(request: Request) -> bool:
     try:
         client = get_tee_attestation_client(required=tee_required)
     except TEEAttestationConfigurationError as error:
-        request.state.authorization_engine = "trustee"
+        request.state.authorization_engine = "tee_verifier"
         request.state.authorization_decision = "error"
         _LOGGER.warning(
             "Confidential-computing configuration is invalid (%s)",
@@ -564,7 +564,7 @@ async def _verify_tee_attestation(request: Request) -> bool:
     if client is None:
         return False
 
-    request.state.authorization_engine = "trustee"
+    request.state.authorization_engine = "tee_verifier"
     try:
         await client.verify_readiness()
     except TEEAttestationUnavailable as error:

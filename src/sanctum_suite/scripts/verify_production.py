@@ -26,7 +26,7 @@ from sanctum_suite.core.tpm_attestation import (
 from sanctum_suite.core.tee_attestation import (
     TEEAttestationConfigurationError,
     TEEAttestationUnavailable,
-    TrusteeClaimsClient,
+    TEEClaimsClient,
 )
 
 
@@ -61,13 +61,13 @@ def run_production_check() -> int:
             )
         asyncio.run(tpm_attestation.verify_readiness())
         print("[SANCTUM-SUITE] Keylime TPM measured-boot attestation verified.")
-        tee_attestation = TrusteeClaimsClient.from_environment(required=True)
+        tee_attestation = TEEClaimsClient.from_environment(required=True)
         if tee_attestation is None:
             raise TEEAttestationConfigurationError(
                 "SANCTUM confidential-computing verifier is required"
             )
         asyncio.run(tee_attestation.verify_readiness())
-        print("[SANCTUM-SUITE] Trustee SNP/TDX workload claims verified.")
+        print("[SANCTUM-SUITE] TEE SNP/TDX/SGX workload claims verified.")
         MinioImmutableAuditStore().verify_access()
         print("[SANCTUM-SUITE] MinIO Compliance Object Lock write/retention verified.")
         print("[SANCTUM-SUITE] Configuration preflight passed. This is not a production-readiness sign-off.")

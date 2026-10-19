@@ -88,6 +88,8 @@ sanctum audit-verify `
 
 Verification checks the checkpoint signature and signer fingerprint, each archive record's canonical JSON digest and event identity, the complete hash-link sequence, and the declared chain head. A checkpoint is a signed snapshot of the object versions observed during its inventory scan, not a real-time sequence number or proof that no events arrived concurrently or after the snapshot. Repeat checkpoints on an approved schedule and investigate any inventory growth or verification failure. The writer remains append-only and concurrent request writes do not contend on a shared global chain counter; the chain order is a deterministic inventory order, not event chronology. This integrity mechanism does not prove event truth, eliminate operator/key compromise, or establish legal or regulatory compliance.
 
+To gate a checkpoint digest on fresh AMD SEV-SNP or Intel SGX attestation and anchor only that digest in a local demonstration ledger or Hyperledger Fabric gateway, see the [private-ledger runbook](./PRIVATE_LEDGER.md). The Fabric adapter/chaincode and Intel DCAP verifier are operator-managed components, not included in this repository.
+
 Records contain a request ID, method, route template/group, response code, authentication method, authorization engine/decision and OPA policy version when evaluated, timestamp, a SHA-256 credential fingerprint, and keyed pseudonyms for subject and tenant in production. Pseudonyms support correlation but are not anonymous; do not treat them as permission to store classified content. Records do not contain request/response bodies, query strings, client IP addresses, or raw identity claims. This audit feature is not approval to store classified information: keep classified payloads and identifying evidence outside SANCTUM-SUITE unless the deployment has received the required independent authorization/accreditation. The seven-year Compliance lock prevents early deletion; confirm legal retention, privacy obligations, encryption-at-rest, backup, access, and destruction requirements before deployment.
 
 ### OIDC users, roles, and tenant-scoped data
@@ -212,21 +214,22 @@ misconfiguration fail closed with HTTP 503. See the complete
 variables, Compose/Podman secrets, verifier access restrictions, and assurance
 limits.
 
-### Confidential Computing: AMD SEV-SNP and Intel TDX
+### Confidential Computing: AMD SEV-SNP, Intel TDX and optional Intel SGX
 
 Production and air-gapped profiles additionally require fresh, challenge-bound
-TEE claims from the operator-managed Trustee JSON gateway. Configure its HTTPS
-endpoint and mTLS credentials, exact workload ID, and a read-only baseline file
-containing approved SHA-384 measurements and SHA-256 workload digests for both
-SNP and TDX. The gateway must bind its claims to the random challenge Sanctum
-sends and reject debug-enabled or revoked/invalid platform evidence.
+TEE claims from an operator-managed JSON gateway. Configure its HTTPS endpoint
+and mTLS credentials, exact workload ID, and a read-only baseline file. The
+legacy SNP+TDX profile remains supported; an SGX-capable profile may instead
+contain SNP and SGX baselines. SGX requires an external DCAP verifier. The
+gateway must bind its claims to the random challenge Sanctum sends and reject
+debug-enabled or revoked/invalid platform evidence.
 
 The API validates the response schema, platform, challenge, freshness,
 `evidence_sig: "valid"` assertion, disabled debug flag, and exact baseline
 matches before each authenticated `/api/v1` request. Missing configuration or
-any validation/gateway failure returns HTTP 503. The supplied Trustee gateway
-endpoint is an external integration: Sanctum does not implement the gateway or
-the hardware evidence verifier. See the
+any validation/gateway failure returns HTTP 503. The gateway endpoint is an
+external integration: Sanctum does not implement the gateway or the hardware
+evidence verifier. See the
 [Confidential Computing guide](./CONFIDENTIAL_COMPUTING.md) for the exact JSON
 contract, baseline file shape, Compose/Podman mounts, and trust limitations.
 

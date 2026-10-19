@@ -33,6 +33,10 @@ def _allowlist():
             "measurement_sha384": ["cc" * 48],
             "workload_digest_sha256": ["dd" * 32],
         },
+        "sgx": {
+            "measurement_sha256": ["ee" * 32],
+            "workload_digest_sha256": ["ff" * 32],
+        },
     }
 
 
@@ -58,12 +62,15 @@ def configure_trustee_environment(monkeypatch, tmp_path):
 
 def _valid_claims(tee_type="snp", now=1_700_000_000):
     baseline = _allowlist()[tee_type]
+    measurement_field = (
+        "measurement_sha256" if tee_type == "sgx" else "measurement_sha384"
+    )
     return {
         "status": "PASS",
         "tee_type": tee_type,
         "workload_id": "sanctum-api-prod",
         "challenge": "fresh-challenge",
-        "measurement": baseline["measurement_sha384"][0],
+        "measurement": baseline[measurement_field][0],
         "workload_digest": baseline["workload_digest_sha256"][0],
         "debug_enabled": False,
         "verified_at": datetime.fromtimestamp(
@@ -76,11 +83,13 @@ def _valid_claims(tee_type="snp", now=1_700_000_000):
 def _client(cert, key, ca, *, tee_type="snp", response=None):
     now = 1_700_000_000
     claims = response if response is not None else _valid_claims(tee_type, now)
+    requests = []
 
     async def respond(request):
+        requests.append(request)
         return httpx.Response(200, json=claims)
 
-    return TrusteeClaimsClient(
+    client = TrusteeClaimsClient(
         endpoint="https://trustee-gateway.internal/api/v1/attestation/verify",
         workload_id="sanctum-api-prod",
         ca_cert_file=str(ca),
@@ -89,8 +98,8 @@ def _client(cert, key, ca, *, tee_type="snp", response=None):
         max_age_seconds=120,
         expected_claims={
             name: {
-                "measurement_sha384": frozenset(
-                    values["measurement_sha384"]
+                ("measurement_sha256" if name == "sgx" else "measurement_sha384"): frozenset(
+                    values["measurement_sha256" if name == "sgx" else "measurement_sha384"]
                 ),
                 "workload_digest_sha256": frozenset(
                     values["workload_digest_sha256"]
@@ -102,6 +111,8 @@ def _client(cert, key, ca, *, tee_type="snp", response=None):
         clock=lambda: now,
         nonce_factory=lambda: "fresh-challenge",
     )
+    client.test_requests = requests
+    return client
 
 
 def test_trustee_client_is_optional_only_outside_production(monkeypatch):
@@ -128,7 +139,7 @@ def test_trustee_client_validates_mtls_and_both_tee_baselines(
     client = TrusteeClaimsClient.from_environment(required=True)
     assert client is not None
     assert client._endpoint.endswith("/api/v1/attestation/verify")
-    assert set(client._expected_claims) == {"snp", "tdx"}
+    assert set(client._expected_claims) == {"snp", "tdx", "sgx"}
 
     monkeypatch.setenv(
         "SANCTUM_TEE_VERIFIER_URL",
@@ -149,12 +160,12 @@ def test_trustee_client_validates_mtls_and_both_tee_baselines(
     (tmp_path / "expected-claims.json").write_text(
         json.dumps({"snp": _allowlist()["snp"]}), encoding="utf-8"
     )
-    with pytest.raises(TEEAttestationConfigurationError, match="exactly"):
+    with pytest.raises(TEEAttestationConfigurationError, match="must define"):
         TrusteeClaimsClient.from_environment(required=True)
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("tee_type", ["snp", "tdx"])
+@pytest.mark.parametrize("tee_type", ["snp", "tdx", "sgx"])
 async def test_trustee_client_accepts_challenge_bound_approved_claims(
     tee_type, tmp_path
 ):
@@ -179,8 +190,8 @@ async def test_trustee_client_accepts_challenge_bound_approved_claims(
         max_age_seconds=120,
         expected_claims={
             name: {
-                "measurement_sha384": frozenset(
-                    values["measurement_sha384"]
+                ("measurement_sha256" if name == "sgx" else "measurement_sha384"): frozenset(
+                    values["measurement_sha256" if name == "sgx" else "measurement_sha384"]
                 ),
                 "workload_digest_sha256": frozenset(
                     values["workload_digest_sha256"]
@@ -198,7 +209,9 @@ async def test_trustee_client_accepts_challenge_bound_approved_claims(
     assert result == TEEAttestation(
         workload_id="sanctum-api-prod",
         tee_type=tee_type,
-        measurement=_allowlist()[tee_type]["measurement_sha384"][0],
+        measurement=_allowlist()[tee_type][
+            "measurement_sha256" if tee_type == "sgx" else "measurement_sha384"
+        ][0],
         workload_digest=_allowlist()[tee_type]["workload_digest_sha256"][0],
         verified_at=datetime.fromtimestamp(1_700_000_000, timezone.utc),
     )
@@ -209,6 +222,33 @@ async def test_trustee_client_accepts_challenge_bound_approved_claims(
         "challenge": "fresh-challenge",
     }
     assert "authorization" not in request.headers
+
+
+@pytest.mark.asyncio
+async def test_tee_client_requires_attestation_to_bind_requested_operation(
+    tmp_path,
+):
+    cert = tmp_path / "client.crt"
+    key = tmp_path / "client.key"
+    ca = tmp_path / "ca.crt"
+    for path in (cert, key, ca):
+        path.write_text("test certificate material", encoding="utf-8")
+    operation_digest = "12" * 32
+    claims = _valid_claims()
+    claims["operation_digest"] = operation_digest
+    client = _client(cert, key, ca, response=claims)
+
+    attestation = await client.verify_readiness(
+        operation_digest=operation_digest.upper()
+    )
+
+    assert attestation.operation_digest == operation_digest
+    assert json.loads(client.test_requests[0].content)["operation_digest"] == operation_digest
+    claims["operation_digest"] = "34" * 32
+    with pytest.raises(TEEAttestationUnavailable, match="identity, signature"):
+        await _client(cert, key, ca, response=claims).verify_readiness(
+            operation_digest=operation_digest
+        )
 
 
 @pytest.mark.asyncio
@@ -345,6 +385,6 @@ def test_protected_api_audits_both_hardware_attestation_gates(
     assert response.status_code == 200
     audit_record = governance.list_access()[0]
     assert audit_record["authorization_engine"] == (
-        "keylime+trustee+local_rbac"
+        "keylime+tee_verifier+local_rbac"
     )
     assert audit_record["authorization_decision"] == "allow"

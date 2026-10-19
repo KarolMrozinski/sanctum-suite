@@ -1,3 +1,4 @@
+import asyncio
 import io
 import hashlib
 import hmac
@@ -1136,6 +1137,183 @@ def audit_verify_cmd(
         f"chain head: {result['chain_head_sha256']}; "
         f"signer SHA-256: {result['signer_sha256']}"
     )
+
+
+@app.command(name="ledger-anchor")
+def ledger_anchor_cmd(
+    checkpoint_file: Path = typer.Option(
+        ...,
+        "--checkpoint-file",
+        exists=True,
+        file_okay=True,
+        dir_okay=False,
+        readable=True,
+        help="Signed audit checkpoint to verify and anchor by SHA-256",
+    ),
+    archive_directory: Path = typer.Option(
+        ...,
+        "--archive-directory",
+        exists=True,
+        file_okay=False,
+        readable=True,
+        help="Version-pinned archive used to verify the checkpoint",
+    ),
+    checkpoint_public_key_file: Path = typer.Option(
+        ...,
+        "--checkpoint-public-key-file",
+        exists=True,
+        file_okay=True,
+        dir_okay=False,
+        readable=True,
+    ),
+    backend: str = typer.Option(..., "--backend", help="Ledger backend: local or fabric"),
+    database_file: Path | None = typer.Option(
+        None,
+        "--database-file",
+        help="SQLite path for the local demonstration ledger",
+    ),
+    fabric_gateway_url: str | None = typer.Option(
+        None,
+        "--fabric-gateway-url",
+        envvar="SANCTUM_LEDGER_FABRIC_GATEWAY_URL",
+    ),
+    fabric_channel: str | None = typer.Option(
+        None,
+        "--fabric-channel",
+        envvar="SANCTUM_LEDGER_FABRIC_CHANNEL",
+    ),
+    fabric_chaincode: str | None = typer.Option(
+        None,
+        "--fabric-chaincode",
+        envvar="SANCTUM_LEDGER_FABRIC_CHAINCODE",
+    ),
+    fabric_ca_file: Path | None = typer.Option(
+        None,
+        "--fabric-ca-file",
+        envvar="SANCTUM_LEDGER_FABRIC_CA_FILE",
+    ),
+    fabric_client_certificate_file: Path | None = typer.Option(
+        None,
+        "--fabric-client-certificate-file",
+        envvar="SANCTUM_LEDGER_FABRIC_CLIENT_CERT_FILE",
+    ),
+    fabric_client_key_file: Path | None = typer.Option(
+        None,
+        "--fabric-client-key-file",
+        envvar="SANCTUM_LEDGER_FABRIC_CLIENT_KEY_FILE",
+    ),
+) -> None:
+    """Verify an audit checkpoint, require fresh TEE attestation, and anchor its digest."""
+    from sanctum_suite.core.private_ledger import (
+        FabricGatewayLedger,
+        LocalPrivateLedger,
+        PrivateLedgerError,
+        anchor_verified_checkpoint,
+    )
+    from sanctum_suite.core.tee_attestation import (
+        TEEAttestationConfigurationError,
+        TEEAttestationUnavailable,
+        TEEClaimsClient,
+    )
+
+    try:
+        if checkpoint_file.stat().st_size > 256_000_000:
+            raise ValueError("Audit checkpoint exceeds the 256-megabyte size limit")
+        checkpoint_bytes = checkpoint_file.read_bytes()
+        checkpoint = json.loads(checkpoint_bytes)
+        if not isinstance(checkpoint, dict):
+            raise ValueError("Audit checkpoint must be a JSON object")
+        verify_audit_checkpoint(
+            checkpoint=checkpoint,
+            archive_directory=archive_directory,
+            public_key_pem=checkpoint_public_key_file.read_bytes(),
+        )
+        if backend == "local":
+            if database_file is None:
+                raise ValueError("--database-file is required for the local backend")
+            ledger = LocalPrivateLedger(database_file)
+        elif backend == "fabric":
+            if not all(
+                (
+                    fabric_gateway_url,
+                    fabric_channel,
+                    fabric_chaincode,
+                    fabric_ca_file,
+                    fabric_client_certificate_file,
+                    fabric_client_key_file,
+                )
+            ):
+                raise ValueError(
+                    "Fabric backend requires gateway URL, channel, chaincode, "
+                    "CA, client certificate, and client key configuration"
+                )
+            ledger = FabricGatewayLedger(
+                gateway_url=fabric_gateway_url,
+                channel=fabric_channel,
+                chaincode=fabric_chaincode,
+                ca_certificate_file=fabric_ca_file,
+                client_certificate_file=fabric_client_certificate_file,
+                client_key_file=fabric_client_key_file,
+            )
+        else:
+            raise ValueError("--backend must be either local or fabric")
+
+        attestation_client = TEEClaimsClient.from_environment(required=True)
+        if attestation_client is None:
+            raise TEEAttestationConfigurationError(
+                "A configured SGX/SNP claims verifier is required"
+            )
+        checkpoint_sha256 = hashlib.sha256(checkpoint_bytes).hexdigest()
+        attestation = asyncio.run(
+            attestation_client.verify_readiness(
+                operation_digest=checkpoint_sha256
+            )
+        )
+        report = anchor_verified_checkpoint(
+            checkpoint_bytes=checkpoint_bytes,
+            attestation=attestation,
+            ledger=ledger,
+        )
+    except (
+        OSError,
+        UnicodeDecodeError,
+        json.JSONDecodeError,
+        TypeError,
+        ValueError,
+        RuntimeError,
+        TEEAttestationConfigurationError,
+        TEEAttestationUnavailable,
+        PrivateLedgerError,
+    ) as error:
+        raise typer.BadParameter(
+            f"Ledger anchoring failed; no audit payload was submitted: {error}"
+        ) from error
+    _print_json_report(report)
+
+
+@app.command(name="ledger-verify")
+def ledger_verify_cmd(
+    database_file: Path = typer.Option(
+        ...,
+        "--database-file",
+        exists=True,
+        file_okay=True,
+        dir_okay=False,
+        readable=True,
+        help="SQLite database used by the local demonstration ledger",
+    ),
+) -> None:
+    """Verify the local demonstration ledger hash chain."""
+    from sanctum_suite.core.private_ledger import (
+        LocalPrivateLedger,
+        PrivateLedgerError,
+    )
+
+    try:
+        result = LocalPrivateLedger(database_file).verify()
+    except (OSError, RuntimeError, PrivateLedgerError) as error:
+        raise typer.BadParameter(str(error)) from error
+    _print_json_report(result)
 
 
 @app.command(name="audit-zk-prove")
