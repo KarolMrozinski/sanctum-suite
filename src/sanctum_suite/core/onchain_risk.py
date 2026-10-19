@@ -234,22 +234,37 @@ class OnChainRiskStore:
         results: list[dict[str, str]] = []
         tokens = list(address_by_token)
         with self._connect() as connection:
+            connection.execute(
+                """
+                CREATE TEMP TABLE IF NOT EXISTS requested_address_tokens (
+                    address_token TEXT PRIMARY KEY
+                )
+                """
+            )
             for offset in range(0, len(tokens), 500):
                 chunk = tokens[offset : offset + 500]
-                placeholders = ",".join("?" for _ in chunk)
+                connection.execute("DELETE FROM requested_address_tokens")
+                connection.executemany(
+                    "INSERT INTO requested_address_tokens (address_token) VALUES (?)",
+                    [(token,) for token in chunk],
+                )
                 rows = connection.execute(
-                    f"""
-                    SELECT chain, address_token, provider, provider_rating, category,
-                           report_reference, report_sha256, assessed_at, imported_at
-                    FROM onchain_risk_assessments
-                    WHERE case_id = ? AND chain = ? AND address_token IN ({placeholders})
-                    ORDER BY assessed_at DESC, provider, category
+                    """
+                    SELECT assessment.chain, assessment.address_token,
+                           assessment.provider, assessment.provider_rating,
+                           assessment.category, assessment.report_reference,
+                           assessment.report_sha256, assessment.assessed_at,
+                           assessment.imported_at
+                    FROM onchain_risk_assessments AS assessment
+                    JOIN requested_address_tokens AS requested
+                        ON requested.address_token = assessment.address_token
+                    WHERE assessment.case_id = ? AND assessment.chain = ?
+                    ORDER BY assessment.assessed_at DESC, assessment.provider, assessment.category
                     LIMIT ?
                     """,
                     [
                         case_id,
                         chain.value,
-                        *chunk,
                         _MAX_ASSESSMENTS_PER_GRAPH + 1 - len(results),
                     ],
                 ).fetchall()

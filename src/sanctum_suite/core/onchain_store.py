@@ -205,22 +205,18 @@ class OnChainBlockStore:
         if not 1 <= limit <= 500 or not 0 <= offset <= MAX_SNAPSHOTS_PER_CASE:
             raise ValueError("Snapshot pagination is outside the supported bounds")
         self.purge_expired()
-        where = "case_id = ?"
-        parameters: list[str | int] = [case_id]
-        if chain is not None:
-            where += " AND chain = ?"
-            parameters.append(chain.value)
+        chain_value = chain.value if chain is not None else None
         with self._connect() as connection:
             rows = connection.execute(
-                f"""
+                """
                 SELECT snapshot_id, chain, height, block_hash, parent_hash,
                        source, block_timestamp, fetched_at, stored_at, payload_bytes
                 FROM onchain_block_snapshots
-                WHERE {where}
+                WHERE case_id = ? AND (? IS NULL OR chain = ?)
                 ORDER BY height DESC, chain, stored_at DESC, snapshot_id
                 LIMIT ? OFFSET ?
                 """,
-                [*parameters, limit + 1, offset],
+                [case_id, chain_value, chain_value, limit + 1, offset],
             ).fetchall()
         has_more = len(rows) > limit
         snapshots = [
