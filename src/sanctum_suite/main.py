@@ -452,6 +452,250 @@ def telemetry_archive_cmd(
     _print_json_report(report)
 
 
+@app.command(name="fhe-keygen")
+def fhe_keygen_cmd(
+    public_key_file: Path = typer.Option(
+        ..., "--public-key-file", help="Output public Microsoft SEAL key"
+    ),
+    private_key_file: Path = typer.Option(
+        ..., "--private-key-file", help="Client-held private FHE key; protect this file"
+    ),
+    parameters_file: Path = typer.Option(
+        ..., "--parameters-file", help="Output BFV parameter metadata JSON"
+    ),
+) -> None:
+    """Create client-held BFV keys for encrypted integer aggregation."""
+    from sanctum_suite.core.privacy_graph import (
+        PrivacyGraphError,
+        create_fhe_keypair,
+    )
+
+    try:
+        report = create_fhe_keypair(
+            public_key_path=public_key_file,
+            private_key_path=private_key_file,
+            parameters_path=parameters_file,
+        )
+    except PrivacyGraphError as error:
+        raise typer.BadParameter(str(error)) from error
+    _print_json_report(report)
+
+
+@app.command(name="fhe-decrypt-sum")
+def fhe_decrypt_sum_cmd(
+    parameters_file: Path = typer.Option(
+        ...,
+        "--parameters-file",
+        exists=True,
+        file_okay=True,
+        dir_okay=False,
+        readable=True,
+        help="BFV parameters JSON from sanctum fhe-keygen",
+    ),
+    private_key_file: Path = typer.Option(
+        ...,
+        "--private-key-file",
+        exists=True,
+        file_okay=True,
+        dir_okay=False,
+        readable=True,
+        help="Client-held Microsoft SEAL private key",
+    ),
+    ciphertext_file: Path = typer.Option(
+        ...,
+        "--ciphertext-file",
+        exists=True,
+        file_okay=True,
+        dir_okay=False,
+        readable=True,
+        help="Encrypted aggregate.seal from privacy-graph-import",
+    ),
+) -> None:
+    """Decrypt the FHE integer sum on the client holding the private key."""
+    from sanctum_suite.core.privacy_graph import (
+        PrivacyGraphError,
+        decrypt_fhe_sum,
+    )
+
+    try:
+        report = decrypt_fhe_sum(
+            parameters_path=parameters_file,
+            private_key_path=private_key_file,
+            ciphertext_path=ciphertext_file,
+        )
+    except PrivacyGraphError as error:
+        raise typer.BadParameter(str(error)) from error
+    _print_json_report(report)
+
+
+@app.command(name="privacy-graph-import")
+def privacy_graph_import_cmd(
+    graph_file: Path = typer.Option(
+        ...,
+        "--graph-file",
+        exists=True,
+        file_okay=True,
+        dir_okay=False,
+        readable=True,
+        help="Case-scoped normalized graph JSON with nodes and edges arrays",
+    ),
+    scores_file: Path = typer.Option(
+        ...,
+        "--scores-file",
+        exists=True,
+        file_okay=True,
+        dir_okay=False,
+        readable=True,
+        help="Client-side JSON array of node_id and integer score entries",
+    ),
+    case_id: str = typer.Option(..., "--case-id", help="Case identifier in graph JSON"),
+    public_key_file: Path = typer.Option(
+        ...,
+        "--public-key-file",
+        exists=True,
+        file_okay=True,
+        dir_okay=False,
+        readable=True,
+        help="Public Microsoft SEAL key",
+    ),
+    parameters_file: Path = typer.Option(
+        ...,
+        "--parameters-file",
+        exists=True,
+        file_okay=True,
+        dir_okay=False,
+        readable=True,
+        help="BFV parameters JSON from sanctum fhe-keygen",
+    ),
+    dsn_file: Path = typer.Option(
+        ...,
+        "--dsn-file",
+        exists=True,
+        file_okay=True,
+        dir_okay=False,
+        readable=True,
+        help="Protected PostgreSQL connection string file for Apache AGE",
+    ),
+    graph_name: str = typer.Option("sanctum", "--graph-name"),
+    pkcs11_module: str = typer.Option(
+        ..., "--pkcs11-module", help="Path to the vendor PKCS#11 library"
+    ),
+    token_label: str = typer.Option(..., "--token-label"),
+    signing_key_label: str = typer.Option(..., "--signing-key-label"),
+    pin_file: Path = typer.Option(
+        ...,
+        "--pin-file",
+        exists=True,
+        file_okay=True,
+        dir_okay=False,
+        readable=True,
+        help="Protected PKCS#11 PIN secret file; never pass a PIN directly",
+    ),
+    certificate_file: Path = typer.Option(
+        ...,
+        "--certificate-file",
+        exists=True,
+        file_okay=True,
+        dir_okay=False,
+        readable=True,
+        help="PEM or DER RSA certificate corresponding to the HSM signing key",
+    ),
+    output_directory: Path = typer.Option(
+        ...,
+        "--output-directory",
+        help="New directory for signed manifest and encrypted aggregate",
+    ),
+) -> None:
+    """Import a case graph into Apache AGE with FHE score aggregation and HSM signing."""
+    from sanctum_suite.core.privacy_graph import (
+        ApacheAGEGraphStore,
+        PKCS11ManifestSigner,
+        PrivacyGraphError,
+        create_private_graph_bundle,
+    )
+
+    try:
+        graph_store = ApacheAGEGraphStore(
+            dsn_file=dsn_file,
+            graph_name=graph_name,
+        )
+        signer = PKCS11ManifestSigner(
+            module_path=pkcs11_module,
+            token_label=token_label,
+            key_label=signing_key_label,
+            pin_file=pin_file,
+            certificate_file=certificate_file,
+        )
+        report = create_private_graph_bundle(
+            graph_path=graph_file,
+            scores_path=scores_file,
+            case_id=case_id,
+            public_key_path=public_key_file,
+            parameters_path=parameters_file,
+            output_directory=output_directory,
+            graph_store=graph_store,
+            signer=signer,
+        )
+    except PrivacyGraphError as error:
+        raise typer.BadParameter(str(error)) from error
+    _print_json_report(report)
+
+
+@app.command(name="privacy-graph-verify")
+def privacy_graph_verify_cmd(
+    manifest_file: Path = typer.Option(
+        ...,
+        "--manifest-file",
+        exists=True,
+        file_okay=True,
+        dir_okay=False,
+        readable=True,
+    ),
+    signature_file: Path = typer.Option(
+        ...,
+        "--signature-file",
+        exists=True,
+        file_okay=True,
+        dir_okay=False,
+        readable=True,
+    ),
+    ciphertext_file: Path = typer.Option(
+        ...,
+        "--ciphertext-file",
+        exists=True,
+        file_okay=True,
+        dir_okay=False,
+        readable=True,
+        help="FHE aggregate ciphertext to verify against the signed digest",
+    ),
+    certificate_file: Path = typer.Option(
+        ...,
+        "--certificate-file",
+        exists=True,
+        file_okay=True,
+        dir_okay=False,
+        readable=True,
+        help="Trusted PEM or DER RSA signer certificate",
+    ),
+) -> None:
+    """Verify a private graph manifest signature and its HSM certificate fingerprint."""
+    from sanctum_suite.core.privacy_graph import (
+        PrivacyGraphError,
+        verify_signed_manifest,
+    )
+
+    try:
+        report = verify_signed_manifest(
+            manifest_path=manifest_file,
+            signature_path=signature_file,
+            ciphertext_path=ciphertext_file,
+            certificate_path=certificate_file,
+        )
+    except PrivacyGraphError as error:
+        raise typer.BadParameter(str(error)) from error
+    _print_json_report(report)
+
+
 @app.command(name="generate-executive-report")
 def generate_executive_report_cmd(
     readiness_report: Path = typer.Option(

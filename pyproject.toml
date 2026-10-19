@@ -48,6 +48,11 @@ telemetry = [
     "pyarrow>=16.0.0",
     "wasmtime>=30.0.0",
 ]
+privacy-graph = [
+    "seal-python>=4.4,<5",
+    "python-pkcs11>=0.10",
+    "psycopg[binary]>=3.2",
+]
 
 [project.scripts]
 sanctum = "sanctum_suite.main:app"
