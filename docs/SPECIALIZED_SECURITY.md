@@ -2,6 +2,53 @@
 
 These workflows produce bounded review artifacts. None of them discovers a production cryptographic deployment, enforces a kernel policy, operates a physical data diode, or certifies TEMPEST/SDIP-27.
 
+## Cross-technology security readiness
+
+Run `sanctum security-readiness --input readiness.json` to produce a JSON summary of operator-reported checks for eBPF, Rust, SPIFFE/SPIRE, and cryptographic inventory. The input is a UTF-8 JSON object, limited to 1 MiB. Sections may be omitted; omitted domains are reported as `NOT_ASSESSED`. Boolean checks that are missing are reported as `INCOMPLETE`, and a declared `false` is reported as an operator-reported gap. The report does not verify any declaration or award a readiness score.
+
+```json
+{
+  "ebpf": {
+    "kernel_compatibility_checked": true,
+    "verifier_tests_passed": true,
+    "hook_coverage_reviewed": true,
+    "fail_mode_documented": true,
+    "performance_tested": false,
+    "detach_rollback_tested": true
+  },
+  "rust": {
+    "cargo_lock_reviewed": true,
+    "cargo_audit_passed": true,
+    "unsafe_code_reviewed": true,
+    "sbom_available": true
+  },
+  "spiffe": {
+    "trust_domain_configured": true,
+    "svid_rotation_tested": true,
+    "workload_api_access_controlled": true,
+    "mtls_enforced": true,
+    "authorization_policy_reviewed": true
+  },
+  "cryptography": {
+    "inventory": [
+      {
+        "algorithm": "PQXDH",
+        "location": "messaging-service",
+        "use_case": "key_establishment"
+      }
+    ]
+  }
+}
+```
+
+Run the example with:
+
+```powershell
+sanctum security-readiness --input .\readiness.json
+```
+
+The `ebpf`, `rust`, and `spiffe` sections accept only the boolean fields shown above. A crypto inventory contains at most 1,000 entries and uses the `algorithm`, `location`, `use_case`, and optional `requires_long_term_confidentiality` fields described below. `PQXDH` is reported as a key-establishment protocol requiring specification, implementation, and interoperability review; it is not labeled as a NIST-standardized algorithm. This command does not inspect a kernel or Rust workspace, connect to SPIRE, validate an SVID or mTLS session, or discover cryptographic use. Use independently collected evidence and qualified review before relying on any reported result.
+
 ## PQC inventory and migration review
 
 Create a UTF-8 JSON array from an approved inventory source. Each row requires `algorithm` and `location`; optional `use_case` accepts `key_establishment`, `digital_signature`, `other`, or `unknown`. Set `requires_long_term_confidentiality` to `true` only when the data owner has confirmed the requirement.
@@ -28,7 +75,7 @@ Run:
 sanctum pqc-inventory --inventory "C:\Lab\crypto-inventory.json"
 ```
 
-The command accepts at most 1,000 entries in a 1 MiB JSON file. It classifies recognized ML-KEM, ML-DSA, and SLH-DSA family names against NIST FIPS 203/204/205 and reports classical public-key algorithms and unknown names for review. A classical key-establishment entry marked as requiring long-term confidentiality is flagged to prioritize a harvest-now/decrypt-later review. This is an explicitly supplied inventory and triage hint, not cryptographic discovery, implementation validation, migration advice for a specific system, or a compliance determination. Confirm algorithm variants, parameter sets, implementation, protocol negotiation, key lifecycle, hybrid transition, interoperability, and rollback with system owners and qualified cryptographic engineers.
+The command accepts at most 1,000 entries in a 1 MiB JSON file. It classifies recognized ML-KEM, ML-DSA, and SLH-DSA family names against NIST FIPS 203/204/205 and reports classical public-key algorithms and unknown names for review. `PQXDH` is identified as a reported key-establishment protocol and requires separate review of the selected specification, implementation, and interoperability; it is not a NIST-standardized algorithm. A classical key-establishment entry marked as requiring long-term confidentiality is flagged to prioritize a harvest-now/decrypt-later review. This is an explicitly supplied inventory and triage hint, not cryptographic discovery, implementation validation, migration advice for a specific system, or a compliance determination. Confirm algorithm variants, parameter sets, implementation, protocol negotiation, key lifecycle, hybrid transition, interoperability, and rollback with system owners and qualified cryptographic engineers.
 
 ## Controlled offline-transfer manifest
 

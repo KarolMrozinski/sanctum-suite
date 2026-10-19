@@ -18,6 +18,7 @@ _PQC_PATTERNS = (
         ),
     ),
 )
+_PQC_KEY_ESTABLISHMENT_PROTOCOLS = {"PQXDH"}
 _CLASSICAL_PUBLIC_KEY_PATTERN = re.compile(
     r"^(RSA|ECDH|ECDSA|ECDHE|DH|DHE|DSA|ED25519|ED448|X25519|X448)(?:[-_ ]|$)"
 )
@@ -74,7 +75,12 @@ class PostQuantumCryptographicAssuranceEngine:
                 ),
                 None,
             )
-            if pqc_family is not None:
+            if normalized in _PQC_KEY_ESTABLISHMENT_PROTOCOLS:
+                classification = "POST_QUANTUM_KEY_ESTABLISHMENT_PROTOCOL_REPORTED"
+                family = normalized
+                standard = ""
+                migration_review = "VERIFY_PROTOCOL_SPEC_IMPLEMENTATION_AND_INTEROPERABILITY"
+            elif pqc_family is not None:
                 classification = "STANDARDIZED_PQC_ALGORITHM_REPORTED"
                 family = pqc_family
                 standard = _STANDARDIZED_PQC[family]

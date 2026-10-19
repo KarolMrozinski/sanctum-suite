@@ -281,6 +281,33 @@ def pqc_inventory_cmd(
     _print_json_report(result)
 
 
+@app.command(name="security-readiness")
+def security_readiness_cmd(
+    input_file: Path = typer.Option(
+        ...,
+        "--input",
+        exists=True,
+        file_okay=True,
+        dir_okay=False,
+        readable=True,
+        help="UTF-8 JSON declarations for eBPF, Rust, SPIFFE/SPIRE, and cryptography",
+    ),
+) -> None:
+    """Summarize operator-reported readiness for selected security technologies."""
+    from sanctum_suite.core.security_readiness import SecurityReadinessAudit
+
+    try:
+        if input_file.stat().st_size > 1_048_576:
+            raise ValueError("Input file must not exceed 1 MiB")
+        declaration = json.loads(input_file.read_text(encoding="utf-8"))
+        if not isinstance(declaration, dict):
+            raise ValueError("Input must be a JSON object")
+        result = SecurityReadinessAudit().audit(declaration)
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError, ValueError) as error:
+        raise typer.BadParameter(str(error)) from error
+    _print_json_report(result)
+
+
 @app.command(name="issue-license")
 def issue_license_cmd(
     private_key_file: Path = typer.Option(..., "--private-key-file", exists=True, file_okay=True, dir_okay=False, readable=True),

@@ -12,6 +12,7 @@ from sanctum_suite.core.ebpf_enforcement import EbpfInKernelEnforcementEngine
 from sanctum_suite.core.post_quantum_pqc import (
     PostQuantumCryptographicAssuranceEngine,
 )
+from sanctum_suite.core.security_readiness import SecurityReadinessAudit
 from sanctum_suite.core.tempest_auditor import TempestSdip27EmissionsAuditor
 
 
@@ -83,6 +84,114 @@ def test_pqc_inventory_marks_unrecognized_parameter_set_for_manual_review():
     )
 
     assert report["algorithms"][0]["migration_review"] == "MANUAL_ALGORITHM_REVIEW_REQUIRED"
+
+
+def test_pqc_inventory_reports_pqxdh_as_a_protocol_not_a_standardized_algorithm():
+    report = PostQuantumCryptographicAssuranceEngine().audit_cryptographic_primitives(
+        [
+            {
+                "algorithm": "PQXDH",
+                "location": "messaging-service",
+                "use_case": "key_establishment",
+            }
+        ]
+    )
+
+    assert (
+        report["algorithms"][0]["classification"]
+        == "POST_QUANTUM_KEY_ESTABLISHMENT_PROTOCOL_REPORTED"
+    )
+    assert report["algorithms"][0]["standard"] == ""
+    assert (
+        report["algorithms"][0]["migration_review"]
+        == "VERIFY_PROTOCOL_SPEC_IMPLEMENTATION_AND_INTEROPERABILITY"
+    )
+
+
+def test_security_readiness_reports_declared_gaps_and_missing_sections():
+    declaration = {
+        "ebpf": {
+            "kernel_compatibility_checked": True,
+            "verifier_tests_passed": True,
+            "hook_coverage_reviewed": True,
+            "fail_mode_documented": True,
+            "performance_tested": True,
+            "detach_rollback_tested": False,
+        },
+        "rust": {
+            "cargo_lock_reviewed": True,
+        },
+        "cryptography": {
+            "inventory": [
+                {
+                    "algorithm": "PQXDH",
+                    "location": "messaging-service",
+                    "use_case": "key_establishment",
+                }
+            ]
+        },
+    }
+
+    report = SecurityReadinessAudit().audit(declaration)
+
+    assert report["status"] == "REVIEW_REQUIRED"
+    assert report["domains"]["ebpf"]["status"] == "GAPS_REPORTED"
+    assert report["domains"]["rust"]["status"] == "INCOMPLETE"
+    assert report["domains"]["spiffe"]["status"] == "NOT_ASSESSED"
+    assert (
+        report["domains"]["cryptography"]["algorithms"][0]["classification"]
+        == "POST_QUANTUM_KEY_ESTABLISHMENT_PROTOCOL_REPORTED"
+    )
+    assert report["summary"] == {
+        "domains_assessed": 3,
+        "domains_not_assessed": 1,
+        "operator_reported_ready": 0,
+        "operator_reported_gaps": 1,
+        "incomplete_assessments": 1,
+    }
+
+
+def test_security_readiness_requires_boolean_checks_and_rejects_unknown_fields():
+    with pytest.raises(ValueError, match="must be a boolean"):
+        SecurityReadinessAudit().audit({"spiffe": {"mtls_enforced": "yes"}})
+
+    with pytest.raises(ValueError, match="Unknown readiness section"):
+        SecurityReadinessAudit().audit({"kernel": {}})
+
+
+def test_security_readiness_keeps_reported_passes_distinct_from_verification():
+    report = SecurityReadinessAudit().audit(
+        {
+            "spiffe": {
+                "trust_domain_configured": True,
+                "svid_rotation_tested": True,
+                "workload_api_access_controlled": True,
+                "mtls_enforced": True,
+                "authorization_policy_reviewed": True,
+            }
+        }
+    )
+
+    assert report["domains"]["spiffe"]["status"] == "OPERATOR_REPORTED_READY"
+    assert report["summary"]["operator_reported_ready"] == 1
+    assert report["assessment_scope"] == "OPERATOR_SUPPLIED_DECLARATIONS"
+
+
+def test_security_readiness_cli_emits_json_report(tmp_path):
+    input_path = tmp_path / "readiness.json"
+    input_path.write_text(
+        json.dumps({"spiffe": {"trust_domain_configured": True}}),
+        encoding="utf-8",
+    )
+
+    result = CliRunner().invoke(
+        cli_main.app, ["security-readiness", "--input", str(input_path)]
+    )
+
+    assert result.exit_code == 0, result.output
+    report = json.loads(result.stdout)
+    assert report["assessment_scope"] == "OPERATOR_SUPPLIED_DECLARATIONS"
+    assert report["domains"]["spiffe"]["status"] == "INCOMPLETE"
 
 
 def test_offline_transfer_manifest_has_canonical_digest_and_signer_fingerprint():
