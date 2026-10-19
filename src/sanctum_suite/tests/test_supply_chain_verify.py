@@ -222,3 +222,39 @@ def test_supply_chain_verify_cli_emits_json_report(tmp_path, monkeypatch):
     assert report["status"] == "ATTESTATION_VERIFIED"
     assert report["scan_reports"]["trivy"]["status"] == "NOT_PROVIDED"
     assert report["scan_reports"]["grype"]["status"] == "NOT_PROVIDED"
+
+
+def test_supply_chain_verify_cli_fails_when_cosign_rejects_bundle(
+    tmp_path, monkeypatch
+):
+    artifact = tmp_path / "artifact.bin"
+    artifact.write_bytes(b"artifact")
+    bundle = tmp_path / "bundle.json"
+    _write_bundle(bundle, hashlib.sha256(artifact.read_bytes()).hexdigest())
+    monkeypatch.setattr(
+        "sanctum_suite.core.supply_chain_verify.subprocess.run",
+        lambda *args, **kwargs: SimpleNamespace(
+            returncode=1, stdout="", stderr="untrusted certificate identity"
+        ),
+    )
+
+    result = CliRunner().invoke(
+        cli_main.app,
+        [
+            "supply-chain-verify",
+            "--artifact",
+            str(artifact),
+            "--attestation-bundle",
+            str(bundle),
+            "--certificate-identity",
+            "trusted-identity",
+            "--certificate-oidc-issuer",
+            "https://issuer.example",
+            "--predicate-type",
+            PREDICATE_TYPE,
+        ],
+    )
+
+    assert result.exit_code != 0
+    assert isinstance(result.exception, SystemExit)
+    assert "Error" in result.output

@@ -194,6 +194,18 @@ def test_security_readiness_cli_emits_json_report(tmp_path):
     assert report["domains"]["spiffe"]["status"] == "INCOMPLETE"
 
 
+def test_security_readiness_cli_rejects_invalid_json_input(tmp_path):
+    input_path = tmp_path / "readiness.json"
+    input_path.write_text('{"spiffe": {"mtls_enforced": "yes"}}', encoding="utf-8")
+
+    result = CliRunner().invoke(
+        cli_main.app, ["security-readiness", "--input", str(input_path)]
+    )
+
+    assert result.exit_code != 0
+    assert "must be a boolean" in result.output
+
+
 def test_offline_transfer_manifest_has_canonical_digest_and_signer_fingerprint():
     payload = b"approved synthetic offline test payload"
     private_key = Ed25519PrivateKey.generate()

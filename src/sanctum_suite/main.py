@@ -389,6 +389,79 @@ def supply_chain_verify_cmd(
     _print_json_report(report)
 
 
+@app.command(name="generate-executive-report")
+def generate_executive_report_cmd(
+    readiness_report: Path = typer.Option(
+        ...,
+        "--readiness-report",
+        exists=True,
+        file_okay=True,
+        dir_okay=False,
+        readable=True,
+        help="JSON output from sanctum security-readiness",
+    ),
+    supply_chain_report: Path = typer.Option(
+        ...,
+        "--supply-chain-report",
+        exists=True,
+        file_okay=True,
+        dir_okay=False,
+        readable=True,
+        help="JSON output from sanctum supply-chain-verify",
+    ),
+    opa_test_report: Path = typer.Option(
+        ...,
+        "--opa-test-report",
+        exists=True,
+        file_okay=True,
+        dir_okay=False,
+        readable=True,
+        help="JSON array output from opa test --format=json --fail-on-empty",
+    ),
+    output_json: Path = typer.Option(..., "--output-json", help="JSON report path"),
+    output_markdown: Path = typer.Option(
+        ..., "--output-markdown", help="Markdown report path"
+    ),
+) -> None:
+    """Combine readiness, supply-chain, and OPA test reports for audit review."""
+    from sanctum_suite.core.executive_report import (
+        ExecutiveReportError,
+        build_executive_report,
+        load_executive_report_inputs,
+        render_executive_report_markdown,
+    )
+
+    try:
+        input_paths = {
+            path.resolve()
+            for path in (readiness_report, supply_chain_report, opa_test_report)
+        }
+        output_paths = {output_json.resolve(), output_markdown.resolve()}
+        if len(output_paths) != 2:
+            raise ExecutiveReportError("JSON and Markdown outputs must be different files")
+        if input_paths & output_paths:
+            raise ExecutiveReportError("Output files must not overwrite input reports")
+        if any(not path.parent.is_dir() for path in output_paths):
+            raise ExecutiveReportError("Output parent directories must already exist")
+
+        inputs = load_executive_report_inputs(
+            readiness_report, supply_chain_report, opa_test_report
+        )
+        report = build_executive_report(inputs)
+        output_json.write_text(
+            json.dumps(report, indent=2) + "\n", encoding="utf-8"
+        )
+        output_markdown.write_text(
+            render_executive_report_markdown(report), encoding="utf-8"
+        )
+    except (ExecutiveReportError, OSError) as error:
+        raise typer.BadParameter(str(error)) from error
+    typer.echo(
+        f"Executive report status: {report['status']}; "
+        f"JSON: {output_json}; Markdown: {output_markdown}"
+    )
+
+
 @app.command(name="issue-license")
 def issue_license_cmd(
     private_key_file: Path = typer.Option(..., "--private-key-file", exists=True, file_okay=True, dir_okay=False, readable=True),
