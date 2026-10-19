@@ -237,6 +237,13 @@ W trybie produkcyjnym API zapisuje minimalne zdarzenia audytowe do wersjonowaneg
 
 - `sanctum audit-checkpoint` — eksport wersji obiektów i checkpoint podpisany hybrydowo RSA-PSS + ML-DSA-65.
 - `sanctum audit-verify` — niezależna weryfikacja checkpointu, archiwum, obu podpisów i ciągłości łańcucha na osobnym hoście.
+- `sanctum pqc-kem-keygen`, `pqc-encrypt`, `pqc-decrypt` — hybrydowe szyfrowanie plików ML-KEM-768 + X25519 (HKDF, AES-256-GCM); wymaga `cryptography>=44`.
+- `sanctum ledger-consistency` — dowód spójności RFC 6962 między dwoma rozmiarami drzewa Merkle lokalnego ledgera.
+- `sanctum ledger-anchor`, `audit-zk-prove`, `audit-zk-verify` przyjmują `--checkpoint-pqc-public-key-file` z zaufanym kluczem ML-DSA-65.
+- `sanctum security-capabilities`, `fhe-accelerator-status` — raport dostępności akceleratorów FHE, QKD i lokalnego modelu TEE (domyślnie `NOT_CONFIGURED`).
+- `sanctum self-healing-propose|decide|list` — hash-powiązany dziennik propozycji remediacji z niezależną akceptacją; nie wdraża OPA ani nie rotuje kluczy.
+
+Nie zaimplementowano: offloadu FHE na GPU/FPGA, sprzętu/symulacji QKD, autonomicznej remediacji oraz rekurencyjnych dowodów ZK (Halo2/Nova) — ZK nadal używa Groth16/Circom.
 
 Checkpoint potwierdza konkretny spis wersji zaobserwowany podczas skanowania — nie jest globalnym licznikiem czasu rzeczywistego ani dowodem prawdziwości zdarzeń. Nowe checkpointy wymagają podczas weryfikacji osobno zaufanego klucza RSA i klucza ML-DSA-65 (`--pqc-public-key-file`); starsze checkpointy RSA pozostają weryfikowalne. Lokalny ledger udostępnia RFC 6962 Merkle tree heads i consistency proofs, ale administrator bazy może przepisać bazę, jeśli nie ma niezależnie zachowanego tree head. Limity eksportu: 100 000 wersji, 64 KiB na rekord, 256 MB danych. Procedura uprawnień: [przewodnik instalacji](./docs/INSTALLATION.md#minio-immutable-access-audit); ograniczenia ledgerów: [runbook ledger](./docs/PRIVATE_LEDGER.md).
 
@@ -263,7 +270,7 @@ Checkpoint potwierdza konkretny spis wersji zaobserwowany podczas skanowania —
 | [Polityki OPA](./docs/OPA_POLICY.md) | Egzekwowanie polityk |
 | [TPM / Measured Boot](./docs/TPM_MEASURED_BOOT.md) | Atestacja platformy |
 | [Confidential Computing](./docs/CONFIDENTIAL_COMPUTING.md) | SEV-SNP / TDX / SGX |
-| [Przepływy specjalistyczne](./docs/SPECIALIZED_SECURITY.md) | Moduły specjalistyczne |
+| [Przepływy specjalistyczne](./docs/SPECIALIZED_SECURITY.md) | Moduły specjalistyczne, hybrydowe PQC, granice integracji FHE/QKD/self-healing |
 | [Laboratorium Parrot](./docs/PARROT_LAB.md) | Środowisko laboratoryjne |
 | [Polityka bezpieczeństwa](./SECURITY.md) | Zgłaszanie podatności |
 
@@ -273,7 +280,7 @@ Checkpoint potwierdza konkretny spis wersji zaobserwowany podczas skanowania —
 |---|---|
 | [Pipeline telemetrii Wasm/Arrow/OTel](./docs/TELEMETRY_PIPELINE.md) | Archiwum Parquet i ślady OTel |
 | [Prywatny graf FHE/HSM/Apache AGE](./docs/PRIVATE_GRAPH_FHE.md) | Agregacja na szyfrogramach |
-| [Prywatny ledger](./docs/PRIVATE_LEDGER.md) | Zakotwiczenie atestowanego checkpointu |
+| [Prywatny ledger](./docs/PRIVATE_LEDGER.md) | Zakotwiczenie atestowanego checkpointu, Merkle tree heads i consistency proofs |
 | [SMPC](./docs/SMPC.md) | Agregacja trzech stron (MPyC) |
 | [Prywatne poświadczenia (DP / DID / VC)](./docs/PRIVACY_CREDENTIALS.md) | Histogram z Differential Privacy, DID `did:key` i podpisany VC-JWT |
 | [Dowody ZK dla audytu](./docs/ZK_AUDIT_PROOFS.md) | Groth16 |
