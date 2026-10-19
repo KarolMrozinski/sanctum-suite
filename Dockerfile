@@ -6,7 +6,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends gcc build-essen
 
 COPY pyproject.toml .
 COPY src/ src/
-RUN pip install --no-cache-dir build && pip install --no-cache-dir .
+RUN pip install --no-cache-dir .
 
 # Stage 2: Production Minimal Image
 FROM python:3.11-slim as runner
