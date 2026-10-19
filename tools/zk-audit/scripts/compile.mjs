@@ -1,4 +1,5 @@
 import { rm } from "node:fs/promises";
+import { existsSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { spawnSync } from "node:child_process";
@@ -6,6 +7,12 @@ import { spawnSync } from "node:child_process";
 const scriptDirectory = path.dirname(fileURLToPath(import.meta.url));
 const packageDirectory = path.resolve(scriptDirectory, "..");
 const circuitDirectory = path.join(packageDirectory, "circuits");
+const circomlibDirectory = path.join(
+  packageDirectory,
+  "node_modules",
+  "circomlib",
+  "circuits",
+);
 const mode = process.argv[2];
 const targets = {
   production: "audit_policy_main",
@@ -16,6 +23,11 @@ const circuitName = targets[mode];
 if (!circuitName) {
   console.error("Usage: node scripts/compile.mjs <production|test>");
   process.exit(2);
+}
+if (!existsSync(path.join(circomlibDirectory, "poseidon.circom"))) {
+  throw new Error(
+    `circomlib circuits are missing from the installed dependency: ${circomlibDirectory}`,
+  );
 }
 
 await Promise.all([
@@ -28,7 +40,6 @@ await Promise.all([
 ]);
 
 const compiler = path.join(packageDirectory, "node_modules", "circom2", "cli.js");
-const libraryDirectory = path.join(packageDirectory, "node_modules");
 const result = spawnSync(
   process.execPath,
   [
@@ -40,7 +51,7 @@ const result = spawnSync(
     "-l",
     circuitDirectory,
     "-l",
-    libraryDirectory,
+    circomlibDirectory,
   ],
   {
     cwd: circuitDirectory,
