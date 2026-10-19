@@ -57,7 +57,7 @@ Obsługiwane ścieżki:
 
 - **Push API:** `POST /api/v1/telemetry/ingest`, uwierzytelniane nagłówkami `X-Sanctum-Source-ID` i `X-Sanctum-Source-Key`.
 - **Import plików:** `POST /api/v1/telemetry/import`; obsługiwane formaty JSON, JSONL i CEF, do 4 MB i 1000 zdarzeń na import. W Workbench można załadować plik, sprawdzić źródła i przeglądać zapisane, znormalizowane zdarzenia.
-- **Pull:** dostępny jest kontrakt dla przyszłych adapterów, ale nie ma zaimplementowanego konektora dostawcy, harmonogramu pobierania ani domyślnych połączeń wychodzących.
+- **Pull:** dostępny jest zabezpieczony endpoint do ręcznego uruchamiania jawnie zarejestrowanych adapterów oraz wspólny kontrakt mapowania danych. Repozytorium nie zawiera konektora konkretnego dostawcy, harmonogramu pobierania ani domyślnych połączeń wychodzących.
 
 Zdarzenia przechodzą walidację wspólnego schematu, a następnie trafiają do SQLite. Surowe payloady nie są zapisywane; identyfikatory źródłowe i tokeny korelacji są haszowane, a powtórzenia deduplikowane. Korelacja grupuje wyłącznie dokładne dopasowania pseudonimowych tokenów w skonfigurowanym oknie czasu — nie stanowi detekcji ani oceny zagrożenia. Tokeny pseudonimowe nie są anonimowe; przed wysłaniem danych należy ograniczyć je do niezbędnego zakresu i stosować zatwierdzoną politykę pseudonimizacji.
 

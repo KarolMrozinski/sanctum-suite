@@ -140,7 +140,13 @@ For the bounded Purple Team replay flow, include `detection_scenario_id` and `de
 
 Access to telemetry endpoints is recorded in the access audit using route templates and, for source credentials, the configured source ID. Request bodies, source secrets, source event IDs, correlation tokens, IP addresses, and query strings are not recorded. `SANCTUM_EVENT_RETENTION_DAYS` deletes old telemetry and associated expired batch metadata when an authenticated telemetry endpoint is called. The purge endpoint also applies telemetry retention and reports deleted-event counts.
 
-Pull connectors are deliberately vendor-neutral extension points only. No vendor connector, polling scheduler, network egress, or external source is enabled by default. A future adapter must implement the bounded `PullEventSourceAdapter` contract, be registered and deployed explicitly, and operate under an operator-approved network, credential, retention, and error-handling policy. Do not point the service at production systems until those integrations and controls have been independently reviewed.
+Pull connectors are deliberately vendor-neutral extension points. No vendor connector, polling scheduler, network egress, or external source is enabled by default. An explicitly registered adapter can be invoked manually with the authenticated `POST /api/v1/telemetry/connectors/{source_id}/pull` endpoint. Its optional JSON body accepts a provider cursor and a batch limit from 1 to 1000:
+
+```json
+{"cursor": "provider-cursor", "limit": 100}
+```
+
+The source must be listed in `SANCTUM_EVENT_SOURCE_KEYS`, and event retention must be configured. The adapter must implement `PullEventSourceAdapter`, return no more than the requested number of normalized events, and use the returned `next_cursor` on the next request. The operator or an external scheduler is responsible for securely persisting that cursor; Sanctum does not retain pull checkpoints or retry failed requests. Adapter calls time out after 30 seconds, invalid adapter output is rejected, and only normalized allow-listed fields are persisted. Each adapter must be registered and deployed explicitly and operate under an operator-approved network, credential, retention, and error-handling policy. Do not point the service at production systems until those integrations and controls have been independently reviewed.
 
 `sanctum serve` permits plain HTTP only on loopback by default. Binding to any other address requires both `SANCTUM_TLS_CERT_FILE` and `SANCTUM_TLS_KEY_FILE` to point to existing TLS files; Uvicorn then serves HTTPS directly. For a TLS-terminating proxy, set `SANCTUM_TRUST_TLS_TERMINATION_PROXY=true` only when network policy prevents direct access to the plaintext backend and allows ingress solely from that proxy.
 

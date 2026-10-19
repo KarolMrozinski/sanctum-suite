@@ -5,7 +5,7 @@ import sqlite3
 from fastapi.testclient import TestClient
 
 from sanctum_suite.api import server
-from sanctum_suite.core.telemetry_adapters import CEFEventFileParser
+from sanctum_suite.core.telemetry_adapters import CEFEventFileParser, TelemetryAdapterRegistry
 from sanctum_suite.core.telemetry_store import TelemetryEventStore
 
 
@@ -29,7 +29,100 @@ def configure_telemetry(monkeypatch, tmp_path):
     monkeypatch.setattr(server, "incident_case_store", None)
     monkeypatch.setattr(server, "incident_governance_store", None)
     monkeypatch.setattr(server, "telemetry_event_store", TelemetryEventStore(database))
+    monkeypatch.setattr(server, "telemetry_adapter_registry", TelemetryAdapterRegistry())
     return TestClient(server.app), database
+
+
+def test_registered_pull_adapter_ingests_normalized_events_and_returns_cursor(
+    monkeypatch, tmp_path
+):
+    client, database = configure_telemetry(monkeypatch, tmp_path)
+
+    class FakePullAdapter:
+        source_id = "identity-provider"
+
+        async def fetch_events(self, *, cursor, limit):
+            assert cursor == "cursor-1"
+            assert limit == 25
+            return (
+                [
+                    {
+                        "source_event_id": "external-event-1",
+                        "event_type": "identity.login",
+                        "observed_at": TIMESTAMP,
+                        "severity": "MEDIUM",
+                        "correlation_token": TOKEN,
+                    }
+                ],
+                "cursor-2",
+            )
+
+    server.telemetry_adapter_registry.register_pull_adapter(FakePullAdapter())
+    response = client.post(
+        "/api/v1/telemetry/connectors/identity-provider/pull",
+        headers={"X-API-Key": API_KEY},
+        json={"cursor": "cursor-1", "limit": 25},
+    )
+    assert response.status_code == 200, response.text
+    result = response.json()
+    assert result["pulled_count"] == 1
+    assert result["next_cursor"] == "cursor-2"
+    assert result["ingestion"]["ingestion_mode"] == "pull_api"
+    assert result["ingestion"]["inserted_count"] == 1
+    assert result["ingestion"]["raw_payload_persisted"] is False
+    assert result["external_actions_executed"] is False
+
+    catalog = client.get(
+        "/api/v1/telemetry/connectors",
+        headers={"X-API-Key": API_KEY},
+    )
+    source = catalog.json()["sources"][0]
+    assert "pull_api" in source["modes"]
+
+    persisted = sqlite3.connect(database).execute(
+        "SELECT source_event_id_sha256, correlation_token_sha256 "
+        "FROM normalized_telemetry_events"
+    ).fetchone()
+    assert "external-event-1" not in " ".join(persisted)
+    assert TOKEN not in " ".join(persisted)
+
+
+def test_pull_endpoint_requires_registered_configured_adapter_and_sanitizes_invalid_events(
+    monkeypatch, tmp_path
+):
+    client, _ = configure_telemetry(monkeypatch, tmp_path)
+    headers = {"X-API-Key": API_KEY}
+
+    unregistered = client.post(
+        "/api/v1/telemetry/connectors/identity-provider/pull",
+        headers=headers,
+        json={},
+    )
+    assert unregistered.status_code == 404
+
+    unconfigured = client.post(
+        "/api/v1/telemetry/connectors/not-configured/pull",
+        headers=headers,
+        json={},
+    )
+    assert unconfigured.status_code == 403
+
+    secret_value = "private-upstream-event-id"
+
+    class InvalidPullAdapter:
+        source_id = "identity-provider"
+
+        async def fetch_events(self, *, cursor, limit):
+            return ([{"source_event_id": secret_value}], None)
+
+    server.telemetry_adapter_registry.register_pull_adapter(InvalidPullAdapter())
+    invalid = client.post(
+        "/api/v1/telemetry/connectors/identity-provider/pull",
+        headers=headers,
+        json={},
+    )
+    assert invalid.status_code == 502
+    assert secret_value not in invalid.text
 
 
 def test_push_ingestion_authenticates_source_and_correlates_across_batches(

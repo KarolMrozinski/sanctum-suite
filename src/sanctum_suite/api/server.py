@@ -7,11 +7,13 @@ from fastapi.security import APIKeyHeader, HTTPAuthorizationCredentials, HTTPBea
 from pydantic import AwareDatetime, BaseModel, Field, ValidationError, field_validator
 from typing import Dict, Any, List, Literal
 from fastapi import Response
+import asyncio
 import hashlib
 import hmac
 import json
 import os
 import re
+from collections.abc import Mapping, Sequence
 from pathlib import Path
 from datetime import datetime, timezone
 from pydantic import ConfigDict, model_validator
@@ -600,6 +602,12 @@ class TelemetryIngestRequest(BaseModel):
 
     events: List[NormalizedTelemetryEvent] = Field(min_length=1, max_length=1_000)
 
+class TelemetryPullRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    cursor: str | None = Field(default=None, max_length=4_096)
+    limit: int = Field(default=100, ge=1, le=1_000)
+
 class TelemetryImportRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -839,7 +847,15 @@ async def list_telemetry_connectors() -> Dict[str, Any]:
         "sources": [
             {
                 "source_id": source_id,
-                "modes": ["push_api", "file_import"],
+                "modes": [
+                    "push_api",
+                    "file_import",
+                    *(
+                        ["pull_api"]
+                        if telemetry_adapter_registry.get_pull_adapter(source_id)
+                        else []
+                    ),
+                ],
                 "credentials_configured": True,
             }
             for source_id in sorted(configured_sources)
@@ -854,6 +870,95 @@ async def list_telemetry_connectors() -> Dict[str, Any]:
             "must implement the adapter contract, be deployed explicitly, and run under "
             "an operator-approved network and credential policy."
         ),
+    }
+
+
+@app.post(
+    "/api/v1/telemetry/connectors/{source_id}/pull",
+    dependencies=[Security(verify_api_key)],
+)
+async def pull_telemetry_from_connector(
+    source_id: str,
+    payload: TelemetryPullRequest,
+) -> Dict[str, Any]:
+    try:
+        validate_source_id(source_id)
+    except ValueError as error:
+        raise HTTPException(status_code=422, detail=str(error)) from error
+
+    source_keys = configured_event_source_keys()
+    require_event_retention(source_keys)
+    if source_id not in source_keys:
+        raise HTTPException(
+            status_code=403,
+            detail="The pull source is not configured",
+        )
+    adapter = telemetry_adapter_registry.get_pull_adapter(source_id)
+    if adapter is None:
+        raise HTTPException(status_code=404, detail="No pull adapter is registered for this source")
+
+    try:
+        raw_events, next_cursor = await asyncio.wait_for(
+            adapter.fetch_events(cursor=payload.cursor, limit=payload.limit),
+            timeout=30,
+        )
+    except TimeoutError as error:
+        raise HTTPException(status_code=504, detail="The telemetry source timed out") from error
+
+    if (
+        not isinstance(raw_events, Sequence)
+        or isinstance(raw_events, (str, bytes, bytearray))
+        or len(raw_events) > payload.limit
+    ):
+        raise HTTPException(
+            status_code=502,
+            detail="The pull adapter returned an invalid event batch",
+        )
+    if next_cursor is not None and (
+        not isinstance(next_cursor, str) or len(next_cursor) > 4_096
+    ):
+        raise HTTPException(
+            status_code=502,
+            detail="The pull adapter returned an invalid cursor",
+        )
+
+    try:
+        events = [
+            NormalizedTelemetryEvent.model_validate(event)
+            for event in raw_events
+            if isinstance(event, Mapping)
+        ]
+        if len(events) != len(raw_events):
+            raise ValueError("Every pull adapter event must be an object")
+    except (ValidationError, ValueError) as error:
+        details = (
+            [
+                {
+                    "loc": item["loc"],
+                    "msg": item["msg"],
+                    "type": item["type"],
+                }
+                for item in error.errors()
+            ]
+            if isinstance(error, ValidationError)
+            else str(error)
+        )
+        raise HTTPException(
+            status_code=502,
+            detail={"message": "The pull adapter returned invalid normalized events", "errors": details},
+        ) from error
+
+    ingestion = (
+        _telemetry_store_events(source_id, events, ingestion_mode="pull_api")
+        if events
+        else None
+    )
+    return {
+        "source_id": source_id,
+        "pulled_count": len(events),
+        "next_cursor": next_cursor,
+        "ingestion": ingestion,
+        "external_actions_executed": False,
     }
 
 
