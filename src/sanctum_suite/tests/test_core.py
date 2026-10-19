@@ -390,7 +390,16 @@ def test_soar_agent_execution():
     assert len(res["recommendations"]) >= 2
 
 
-def test_kms_vault_envelope_encryption():
+def test_kms_vault_envelope_encryption(monkeypatch):
+    for name in (
+        "SANCTUM_ENVIRONMENT",
+        "SANCTUM_KMS_BACKEND",
+        "SANCTUM_VAULT_ADDR",
+        "SANCTUM_VAULT_TOKEN",
+        "SANCTUM_VAULT_TOKEN_FILE",
+        "SANCTUM_VAULT_TRANSIT_KEY",
+    ):
+        monkeypatch.delenv(name, raising=False)
     kms = ZeroTrustKMSVault()
     secret_text = "CONFIDENTIAL_LLM_TOKEN_2026"
     

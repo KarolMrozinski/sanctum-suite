@@ -3,6 +3,7 @@ import json
 import time
 
 import pytest
+import sanctum_suite.core.oidc as oidc
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.asymmetric import padding, rsa
 from fastapi.testclient import TestClient
@@ -14,12 +15,18 @@ from sanctum_suite.core.oidc import (
     OIDCAuthenticationError,
     OIDCTokenVerifier,
     current_identity,
+    oidc_configuration,
     tenant_database_path,
 )
 
 
 ISSUER = "https://identity.example.test"
 AUDIENCE = "sanctum-api"
+
+
+@pytest.fixture(autouse=True)
+def clear_oidc_ca_configuration(monkeypatch):
+    monkeypatch.delenv("SANCTUM_OIDC_CA_CERT", raising=False)
 
 
 def _base64url(value: bytes) -> str:
@@ -87,6 +94,66 @@ async def test_oidc_verifies_signature_claims_and_maps_identity(monkeypatch):
     assert identity.authentication_method == "oidc"
     assert len(identity.credential_fingerprint) == 16
     assert token not in identity.credential_fingerprint
+
+
+def test_oidc_accepts_a_configured_private_ca_bundle(monkeypatch, tmp_path):
+    ca_bundle = tmp_path / "keycloak-ca.pem"
+    ca_bundle.write_text("test CA bundle", encoding="utf-8")
+    monkeypatch.setenv("SANCTUM_OIDC_ISSUER", ISSUER)
+    monkeypatch.setenv("SANCTUM_OIDC_AUDIENCE", AUDIENCE)
+    monkeypatch.setenv("SANCTUM_OIDC_CA_CERT", str(ca_bundle))
+
+    assert oidc_configuration() == (ISSUER, AUDIENCE)
+
+
+def test_oidc_rejects_a_missing_private_ca_bundle(monkeypatch, tmp_path):
+    monkeypatch.setenv("SANCTUM_OIDC_ISSUER", ISSUER)
+    monkeypatch.setenv("SANCTUM_OIDC_AUDIENCE", AUDIENCE)
+    monkeypatch.setenv("SANCTUM_OIDC_CA_CERT", str(tmp_path / "missing.pem"))
+
+    with pytest.raises(OIDCAuthenticationError, match="SANCTUM_OIDC_CA_CERT"):
+        oidc_configuration()
+
+
+@pytest.mark.asyncio
+async def test_oidc_discovery_uses_configured_private_ca(monkeypatch, tmp_path):
+    ca_bundle = tmp_path / "keycloak-ca.pem"
+    ca_bundle.write_text("test CA bundle", encoding="utf-8")
+    monkeypatch.setenv("SANCTUM_OIDC_ISSUER", ISSUER)
+    monkeypatch.setenv("SANCTUM_OIDC_AUDIENCE", AUDIENCE)
+    monkeypatch.setenv("SANCTUM_OIDC_CA_CERT", str(ca_bundle))
+
+    class FakeResponse:
+        def __init__(self, document):
+            self.document = document
+
+        def raise_for_status(self):
+            return None
+
+        def json(self):
+            return self.document
+
+    class FakeAsyncClient:
+        def __init__(self, **kwargs):
+            assert kwargs["verify"] == str(ca_bundle)
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *_args):
+            return None
+
+        async def get(self, url):
+            if url.endswith("/.well-known/openid-configuration"):
+                return FakeResponse(
+                    {"issuer": ISSUER, "jwks_uri": f"{ISSUER}/keys"}
+                )
+            return FakeResponse({"keys": [{"kid": "key-1"}]})
+
+    monkeypatch.setattr(oidc.httpx, "AsyncClient", FakeAsyncClient)
+    verifier = OIDCTokenVerifier()
+
+    assert await verifier._get_jwks(ISSUER) == {"key-1": {"kid": "key-1"}}
 
 
 @pytest.mark.asyncio

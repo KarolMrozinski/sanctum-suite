@@ -11,6 +11,7 @@ import re
 import time
 from contextvars import ContextVar
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any
 from urllib.parse import urlparse
 
@@ -63,7 +64,20 @@ def oidc_configuration() -> tuple[str, str] | None:
         raise OIDCAuthenticationError(
             "Configure SANCTUM_OIDC_ISSUER as an HTTPS issuer and set SANCTUM_OIDC_AUDIENCE"
         )
+    _oidc_tls_verify()
     return issuer, audience
+
+
+def _oidc_tls_verify() -> bool | str:
+    ca_bundle = os.environ.get("SANCTUM_OIDC_CA_CERT", "").strip()
+    if not ca_bundle:
+        return True
+    path = Path(ca_bundle).expanduser()
+    if not path.is_file():
+        raise OIDCAuthenticationError(
+            "SANCTUM_OIDC_CA_CERT must reference an existing CA bundle"
+        )
+    return str(path)
 
 
 def tenant_database_path(namespace: str) -> str | None:
@@ -76,12 +90,8 @@ def tenant_database_path(namespace: str) -> str | None:
         return None
     configured_directory = os.environ.get("SANCTUM_TENANT_DATA_DIR", "").strip()
     if configured_directory:
-        from pathlib import Path
-
         root = Path(configured_directory).expanduser()
     else:
-        from pathlib import Path
-
         root = Path.home() / ".sanctum-suite" / "tenants"
     tenant_digest = hashlib.sha256(identity.tenant_id.encode("utf-8")).hexdigest()
     return str(root / f"{tenant_digest}-{namespace}.sqlite3")
@@ -300,7 +310,9 @@ class OIDCTokenVerifier:
                 return self._cached_jwks
             try:
                 async with httpx.AsyncClient(
-                    timeout=_REQUEST_TIMEOUT, follow_redirects=False
+                    timeout=_REQUEST_TIMEOUT,
+                    follow_redirects=False,
+                    verify=_oidc_tls_verify(),
                 ) as client:
                     metadata_response = await client.get(
                         f"{issuer.rstrip('/')}/.well-known/openid-configuration"

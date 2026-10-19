@@ -11,6 +11,7 @@ import uvicorn
 from fastapi import HTTPException
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
 from rich.console import Console
 from rich.panel import Panel
 from rich.table import Table
@@ -27,6 +28,11 @@ from sanctum_suite.core.target_authorization import (
 from sanctum_suite.core.billing import CommercialLicenseManager, LicenseTier
 from sanctum_suite.core.license_issuer import issue_license_token
 from sanctum_suite.core.parrot_lab import ParrotLabPreflight
+from sanctum_suite.core.offline_release import (
+    create_release_manifest,
+    public_key_fingerprint,
+    verify_release_manifest,
+)
 
 _ASCII_TRANSLATION = {
     ord("ą"): "a",
@@ -327,6 +333,110 @@ def issue_license_cmd(
         "license_token": token,
         "verification_public_key_pem": public_key,
     }, indent=2))
+
+
+@app.command(name="offline-release-create")
+def offline_release_create_cmd(
+    artifact_directory: Path = typer.Argument(
+        ...,
+        exists=True,
+        file_okay=False,
+        dir_okay=True,
+        readable=True,
+        writable=True,
+    ),
+    source_revision: str = typer.Option(
+        ...,
+        "--source-revision",
+        help="Full 40-64 character Git revision represented by this bundle",
+    ),
+    private_key_file: Path = typer.Option(
+        ...,
+        "--private-key-file",
+        exists=True,
+        file_okay=True,
+        dir_okay=False,
+        readable=True,
+    ),
+) -> None:
+    """Sign the exact file inventory of a release bundle on an authorized signing station."""
+    bundle_root = artifact_directory.resolve()
+    if private_key_file.resolve().is_relative_to(bundle_root):
+        raise typer.BadParameter("Release signing key must be stored outside the bundle")
+    try:
+        private_key_bytes = private_key_file.read_bytes()
+    except OSError as error:
+        raise typer.BadParameter("Cannot read private-key file") from error
+    password = None
+    if b"ENCRYPTED PRIVATE KEY" in private_key_bytes:
+        password = typer.prompt("Private key password", hide_input=True).encode("utf-8")
+    try:
+        private_key = serialization.load_pem_private_key(
+            private_key_bytes,
+            password=password,
+        )
+    except (TypeError, ValueError) as error:
+        raise typer.BadParameter("Private-key file or password is invalid") from error
+    if not isinstance(private_key, Ed25519PrivateKey):
+        raise typer.BadParameter("Release signing key must use Ed25519")
+    try:
+        manifest = create_release_manifest(
+            artifact_directory,
+            source_revision=source_revision,
+            private_key=private_key,
+        )
+    except (OSError, ValueError) as error:
+        raise typer.BadParameter(str(error)) from error
+    typer.echo(
+        f"Signed {len(manifest['artifacts'])} artifact(s); signer SHA-256: "
+        f"{manifest['signer_sha256']}"
+    )
+
+
+@app.command(name="offline-release-verify")
+def offline_release_verify_cmd(
+    artifact_directory: Path = typer.Argument(
+        ...,
+        exists=True,
+        file_okay=False,
+        dir_okay=True,
+        readable=True,
+    ),
+    public_key_file: Path = typer.Option(
+        ...,
+        "--public-key-file",
+        exists=True,
+        file_okay=True,
+        dir_okay=False,
+        readable=True,
+    ),
+    expected_signer_fingerprint: str = typer.Option(
+        ...,
+        "--expected-signer-fingerprint",
+        help="SHA-256 fingerprint obtained independently through a trusted channel",
+    ),
+) -> None:
+    """Verify a signed offline release using an independently trusted public key."""
+    if public_key_file.resolve().is_relative_to(artifact_directory.resolve()):
+        raise typer.BadParameter("Trusted public key must be stored outside the bundle")
+    try:
+        public_key = serialization.load_pem_public_key(public_key_file.read_bytes())
+    except (OSError, ValueError) as error:
+        raise typer.BadParameter("Public-key file is invalid or unreadable") from error
+    if not isinstance(public_key, Ed25519PublicKey):
+        raise typer.BadParameter("Release verification key must use Ed25519")
+    try:
+        manifest = verify_release_manifest(
+            artifact_directory,
+            public_key=public_key,
+            expected_signer_fingerprint=expected_signer_fingerprint.lower(),
+        )
+    except (OSError, ValueError) as error:
+        raise typer.BadParameter(str(error)) from error
+    typer.echo(
+        f"Verified {len(manifest['artifacts'])} artifact(s) for revision "
+        f"{manifest['source_revision']}; signer SHA-256: {manifest['signer_sha256']}"
+    )
 
 
 @app.command(name="serve")

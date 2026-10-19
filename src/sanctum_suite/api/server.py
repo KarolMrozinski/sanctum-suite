@@ -11,8 +11,10 @@ import asyncio
 import hashlib
 import hmac
 import json
+import logging
 import os
 import re
+import uuid
 from collections.abc import Mapping, Sequence
 from pathlib import Path
 from datetime import datetime, timezone
@@ -31,6 +33,16 @@ from sanctum_suite.core.control_catalog import (
 )
 from sanctum_suite.core.incident_cases import IncidentCaseStore
 from sanctum_suite.core.incident_governance import IncidentGovernanceStore
+from sanctum_suite.core.audit_pseudonymizer import (
+    AuditPseudonymizationConfigurationError,
+    AuditPseudonymizer,
+)
+from sanctum_suite.core.immutable_audit import (
+    ImmutableAuditConfigurationError,
+    ImmutableAuditError,
+    MinioImmutableAuditStore,
+)
+from sanctum_suite.core.kms_vault import KMSConfigurationError, ZeroTrustKMSVault
 from sanctum_suite.core.incident_playbooks import IncidentPlaybookStore
 from sanctum_suite.core.synthetic_incident_lab import SyntheticIncidentLab
 from sanctum_suite.core.telemetry_adapters import TelemetryAdapterRegistry
@@ -57,6 +69,7 @@ app = FastAPI(
     description="API for audit workflows, analytics, prompt inspection, and detection rules.",
     version="6.0.0",
 )
+_LOGGER = logging.getLogger(__name__)
 
 
 @app.exception_handler(RequestValidationError)
@@ -178,6 +191,91 @@ def get_incident_governance_store() -> IncidentGovernanceStore:
     return incident_governance_store
 
 
+def immutable_audit_required() -> bool:
+    return (
+        os.environ.get("SANCTUM_IMMUTABLE_AUDIT_ENABLED", "").strip().lower()
+        == "true"
+        or production_environment()
+    )
+
+
+def production_environment() -> bool:
+    environment = os.environ.get("SANCTUM_ENVIRONMENT", "").strip().lower()
+    return (
+        environment in {"production", "prod", "air-gapped", "air_gapped"}
+    )
+
+
+def get_immutable_audit_store() -> MinioImmutableAuditStore:
+    global immutable_audit_store
+    if immutable_audit_store is None:
+        immutable_audit_store = MinioImmutableAuditStore()
+    return immutable_audit_store
+
+
+def get_audit_pseudonymizer() -> AuditPseudonymizer:
+    global audit_pseudonymizer
+    if audit_pseudonymizer is None:
+        audit_pseudonymizer = AuditPseudonymizer()
+    return audit_pseudonymizer
+
+
+async def record_immutable_audit_start(
+    request: Request,
+    credential: str | None,
+    identity: AuthenticatedIdentity,
+) -> None:
+    if not immutable_audit_required() or not request.url.path.startswith("/api/v1/"):
+        return
+    request_id = str(uuid.uuid4())
+    credential_fingerprint = (
+        hashlib.sha256(credential.encode("utf-8")).hexdigest() if credential else None
+    )
+    subject_pseudonym = None
+    tenant_pseudonym = None
+    if production_environment():
+        try:
+            pseudonymizer = get_audit_pseudonymizer()
+            subject_pseudonym = pseudonymizer.pseudonymize(
+                "subject", identity.subject
+            )
+            tenant_pseudonym = pseudonymizer.pseudonymize(
+                "tenant", identity.tenant_id
+            )
+        except AuditPseudonymizationConfigurationError as error:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="Audit pseudonymization is unavailable",
+                headers={"Retry-After": "5"},
+            ) from error
+    route = request.scope.get("route")
+    try:
+        await run_in_threadpool(
+            get_immutable_audit_store().write_event,
+            {
+                "event_id": str(uuid.uuid4()),
+                "request_id": request_id,
+                "event_type": "request_started",
+                "method": request.method,
+                "route_group": "/api/v1",
+                "route": getattr(route, "path", "/api/v1"),
+                "credential_fingerprint": credential_fingerprint,
+                "subject_pseudonym": subject_pseudonym,
+                "tenant_pseudonym": tenant_pseudonym,
+            },
+        )
+    except (ImmutableAuditConfigurationError, ImmutableAuditError) as error:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Immutable audit storage is unavailable",
+            headers={"Retry-After": "5"},
+        ) from error
+    request.state.immutable_audit_request_id = request_id
+    request.state.immutable_audit_credential_fingerprint = credential_fingerprint
+    request.state.audit_subject_pseudonym = subject_pseudonym
+    request.state.audit_tenant_pseudonym = tenant_pseudonym
+
+
 def configured_retention_days(environment_name: str) -> int | None:
     configured_value = os.environ.get(environment_name)
     if configured_value is None or not configured_value.strip():
@@ -234,6 +332,20 @@ async def verify_api_key(
         configured_oidc = oidc_configuration()
     except OIDCAuthenticationError as error:
         raise HTTPException(status_code=503, detail=str(error)) from error
+    if production_environment():
+        if configured_oidc is None:
+            raise HTTPException(
+                status_code=503,
+                detail="Production requires Keycloak/OIDC issuer and audience configuration",
+            )
+        legacy_enabled = os.environ.get(
+            "SANCTUM_ALLOW_LEGACY_API_KEY", ""
+        ).casefold() in {"1", "true", "yes"}
+        if legacy_enabled:
+            raise HTTPException(
+                status_code=503,
+                detail="Legacy shared API-key authentication is disabled in production",
+            )
     identity: AuthenticatedIdentity
     if bearer is not None and bearer.scheme.casefold() == "bearer":
         if configured_oidc is None:
@@ -266,6 +378,13 @@ async def verify_api_key(
     request.state.authentication_method = identity.authentication_method
     request.state.authenticated_identity = identity
     try:
+        await record_immutable_audit_start(
+            request,
+            bearer.credentials
+            if bearer is not None and bearer.scheme.casefold() == "bearer"
+            else api_key,
+            identity,
+        )
         if request.url.path.startswith(
             (
                 "/api/v1/cases",
@@ -365,6 +484,11 @@ async def verify_event_source(
         configured_oidc = oidc_configuration()
     except OIDCAuthenticationError as error:
         raise HTTPException(status_code=503, detail=str(error)) from error
+    if production_environment() and configured_oidc is None:
+        raise HTTPException(
+            status_code=503,
+            detail="Production requires Keycloak/OIDC issuer and audience configuration",
+        )
     tenant_id = "legacy"
     if configured_oidc is not None:
         serialized_tenants = os.environ.get("SANCTUM_EVENT_SOURCE_TENANTS", "").strip()
@@ -396,6 +520,7 @@ async def verify_event_source(
     request.state.authentication_method = source_identity.authentication_method
     request.state.authenticated_identity = source_identity
     try:
+        await record_immutable_audit_start(request, source_key, source_identity)
         try:
             get_telemetry_event_store().delete_expired_events(
                 retention_days=retention_days
@@ -412,44 +537,82 @@ async def verify_event_source(
 
 @app.middleware("http")
 async def audit_incident_api_access(request: Request, call_next):
+    if not request.url.path.startswith("/api/v1/"):
+        return await call_next(request)
+    route_group = "/api/v1"
+
     response = await call_next(request)
-    credential_fingerprint = getattr(
-        request.state, "credential_fingerprint", None
-    )
     route = request.scope.get("route")
-    action = getattr(route, "path", request.url.path)
-    is_audited_route = action.startswith(
-        (
-            "/api/v1/cases",
-            "/api/v1/playbooks",
-            "/api/v1/governance",
-            "/api/v1/events/correlate",
-            "/api/v1/lab",
-            "/api/v1/telemetry",
-            "/api/v1/controls",
-            "/api/v1/frameworks",
-        )
+    action = getattr(route, "path", route_group)
+    source_id = getattr(request.state, "telemetry_source_id", None)
+    if source_id is not None:
+        action = f"{action} source={source_id}"
+    identity = getattr(request.state, "authenticated_identity", None)
+    request_id = getattr(request.state, "immutable_audit_request_id", None)
+    credential_fingerprint = getattr(
+        request.state, "immutable_audit_credential_fingerprint", None
     )
-    if is_audited_route:
-        source_id = getattr(request.state, "telemetry_source_id", None)
-        if source_id is not None:
-            action = f"{action} source={source_id}"
-        identity = getattr(request.state, "authenticated_identity", None)
-        context_token = current_identity.set(identity) if identity is not None else None
-        try:
-            get_incident_governance_store().record_access(
-                credential_fingerprint=credential_fingerprint,
-                subject_id=getattr(request.state, "identity_subject", None),
-                tenant_id=getattr(request.state, "identity_tenant", None),
-                authentication_method=getattr(
-                    request.state, "authentication_method", None
-                ),
-                action=f"{request.method} {action}",
-                outcome_code=response.status_code,
-            )
-        finally:
-            if context_token is not None:
-                current_identity.reset(context_token)
+    context_token = current_identity.set(identity) if identity is not None else None
+    try:
+        if request_id is not None:
+            try:
+                await run_in_threadpool(
+                    get_immutable_audit_store().write_event,
+                    {
+                        "event_id": str(uuid.uuid4()),
+                        "request_id": request_id,
+                        "event_type": "request_completed",
+                        "method": request.method,
+                        "route": getattr(route, "path", route_group),
+                        "credential_fingerprint": credential_fingerprint,
+                        "subject_pseudonym": getattr(
+                            request.state, "audit_subject_pseudonym", None
+                        ),
+                        "tenant_pseudonym": getattr(
+                            request.state, "audit_tenant_pseudonym", None
+                        ),
+                        "authentication_method": getattr(
+                            request.state, "authentication_method", None
+                        ),
+                        "outcome_code": response.status_code,
+                    },
+                )
+            except (ImmutableAuditConfigurationError, ImmutableAuditError) as error:
+                _LOGGER.error("Immutable audit completion write failed: %s", error)
+                return JSONResponse(
+                    status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                    content={
+                        "detail": (
+                            "Immutable audit completion could not be stored; "
+                            "the request outcome may be uncertain"
+                        ),
+                        "request_id": request_id,
+                    },
+                    headers={"Retry-After": "5"},
+                )
+        get_incident_governance_store().record_access(
+            credential_fingerprint=getattr(
+                request.state, "credential_fingerprint", None
+            ),
+            subject_id=(
+                getattr(request.state, "audit_subject_pseudonym", None)
+                if production_environment()
+                else getattr(request.state, "identity_subject", None)
+            ),
+            tenant_id=(
+                getattr(request.state, "audit_tenant_pseudonym", None)
+                if production_environment()
+                else getattr(request.state, "identity_tenant", None)
+            ),
+            authentication_method=getattr(
+                request.state, "authentication_method", None
+            ),
+            action=f"{request.method} {action}",
+            outcome_code=response.status_code,
+        )
+    finally:
+        if context_token is not None:
+            current_identity.reset(context_token)
     return response
 
 
@@ -460,6 +623,8 @@ anomaly_detector = MLAnomalyDetector()
 control_catalog: ControlCatalog | None = None
 incident_case_store: IncidentCaseStore | None = None
 incident_governance_store: IncidentGovernanceStore | None = None
+immutable_audit_store: MinioImmutableAuditStore | None = None
+audit_pseudonymizer: AuditPseudonymizer | None = None
 incident_playbook_store: IncidentPlaybookStore | None = None
 telemetry_event_store: TelemetryEventStore | None = None
 _tenant_control_catalogs: Dict[str, ControlCatalog] = {}
@@ -1518,18 +1683,72 @@ async def readyz():
     else:
         oidc_invalid = False
     legacy_configured = len(os.environ.get("SANCTUM_API_KEY", "").encode("utf-8")) >= 32
-    if oidc_invalid or (configured_oidc is None and not legacy_configured):
+    oidc_required = production_environment()
+    legacy_enabled = os.environ.get(
+        "SANCTUM_ALLOW_LEGACY_API_KEY", ""
+    ).casefold() in {"1", "true", "yes"}
+    auth_ready = not oidc_invalid and (
+        configured_oidc is not None
+        if oidc_required
+        else configured_oidc is not None or legacy_configured
+    )
+    if oidc_required and legacy_enabled:
+        auth_ready = False
+
+    kms_ready: bool | None = None
+    audit_ready: bool | None = None
+    pseudonymization_ready: bool | None = None
+    if oidc_required:
+        try:
+            ZeroTrustKMSVault(require_production=True)
+        except KMSConfigurationError:
+            kms_ready = False
+        else:
+            kms_ready = True
+        try:
+            get_audit_pseudonymizer()
+        except AuditPseudonymizationConfigurationError:
+            pseudonymization_ready = False
+        else:
+            pseudonymization_ready = True
+    if immutable_audit_required():
+        try:
+            await run_in_threadpool(get_immutable_audit_store().verify_configuration)
+        except ImmutableAuditConfigurationError:
+            audit_ready = False
+        else:
+            audit_ready = True
+
+    if (
+        not auth_ready
+        or kms_ready is False
+        or audit_ready is False
+        or pseudonymization_ready is False
+    ):
         return Response(
-            content='{"status":"NOT_READY","reason":"API authentication is not configured"}',
+            content=json.dumps(
+                {
+                    "status": "NOT_READY",
+                    "components": {
+                        "oidc": auth_ready,
+                        "vault_transit_configuration": kms_ready,
+                        "minio_object_lock_configuration": audit_ready,
+                        "audit_pseudonymization": pseudonymization_ready,
+                    },
+                }
+            ),
             status_code=503,
             media_type="application/json",
         )
     return {
         "status": "READY",
-        "api_auth_configured": True,
+        "api_auth_configured": auth_ready,
         "authentication_modes": (
             ["oidc"] if configured_oidc is not None else ["legacy_api_key"]
         ),
+        "vault_transit_configured": kms_ready,
+        "minio_object_lock_configured": audit_ready,
+        "audit_pseudonymization_configured": pseudonymization_ready,
     }
 
 @app.get("/metrics")

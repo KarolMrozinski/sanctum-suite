@@ -18,6 +18,8 @@ Narzędzia CLI, API i dashboard wspierające wybrane procesy audytowe, analizę 
 [Katalog kontroli](./docs/CONTROL_CATALOG.md) ·
 [Laboratorium Parrot](./docs/PARROT_LAB.md) ·
 [Przepływy specjalistyczne](./docs/SPECIALIZED_SECURITY.md) ·
+[Pakiet offline](./docs/OFFLINE_RELEASE.md) ·
+[Wdrożenie air-gapped/Podman](./docs/PODMAN_AIRGAP.md) ·
 [Bezpieczeństwo](./SECURITY.md) ·
 [Licencja](./LICENSE)
 
@@ -43,9 +45,9 @@ Projekt ma status **beta**. Zakres, dojrzałość i wymagania zależą od konkre
 
 Część modułów jest eksperymentalna, zależna od platformy lub stanowi jedynie punkt integracji. Repozytorium nie dostarcza działających integracji dla skanowania kontenerów/SBOM, analizy firmware i pamięci, telemetrii EDR/XDR, inspekcji GPU, sprzętowych enklaw ani magazynowania danych niejawnych. Funkcje kampanii red-team, C2/covert-channel, spoofingu satelitarnego, biometrii, hot-patchingu i dead-man switch nie wykonują opisanych działań. Brak integracji jest raportowany jako brak oceny, a nie jako pozytywny wynik.
 
-Dashboard nie otrzymuje obecnie rzeczywistej telemetrii przez WebSocket. Znormalizowane dane można po jawnej konfiguracji źródła importować przez zabezpieczone API i przeglądać w Workbench; nie jest skonfigurowany konkretny dostawca ani harmonogram pull. Pomocnicze szyfrowanie kopertowe `ZeroTrustKMSVault` wykorzystuje klucz efemeryczny przechowywany w pamięci procesu i **nie zastępuje produkcyjnego KMS**.
+Dashboard nie otrzymuje obecnie rzeczywistej telemetrii przez WebSocket. Znormalizowane dane można po jawnej konfiguracji źródła importować przez zabezpieczone API i przeglądać w Workbench; nie jest skonfigurowany konkretny dostawca ani harmonogram pull. Szyfrowanie `ZeroTrustKMSVault` działa lokalnie z kluczem efemerycznym wyłącznie w trybie developerskim albo przez jawnie skonfigurowany HashiCorp Vault Transit. Tryb produkcyjny i air-gapped wymaga Vault Transit; szczegóły opisuje [przewodnik instalacji](./docs/INSTALLATION.md#vault-transit-key-management).
 
-OIDC wymaga jawnej konfiguracji issuer, audience, mapowania claimów oraz zabezpieczonego katalogu tenantów; nie zawiera interaktywnego logowania ani odświeżania tokenów. Legacy API i analytics endpoints nie są dostępne dla tożsamości OIDC, ponieważ ich raportowanie nie jest tenant-scoped. SQLite access audit nie jest immutable/tamper-proof i wymaga eksportu do niezależnego systemu, jeżeli jest używany jako dowód audytowy. Szczegóły i ograniczenia opisuje [przewodnik instalacji](./docs/INSTALLATION.md#oidc-users-roles-and-tenant-scoped-data).
+OIDC wymaga jawnej konfiguracji issuer, audience, mapowania claimów oraz zabezpieczonego katalogu tenantów; nie zawiera interaktywnego logowania ani odświeżania tokenów. Profil produkcyjny/air-gapped wymaga OIDC, Vault Transit i MinIO Object Lock, a współdzielone klucze API są w nim odrzucane. Legacy API i analytics endpoints nie są dostępne dla tożsamości OIDC, ponieważ ich raportowanie nie jest tenant-scoped. Lokalny SQLite access audit nie jest immutable/tamper-proof; MinIO Object Lock może przechowywać minimalne, pseudonimizowane metadane żądań w trybie fail-closed przez 7 lat. Vault Transit szyfruje tylko dane jawnie przekazane do helpera; nie szyfruje automatycznie baz SQLite, logów ani kopii zapasowych. Mechanizmy te nie certyfikują środowiska ani nie dopuszczają do przetwarzania informacji niejawnych. Szczegóły i ograniczenia opisuje [przewodnik instalacji](./docs/INSTALLATION.md#oidc-users-roles-and-tenant-scoped-data) oraz [konfiguracja MinIO WORM](./docs/INSTALLATION.md#minio-immutable-access-audit).
 
 Konfigurację i ograniczenia przygotowanego ingestu opisuje [przewodnik instalacji](./docs/INSTALLATION.md#preparing-external-telemetry-ingestion).
 

@@ -27,6 +27,8 @@
 - [ ] define customer support response SLA
 - [x] draft GitHub release notes and define package assets
 - [ ] publish an authorized GitHub release with wheel/sdist and checksums
+- [ ] prepare a signed offline bundle containing the approved OCI image, SBOM, test/scan evidence, and deployment files; verify it with an independently trusted key
+- [ ] document physical media custody and destination-side verification
 - [x] prepare customer installation and deployment guide
 - [ ] define pricing and sales handoff workflow
 - [x] owner selected sales-led manual licensing with no online payments

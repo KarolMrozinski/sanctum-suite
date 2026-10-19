@@ -37,9 +37,47 @@ sanctum serve --host 127.0.0.1 --port 8000
 
 In legacy single-operator mode, the API rejects protected requests and fails readiness unless `SANCTUM_API_KEY` is configured with at least 32 bytes. The SDK reads this variable by default; alternatively pass `api_key` explicitly. Do not store a production key in source control or a checked-in `.env` file.
 
+### Vault Transit key management
+
+The local ephemeral encryption backend is for development only: generated envelopes cannot be decrypted after the process restarts. Production and air-gapped preflight require the HashiCorp Vault Transit backend; the application fails closed rather than silently using an ephemeral key.
+
+Provision a Transit mount and encryption key through the organization's Vault administration process. Give the application identity only the required `update` capability on that key's `encrypt` and `decrypt` paths; do not grant key-management or mount-administration capabilities. Provide the Vault token through a protected file or deployment secret manager, and install the Vault CA in the host trust store or point `SANCTUM_VAULT_CA_CERT` at its trusted CA bundle. TLS verification cannot be disabled.
+
+```powershell
+$env:SANCTUM_ENVIRONMENT = "air-gapped"
+$env:SANCTUM_KMS_BACKEND = "vault-transit"
+$env:SANCTUM_VAULT_ADDR = "https://vault.internal.example:8200"
+$env:SANCTUM_VAULT_TOKEN_FILE = "C:\secure\vault-token"
+$env:SANCTUM_VAULT_TRANSIT_MOUNT = "transit"
+$env:SANCTUM_VAULT_TRANSIT_KEY = "sanctum-payload"
+$env:SANCTUM_VAULT_CA_CERT = "C:\secure\vault-ca.pem"
+$env:SANCTUM_AUDIT_S3_ENDPOINT = "https://minio.internal.example"
+$env:SANCTUM_AUDIT_S3_BUCKET = "sanctum-audit-worm"
+$env:SANCTUM_AUDIT_S3_ACCESS_KEY_FILE = "C:\secure\minio-access-key"
+$env:SANCTUM_AUDIT_S3_SECRET_ACCESS_KEY_FILE = "C:\secure\minio-secret-key"
+$env:SANCTUM_AUDIT_S3_CA_CERT = "C:\secure\minio-ca.pem"
+$env:SANCTUM_AUDIT_PSEUDONYM_KEY_FILE = "C:\secure\audit-pseudonym.key"
+```
+
+Vault Transit stores and rotates the key; payload envelopes contain the Vault ciphertext and key name, not a locally wrapped DEK. Vault availability and Transit policy are required for decryption. Back up and test recovery of Vault's key material according to the organization's approved procedure. This helper encrypts only payloads explicitly passed to it; it does not encrypt SQLite/tenant databases, reports, local logs, or backups. Protect those separately with approved storage encryption and tested encrypted backups. Do not reuse keys across environments or treat a successful encryption call as proof of HSM use, FIPS validation, or compliance. The production preflight performs a test encrypt/decrypt round trip, which verifies current connectivity and key permissions only; it does not prove backup recovery or deployment security.
+
+### MinIO immutable access audit
+
+Production/air-gapped deployments require the external audit store for protected API routes. Set `SANCTUM_IMMUTABLE_AUDIT_ENABLED=true` and configure a dedicated MinIO bucket with versioning and Object Lock enabled. Use a dedicated service account limited to bucket versioning/Object Lock reads and `PutObject`/`GetObjectRetention` on the `api-access/` prefix; provide its credentials through protected secret files (`SANCTUM_AUDIT_S3_ACCESS_KEY_FILE` and `SANCTUM_AUDIT_S3_SECRET_ACCESS_KEY_FILE`) or a deployment secret manager. Configure MinIO with trusted HTTPS and, for a private CA, set `SANCTUM_AUDIT_S3_CA_CERT`. TLS verification cannot be disabled.
+
+Create a dedicated random pseudonymization key of at least 32 bytes (for example, `openssl rand -out /secure/audit-pseudonym.key 32`), store it in the approved secret manager, and provide it as `SANCTUM_AUDIT_PSEUDONYM_KEY_FILE`. This key is distinct from Vault Transit and report-signing keys. Readiness fails if it is missing or unreadable. The API uses keyed HMAC-SHA-256 with separate subject/tenant namespaces before writing identity metadata to local or immutable access-audit records; raw OIDC subject and tenant claims are not written to those access-audit fields. Keep the key under controlled backup and rotation: changing it prevents correlating newly generated pseudonyms with records made using the old key.
+
+The application verifies versioning and Object Lock at initialization and applies `COMPLIANCE` retention for seven years to each request-start and request-completion record. Production preflight writes and verifies a permanently retained canary object. The selected `fail-closed` policy records a minimal request-start event before a protected route runs; if that write fails, the route is not executed. Completion is written separately after the route. If that second write fails, the client receives HTTP 503 and the operation's outcome may be uncertain; the start record remains in WORM. Provision alerts and an operator recovery procedure for this state.
+
+Records contain a request ID, method, route template/group, response code, authentication method, timestamp, a SHA-256 credential fingerprint, and keyed pseudonyms for subject and tenant in production. Pseudonyms support correlation but are not anonymous; do not treat them as permission to store classified content. Records do not contain request/response bodies, query strings, client IP addresses, or raw identity claims. This audit feature is not approval to store classified information: keep classified payloads and identifying evidence outside SANCTUM-SUITE unless the deployment has received the required independent authorization/accreditation. The seven-year Compliance lock prevents early deletion; confirm legal retention, privacy obligations, encryption-at-rest, backup, access, and destruction requirements before deployment.
+
 ### OIDC users, roles, and tenant-scoped data
 
-For user authentication, configure both `SANCTUM_OIDC_ISSUER` (HTTPS) and `SANCTUM_OIDC_AUDIENCE`. The API validates RS256/ES256 access-token signatures using HTTPS OIDC discovery and cached JWKS, then checks issuer, audience, subject, expiration, issue time, and not-before. Key IDs are refreshed once when an unknown signing key is received. The token must include a string or string-array role claim (`SANCTUM_OIDC_ROLES_CLAIM`, default `roles`) containing `ADMIN`, `AUDITOR`, or `VIEWER`, and a tenant identifier claim (`SANCTUM_OIDC_TENANT_CLAIM`, default `tenant_id`). Claims are case-insensitive for role names. Map the issuer's groups/roles and immutable tenant identifier deliberately; an arbitrary display name is not a tenant boundary.
+For user authentication, configure both `SANCTUM_OIDC_ISSUER` (HTTPS) and `SANCTUM_OIDC_AUDIENCE`. The API validates RS256/ES256 access-token signatures using HTTPS OIDC discovery and cached JWKS, then checks issuer, audience, subject, expiration, issue time, and not-before. Key IDs are refreshed once when an unknown signing key is received. For a private Keycloak CA, install it in the host trust store or set `SANCTUM_OIDC_CA_CERT` to its trusted CA bundle; TLS verification cannot be disabled. Air-gapped network policy must allow only the configured Keycloak issuer and JWKS endpoints. The token must include a string or string-array role claim (`SANCTUM_OIDC_ROLES_CLAIM`, default `roles`) containing `ADMIN`, `AUDITOR`, or `VIEWER`, and a tenant identifier claim (`SANCTUM_OIDC_TENANT_CLAIM`, default `tenant_id`). Claims are case-insensitive for role names. Map the issuer's groups/roles and immutable tenant identifier deliberately; an arbitrary display name is not a tenant boundary.
+
+For Keycloak, configure an API audience mapper for the exact `SANCTUM_OIDC_AUDIENCE`; add protocol mappers that emit the trusted role list and immutable tenant ID as the flat claims named above. Restrict these mappers to access tokens issued for this API, and do not derive the tenant claim from user-editable profile fields. In production/air-gapped mode OIDC is mandatory and legacy shared API-key authentication is rejected, including when `SANCTUM_ALLOW_LEGACY_API_KEY=true`.
+
+Production API startup also requires an operator-managed RSA report-signing key pair through `SANCTUM_REPORT_SIGNING_PRIVATE_KEY_FILE` and `SANCTUM_REPORT_SIGNING_PUBLIC_KEY_FILE`. The pair must match; production does not generate report-signing keys. The private PEM must be readable by the service without an interactive passphrase, so mount it only as a protected runtime secret and control its access/backup/rotation. Development-only `.keys` auto-generation is not a production trust anchor.
 
 `ADMIN` can use the supported tenant-scoped API; `AUDITOR` can read and modify cases, playbooks, and control assessments; `VIEWER` is read-only. The legacy `/api/v1/audit` and `/api/v1/analytics` endpoints are denied to OIDC identities because their underlying report/analytics stores are not tenant-scoped. They remain available only through the legacy shared API-key mode and its configured authorization/entitlement checks.
 
@@ -47,7 +85,7 @@ OIDC cases, telemetry, access audit, playbooks, and control assessments are stor
 
 If source-authenticated telemetry push is enabled with OIDC, bind every source to exactly one tenant using `SANCTUM_EVENT_SOURCE_TENANTS` (JSON object mapping source ID to tenant ID). A source event is then stored in that tenant's telemetry database. File imports are stored under the authenticated user's tenant. Use distinct source credentials and tenant bindings; missing/invalid bindings fail closed.
 
-The access audit records the verified OIDC subject, tenant, authentication method, route template, outcome, and a truncated credential fingerprint. Request bodies, bearer tokens, query strings, and client IP addresses are not recorded. Subject/tenant audit metadata is operational and privacy-sensitive; apply access controls and retention. The SQLite audit is not tamper-proof or an immutable external audit service. Export it to an independently controlled immutable log platform before relying on it for compliance or non-repudiation.
+The access audit records keyed HMAC pseudonyms of the verified OIDC subject and tenant in production, along with authentication method, route template, outcome, and a truncated credential fingerprint. In development, direct identity values can appear in local audit data. Request bodies, bearer tokens, query strings, and client IP addresses are not recorded. Audit metadata remains privacy-sensitive; apply access controls and retention. The SQLite audit is not tamper-proof or an immutable external audit service.
 
 For the dashboard, enter the OIDC access token in the credential field prefixed with `Bearer `; the UI holds it in page memory only. Configure CORS to allow the dashboard origin and the `Authorization` header. The application does not implement an interactive OIDC login or token refresh flow; obtain the access token through your approved identity-provider client.
 
@@ -207,4 +245,4 @@ Do not place webhook credentials in `NEXT_PUBLIC_*` variables. Do not accept sen
 
 This guide does not certify the application as production-safe. Operators remain responsible for validating their deployment and applicable legal obligations.
 
-Several platform-specific modules are placeholders, not operational integrations. Container/SBOM and memory-forensics scanning, firmware analysis, GPU isolation, hardware enclaves, classified-data storage, autonomous red-team, multimodal/multi-turn model testing, EDR/XDR collection, satellite telemetry, covert channels, biometric coercion detection, hot-patching, and dead-man-switch actions are not performed unless a separately validated integration is supplied. The built-in envelope-encryption helper uses an ephemeral process-memory key; do not use it as a production KMS or for durable customer secrets.
+Several platform-specific modules are placeholders, not operational integrations. Container/SBOM and memory-forensics scanning, firmware analysis, GPU isolation, hardware enclaves, classified-data storage, autonomous red-team, multimodal/multi-turn model testing, EDR/XDR collection, satellite telemetry, covert channels, biometric coercion detection, hot-patching, and dead-man-switch actions are not performed unless a separately validated integration is supplied. The built-in envelope-encryption helper uses an ephemeral process-memory key unless Vault Transit is explicitly configured; production preflight requires Vault Transit.
