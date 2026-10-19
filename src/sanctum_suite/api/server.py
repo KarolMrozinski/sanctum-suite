@@ -14,6 +14,7 @@ import json
 import logging
 import os
 import re
+import sqlite3
 import uuid
 from collections.abc import Mapping, Sequence
 from pathlib import Path
@@ -102,6 +103,11 @@ from sanctum_suite.core.tee_attestation import (
 from sanctum_suite.core.methodology_catalog import list_methodology_references
 from sanctum_suite.core.target_authorization import TargetAuthorizationError, require_authorized_target
 from sanctum_suite.core.billing import CommercialLicenseManager
+from sanctum_suite.core.privacy_credentials import (
+    DifferentialPrivacyCredentialIssuer,
+    PrivacyBudgetExceeded,
+    ed25519_private_key_from_base64,
+)
 
 app = FastAPI(
     title="SANCTUM-SUITE API",
@@ -119,6 +125,7 @@ async def sanitized_request_validation_error(
 ) -> JSONResponse:
     if not (
         request.url.path.startswith("/api/v1/telemetry")
+        or request.url.path.startswith("/api/v1/privacy/")
         or request.url.path.endswith("/onchain-risk/import")
         or "/aml-mica-checklist" in request.url.path
     ):
@@ -1128,6 +1135,27 @@ class AuditRequest(BaseModel):
     target_domain: str = Field(min_length=1, max_length=253)
     authorization_reference: str = Field(min_length=1, max_length=500)
 
+
+class PrivacyCredentialObservation(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    subject_id: str = Field(min_length=1, max_length=128)
+    category: str = Field(min_length=1, max_length=64)
+
+
+class PrivacyCredentialRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    dataset_id: str = Field(
+        min_length=1,
+        max_length=128,
+        pattern=r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$",
+    )
+    categories: List[str] = Field(min_length=1, max_length=32)
+    observations: List[PrivacyCredentialObservation] = Field(max_length=10_000)
+    epsilon: float = Field(ge=0.01, le=1, allow_inf_nan=False)
+
+
 class PromptInspectRequest(BaseModel):
     prompt: str = Field(min_length=1, max_length=32_768)
 
@@ -1379,6 +1407,71 @@ async def trigger_audit(payload: AuditRequest) -> Dict[str, Any]:
 async def get_analytics(target: str = Query(..., description="Domena docelowa")) -> Dict[str, Any]:
     """Pobiera zbiorcze wskaźniki analityczne z bazy DuckDB (Wymaga nagłówka X-API-Key)."""
     return analytics.get_target_threat_metrics(target)
+
+
+def get_privacy_credential_issuer() -> DifferentialPrivacyCredentialIssuer:
+    encoded_key = os.environ.get("SANCTUM_DP_VC_ED25519_PRIVATE_KEY", "").strip()
+    if not encoded_key:
+        raise ValueError("SANCTUM_DP_VC_ED25519_PRIVATE_KEY is required")
+    configured_database = os.environ.get("SANCTUM_PRIVACY_BUDGET_DB", "").strip()
+    if production_environment() and not configured_database:
+        raise ValueError(
+            "SANCTUM_PRIVACY_BUDGET_DB must be configured in production"
+        )
+    database_path = configured_database or "sanctum_privacy_budget.sqlite3"
+    try:
+        max_epsilon = float(os.environ.get("SANCTUM_DP_MAX_EPSILON", "3"))
+    except ValueError as error:
+        raise ValueError("SANCTUM_DP_MAX_EPSILON must be a number") from error
+    return DifferentialPrivacyCredentialIssuer(
+        database_path=database_path,
+        signing_key=ed25519_private_key_from_base64(encoded_key),
+        max_epsilon=max_epsilon,
+    )
+
+
+@app.post(
+    "/api/v1/privacy/credentials",
+    dependencies=[Security(verify_api_key)],
+)
+async def issue_privacy_credential(
+    payload: PrivacyCredentialRequest,
+) -> Dict[str, Any]:
+    """Issues a subject-level DP histogram as a signed Ed25519 VC-JWT."""
+    try:
+        issuer = get_privacy_credential_issuer()
+    except sqlite3.Error as error:
+        _LOGGER.exception("Privacy budget storage initialization failed")
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Privacy budget storage is unavailable",
+        ) from error
+    except (OSError, ValueError) as error:
+        _LOGGER.error("Privacy credential service configuration is invalid: %s", error)
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Privacy credential signing is not configured",
+        ) from error
+    try:
+        return await run_in_threadpool(
+            issuer.issue,
+            dataset_id=payload.dataset_id,
+            observations=[
+                observation.model_dump() for observation in payload.observations
+            ],
+            categories=payload.categories,
+            epsilon=payload.epsilon,
+        )
+    except PrivacyBudgetExceeded as error:
+        raise HTTPException(status_code=429, detail=str(error)) from error
+    except ValueError as error:
+        raise HTTPException(status_code=422, detail=str(error)) from error
+    except sqlite3.Error as error:
+        _LOGGER.exception("Privacy budget storage operation failed")
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Privacy budget storage is unavailable",
+        ) from error
 
 
 @app.get("/api/v1/controls", dependencies=[Security(verify_api_key)])

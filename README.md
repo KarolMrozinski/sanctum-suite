@@ -111,6 +111,7 @@ SANCTUM-SUITE to rozwijany zestaw modułów przeznaczonych do pracy w kontrolowa
 | Moduł | Polecenie | Opis |
 |---|---|---|
 | **Prywatny agregat grafu (FHE / HSM / AGE)** | `sanctum fhe-*`, `sanctum privacy-graph-*` | Backend Apache AGE przechowuje graf sprawy i szyfrogramy ocen BFV (Microsoft SEAL). Klucz prywatny pozostaje po stronie klienta, a osobny klucz RSA w HSM/PKCS#11 podpisuje manifest. FHE umożliwia wyłącznie sumowanie liczb całkowitych; graf i identyfikatory w AGE pozostają jawne. [Dokumentacja](./docs/PRIVATE_GRAPH_FHE.md). |
+| **Prywatne poświadczenia audytu (DP / DID / VC)** | `POST /api/v1/privacy/credentials` | Podpisuje Ed25519 VC-JWT z histogramem kategorii zaszumionym dyskretnym mechanizmem Laplace'a; budżet epsilon jest kumulowany per stabilny dataset ID. Prototyp z DID `did:key`; wymaga trwałego magazynu budżetu i jawnie skonfigurowanego klucza. Nie jest post-quantum, wielotenantowy ani produkcyjnie certyfikowany. [Dokumentacja](./docs/PRIVACY_CREDENTIALS.md). |
 | **Private ledger** | `sanctum ledger-anchor`, `sanctum ledger-verify` | Weryfikuje podpisany checkpoint i świeżą atestację SNP lub SGX, po czym zapisuje wyłącznie digest SHA-256 w lokalnym ledgerze demo (SQLite) albo przez operator-managed gateway Hyperledger Fabric. Repozytorium nie zawiera Fabric chaincode ani verifiera Intel DCAP. [Dokumentacja](./docs/PRIVATE_LEDGER.md). |
 | **SMPC** | `sanctum smpc-aggregate-demo` | Trzy lokalne procesy MPyC wspólnie obliczają sumę ograniczonych liczb i bit progu, ujawniając wyłącznie agregat. Prototyp lokalny w modelu semi-honest — bez ochrony przed aktywnie złośliwymi uczestnikami i bez izolacji organizacyjnej. Wymaga extra `smpc`. [Dokumentacja](./docs/SMPC.md). |
 
@@ -273,6 +274,7 @@ Checkpoint potwierdza konkretny spis wersji zaobserwowany podczas skanowania —
 | [Prywatny graf FHE/HSM/Apache AGE](./docs/PRIVATE_GRAPH_FHE.md) | Agregacja na szyfrogramach |
 | [Prywatny ledger](./docs/PRIVATE_LEDGER.md) | Zakotwiczenie atestowanego checkpointu |
 | [SMPC](./docs/SMPC.md) | Agregacja trzech stron (MPyC) |
+| [Prywatne poświadczenia (DP / DID / VC)](./docs/PRIVACY_CREDENTIALS.md) | Histogram z Differential Privacy, DID `did:key` i podpisany VC-JWT |
 | [Dowody ZK dla audytu](./docs/ZK_AUDIT_PROOFS.md) | Groth16 |
 | [Analiza on-chain](./docs/ONCHAIN_ANALYSIS.md) | Klienty read-only i graf sprawy |
 | [Checklist AML/MiCA](./docs/AML_MICA_CASE_REVIEW.md) | Przegląd spraw CASP |
