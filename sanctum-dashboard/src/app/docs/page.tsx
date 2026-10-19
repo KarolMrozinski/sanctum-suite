@@ -15,6 +15,9 @@ export default function DocsPage() {
         <p className="mt-5 leading-7 text-slate-300">
           SANCTUM-SUITE is a source-available project. The repository license restricts execution and commercial use without the copyright holder&apos;s written authorization. Confirm your rights before installing, deploying, or using it.
         </p>
+        <p className="leading-7 text-slate-300">
+          The <Link href="/pricing" className="text-cyan-300 underline">commercial package guidelines</Link> are proposals only; they do not grant a license or transfer copyright. Obtain explicit written authorization before any execution or commercial use.
+        </p>
 
         <h2 className="mt-10 text-2xl font-semibold text-white">Python CLI</h2>
         <p className="text-slate-300">Use Python 3.11 or later and install from a checked-out, authorized source tree:</p>
