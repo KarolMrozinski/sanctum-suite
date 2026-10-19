@@ -4,47 +4,61 @@
 
 ### Modułowy zestaw narzędzi do inżynierii bezpieczeństwa
 
-CLI, API i dashboard wspierające audyty autoryzowane, analizę zdarzeń, weryfikację łańcucha dostaw oraz eksperymenty z privacy-enhancing technologies i AI safety.
+**Verify · Attest · Audit — zaufanie do łańcucha dostaw, danych i decyzji.**
+
+CLI, API i dashboard dla audytów autoryzowanych, analizy zdarzeń, weryfikacji supply chain oraz eksperymentów z privacy-enhancing technologies i AI safety.
 
 <p>
-  <img src="https://img.shields.io/badge/wersja-6.0.0-2563eb?style=flat-square" alt="Wersja 6.0.0">
+  <a href="https://github.com/KarolMrozinski/sanctum-suite/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/KarolMrozinski/sanctum-suite/ci.yml?branch=main&style=for-the-badge&label=CI&logo=githubactions&logoColor=white" alt="CI"></a>
+  <a href="https://github.com/KarolMrozinski/sanctum-suite/actions/workflows/security.yml"><img src="https://img.shields.io/github/actions/workflow/status/KarolMrozinski/sanctum-suite/security.yml?branch=main&style=for-the-badge&label=Security&logo=github&logoColor=white" alt="Security"></a>
+  <img src="https://img.shields.io/badge/wersja-6.0.0-2563eb?style=for-the-badge" alt="Wersja 6.0.0">
+  <img src="https://img.shields.io/badge/status-beta-f59e0b?style=for-the-badge" alt="Status beta">
+</p>
+<p>
   <img src="https://img.shields.io/badge/Python-3.11%2B-3776ab?style=flat-square&logo=python&logoColor=white" alt="Python 3.11+">
-  <img src="https://img.shields.io/badge/dashboard-Next.js-111827?style=flat-square&logo=nextdotjs&logoColor=white" alt="Dashboard Next.js">
-  <img src="https://img.shields.io/badge/status-beta-f59e0b?style=flat-square" alt="Status beta">
+  <img src="https://img.shields.io/badge/Next.js-dashboard-111827?style=flat-square&logo=nextdotjs&logoColor=white" alt="Next.js">
+  <img src="https://img.shields.io/badge/Air--Gap-ready-0f766e?style=flat-square" alt="Air-Gap">
   <img src="https://img.shields.io/badge/licencja-source--available-64748b?style=flat-square" alt="Licencja source-available">
 </p>
 
-[Instalacja](./docs/INSTALLATION.md) ·
-[Runbook Air-Gap](./DEPLOYMENT.md) ·
-[Dokumentacja](#dokumentacja) ·
-[Bezpieczeństwo](./SECURITY.md) ·
-[Licencja](./LICENSE)
+[**Szybki start**](#-szybki-start) ·
+[**Moduły**](#-moduły) ·
+[**Runbook Air-Gap**](./DEPLOYMENT.md) ·
+[**Dokumentacja**](#-dokumentacja) ·
+[**Bezpieczeństwo**](./SECURITY.md)
 
 </div>
 
 ---
 
-## Spis treści
+## ✨ Najważniejsze cechy
 
-1. [O projekcie](#o-projekcie)
-2. [Status i ograniczenia](#status-i-ograniczenia)
-3. [Moduły](#moduły)
-4. [Szybki start](#szybki-start)
-5. [Aktywne testy](#aktywne-testy)
-6. [Architektura](#architektura)
-7. [Telemetria i audyt](#telemetria-i-audyt)
-8. [Dokumentacja](#dokumentacja)
-9. [Licencja](#licencja)
+| | |
+|---|---|
+| 🔐 **Supply chain** | Cosign/Sigstore, in-toto, raporty Trivy/Grype, SBOM CycloneDX |
+| 🧾 **Executive report** | Jeden raport JSON + Markdown dla audytorów |
+| 🛡️ **Trust & attestation** | TPM/Measured Boot (Keylime), SEV-SNP / TDX / SGX, polityki OPA |
+| 📦 **Air-Gap** | Podman, MinIO Object Lock, weryfikacja offline |
+| 🔭 **Telemetria** | Parquet/Arrow, sandbox Wasmtime, OpenTelemetry |
+| 🧪 **Privacy-enhancing tech** | FHE, HSM/PKCS#11, Apache AGE, SMPC, ZK, private ledger |
 
-## O projekcie
+## 🗺️ Spis treści
+
+[O projekcie](#-o-projekcie) · [Status i ograniczenia](#-status-i-ograniczenia) · [Moduły](#-moduły) · [Szybki start](#-szybki-start) · [Aktywne testy](#-aktywne-testy) · [Architektura](#-architektura) · [Telemetria i audyt](#-telemetria-i-audyt) · [Dokumentacja](#-dokumentacja) · [Licencja](#-licencja)
+
+## 📌 O projekcie
 
 SANCTUM-SUITE to rozwijany zestaw modułów przeznaczonych do pracy w kontrolowanych, zatwierdzonych środowiskach. Łączy narzędzia CLI, REST API i WebSocket, funkcje analityczne oraz opcjonalny dashboard Next.js.
 
-## Status i ograniczenia
+## ⚠️ Status i ograniczenia
 
-Projekt ma status **beta**. Dojrzałość i wymagania zależą od konkretnego modułu. Obecność funkcji w repozytorium **nie oznacza**, że została niezależnie zweryfikowana, jest gotowa do wdrożenia produkcyjnego ani że zapewnia zgodność z określonym standardem.
+> [!WARNING]
+> Projekt ma status **beta**. Obecność funkcji w repozytorium **nie oznacza**, że została niezależnie zweryfikowana, jest gotowa do wdrożenia produkcyjnego ani że zapewnia zgodność z określonym standardem.
 
-Kluczowe zastrzeżenia:
+<details>
+<summary><b>Kluczowe zastrzeżenia (kliknij, aby rozwinąć)</b></summary>
+
+<br>
 
 - **Moduły eksperymentalne** — część funkcji jest zależna od platformy lub stanowi wyłącznie punkt integracji. Brak integracji jest raportowany jako brak oceny, a nie jako wynik pozytywny.
 - **TPM / Measured Boot** — aplikacja nie komunikuje się bezpośrednio z TPM ani samodzielnie nie weryfikuje quote. Produkcyjny gate odczytuje status atestacji z zewnętrznego verifiera Keylime.
@@ -61,7 +75,9 @@ Kluczowe zastrzeżenia:
 - Lokalny SQLite access audit nie jest immutable ani tamper-proof. MinIO Object Lock może przechowywać minimalne, pseudonimizowane metadane żądań w trybie fail-closed przez 7 lat. Zobacz [MinIO WORM](./docs/INSTALLATION.md#minio-immutable-access-audit).
 - Żaden z tych mechanizmów nie certyfikuje środowiska ani nie dopuszcza do przetwarzania informacji niejawnych.
 
-## Moduły
+</details>
+
+## 🧩 Moduły
 
 ### Audyt, analiza i AI safety
 
@@ -98,8 +114,9 @@ Kluczowe zastrzeżenia:
 | **Private ledger** | `sanctum ledger-anchor`, `sanctum ledger-verify` | Weryfikuje podpisany checkpoint i świeżą atestację SNP lub SGX, po czym zapisuje wyłącznie digest SHA-256 w lokalnym ledgerze demo (SQLite) albo przez operator-managed gateway Hyperledger Fabric. Repozytorium nie zawiera Fabric chaincode ani verifiera Intel DCAP. [Dokumentacja](./docs/PRIVATE_LEDGER.md). |
 | **SMPC** | `sanctum smpc-aggregate-demo` | Trzy lokalne procesy MPyC wspólnie obliczają sumę ograniczonych liczb i bit progu, ujawniając wyłącznie agregat. Prototyp lokalny w modelu semi-honest — bez ochrony przed aktywnie złośliwymi uczestnikami i bez izolacji organizacyjnej. Wymaga extra `smpc`. [Dokumentacja](./docs/SMPC.md). |
 
-## Szybki start
+## 🚀 Szybki start
 
+> [!IMPORTANT]
 > **Uwaga licencyjna:** przed instalacją, uruchomieniem, modyfikacją lub wdrożeniem uzyskaj wymaganą pisemną zgodę właściciela praw. Licencja pozwala na wgląd w kod w celach oceny, edukacyjnych lub code review; nie przyznaje ogólnego prawa do jego wykonywania ani użycia komercyjnego.
 
 ### Wymagania
@@ -138,7 +155,10 @@ npm run start
 
 Konfigurację API, TLS, sekretów i dashboardu opisuje [przewodnik instalacji](./docs/INSTALLATION.md).
 
-## Aktywne testy
+## 🎯 Aktywne testy
+
+> [!CAUTION]
+> Nie uruchamiaj testów wobec systemów spoza zatwierdzonego zakresu.
 
 Aktywne audyty i skanowanie portów są blokowane, dopóki operator nie skonfiguruje wszystkich wymaganych elementów:
 
@@ -152,21 +172,43 @@ sanctum run-audit --target zatwierdzony.example --authorization-reference "ident
 
 Wartość `--authorization-reference` służy do prowadzenia śladu audytowego i sama w sobie nie potwierdza zgody. Nie uruchamiaj testów wobec systemów spoza zatwierdzonego zakresu. Szczegóły: [Entitlementy komercyjne](./docs/COMMERCIAL_ENTITLEMENTS.md).
 
-## Architektura
+## 🏗️ Architektura
 
 Diagram przedstawia orientacyjny podział obszarów repozytorium, a nie gwarantowany przepływ danych ani wdrożony układ infrastruktury.
 
 ```mermaid
 flowchart LR
-    T["Zatwierdzone środowisko testowe"] --> A["Moduły audytowe"]
-    A --> C["Korelacja i analityka"]
-    AI["Analiza AI safety"] --> C
-    C --> R["Raporty"]
-    P["Moduły zależne od platformy"] -. opcjonalnie .-> C
+    subgraph IN["Wejście"]
+        T["Autoryzowane cele"]
+        TEL["Telemetria<br/>push / import"]
+        ART["Artefakty + raporty<br/>Cosign · Trivy · Grype"]
+    end
+    subgraph CORE["Rdzeń"]
+        A["Moduły audytowe"]
+        C["Korelacja i analityka"]
+        AI["AI safety"]
+        G["Bramki: OPA · TPM · TEE"]
+    end
+    subgraph OUT["Wyjście"]
+        R["Raporty JSON / Markdown"]
+        W["MinIO Object Lock<br/>audyt WORM"]
+        L["Private ledger"]
+        PQ["Parquet / OTel"]
+    end
+    T --> A --> C
+    TEL --> C
+    AI --> C
+    ART --> G
+    G --> R
+    C --> R
+    C --> W
+    C -. digest .-> L
+    C --> PQ
     API["REST API / WebSocket"] --> D["Dashboard Next.js"]
+    C --> API
 ```
 
-## Telemetria i audyt
+## 📡 Telemetria i audyt
 
 ### Ingestia telemetrii
 
@@ -196,7 +238,7 @@ W trybie produkcyjnym API zapisuje minimalne zdarzenia audytowe do wersjonowaneg
 
 Checkpoint potwierdza konkretny spis wersji zaobserwowany podczas skanowania — nie jest globalnym licznikiem czasu rzeczywistego ani dowodem prawdziwości zdarzeń. Limity eksportu: 100 000 wersji, 64 KiB na rekord, 256 MB danych. Procedura uprawnień: [przewodnik instalacji](./docs/INSTALLATION.md#minio-immutable-access-audit).
 
-## Dokumentacja
+## 📚 Dokumentacja
 
 ### Wdrożenie i wydania
 
@@ -243,12 +285,10 @@ Checkpoint potwierdza konkretny spis wersji zaobserwowany podczas skanowania —
 | [EULA / Export Control](./docs/EULA_EXPORT_CONTROL.md) | Projekt klauzul |
 | [Licencja](./LICENSE) | Warunki dostępu i użycia |
 
-## Status wdrożeniowy
+## 🧭 Status wdrożeniowy
 
 Repozytorium zawiera materiały do instalacji i wydania, ale **nie jest to potwierdzenie gotowości produkcyjnej**. Przed wdrożeniem zweryfikuj zachowanie, uprawnienia i zależności każdego używanego modułu oraz przygotuj właściwe zabezpieczenia środowiska.
 
 Licencja nie zezwala na użycie komercyjne bez odrębnej pisemnej zgody. W repozytorium nie ma gotowej integracji płatności, unieważniania entitlementów online, izolacji danych klientów ani wdrożonego SLA. Formularz kontaktowy wymaga skonfigurowania zatwierdzonego webhooka.
 
-## Licencja
-
-SANCTUM-SUITE jest udostępniany na warunkach ograniczonej licencji source-available. Przed jakimkolwiek użyciem zapoznaj się z pełnym tekstem [LICENSE](./LICENSE) i uzyskaj pisemną zgodę, jeśli jest wymagana.
+## 📄 Licencja-SUITE jest udostępniany na warunkach ograniczonej licencji source-available. Przed jakimkolwiek użyciem zapoznaj się z pełnym tekstem [LICENSE](./LICENSE) i uzyskaj pisemną zgodę, jeśli jest wymagana.
