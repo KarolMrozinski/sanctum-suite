@@ -49,8 +49,6 @@ const result = spawnSync(
     "--wasm",
     "--sym",
     "-l",
-    circuitDirectory,
-    "-l",
     circomlibDirectory,
   ],
   {
