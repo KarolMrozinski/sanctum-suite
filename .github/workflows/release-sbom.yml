@@ -214,7 +214,7 @@ jobs:
       attestations: read
     steps:
       - name: Download release bundle
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: sanctum-release-${{ github.ref_name }}
           path: release
@@ -254,7 +254,7 @@ jobs:
       contents: write
     steps:
       - name: Download verified release bundle
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: sanctum-release-${{ github.ref_name }}
           path: release
