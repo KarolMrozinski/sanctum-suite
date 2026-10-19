@@ -28,6 +28,7 @@ await Promise.all([
 ]);
 
 const compiler = path.join(packageDirectory, "node_modules", "circom2", "cli.js");
+const libraryDirectory = path.join(packageDirectory, "node_modules");
 const result = spawnSync(
   process.execPath,
   [
@@ -37,9 +38,9 @@ const result = spawnSync(
     "--wasm",
     "--sym",
     "-l",
-    ".",
+    circuitDirectory,
     "-l",
-    "../node_modules",
+    libraryDirectory,
   ],
   {
     cwd: circuitDirectory,
