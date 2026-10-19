@@ -633,6 +633,139 @@ def fhe_keygen_cmd(
     _print_json_report(report)
 
 
+@app.command(name="fhe-accelerator-status")
+def fhe_accelerator_status_cmd() -> None:
+    """Report CPU FHE and accelerator tooling without claiming hardware offload."""
+    from sanctum_suite.core.privacy_graph import fhe_accelerator_capabilities
+
+    _print_json_report(fhe_accelerator_capabilities())
+
+
+@app.command(name="security-capabilities")
+def security_capabilities_cmd() -> None:
+    """Report explicit configuration status for FHE, QKD, and local TEE inference."""
+    from sanctum_suite.core.privacy_graph import fhe_accelerator_capabilities
+    from sanctum_suite.core.qkd import qkd_capabilities
+    from sanctum_suite.core.self_healing_coordinator import tee_model_capabilities
+
+    _print_json_report(
+        {
+            "fhe": fhe_accelerator_capabilities(),
+            "qkd": qkd_capabilities(),
+            "tee_local_model": tee_model_capabilities(),
+            "self_healing": {
+                "mode": "OPERATOR_APPROVAL_REQUIRED",
+                "automatic_policy_deployment": False,
+                "automatic_key_rotation": False,
+            },
+        }
+    )
+
+
+@app.command(name="self-healing-propose")
+def self_healing_propose_cmd(
+    database_file: Path = typer.Option(
+        ...,
+        "--database-file",
+        help="Append-only SQLite approval journal",
+    ),
+    target_module: str = typer.Option(..., "--target-module"),
+    action: str = typer.Option(
+        ...,
+        "--action",
+        help="Proposed action: opa_policy_update or key_rotation",
+    ),
+    reason_code: str = typer.Option(..., "--reason-code"),
+    evidence_sha256: str = typer.Option(..., "--evidence-sha256"),
+    current_policy_version: str = typer.Option(..., "--current-policy-version"),
+    proposed_change_sha256: str = typer.Option(..., "--proposed-change-sha256"),
+    created_by: str = typer.Option(..., "--created-by"),
+) -> None:
+    """Record a remediation proposal for independent human review; never applies it."""
+    from sanctum_suite.core.self_healing_coordinator import (
+        AutonomousSelfHealingCoordinator,
+    )
+
+    try:
+        report = AutonomousSelfHealingCoordinator(database_file).propose_remediation(
+            target_module=target_module,
+            action=action,
+            reason_code=reason_code,
+            evidence_sha256=evidence_sha256,
+            current_policy_version=current_policy_version,
+            proposed_change_sha256=proposed_change_sha256,
+            created_by=created_by,
+        )
+    except (OSError, RuntimeError, ValueError) as error:
+        raise typer.BadParameter(str(error)) from error
+    _print_json_report(report)
+
+
+@app.command(name="self-healing-decide")
+def self_healing_decide_cmd(
+    database_file: Path = typer.Option(
+        ...,
+        "--database-file",
+        exists=True,
+        file_okay=True,
+        dir_okay=False,
+        readable=True,
+        help="Append-only SQLite approval journal",
+    ),
+    proposal_id: str = typer.Option(..., "--proposal-id"),
+    approver_id: str = typer.Option(..., "--approver-id"),
+    approve: bool = typer.Option(
+        ...,
+        "--approve/--reject",
+        help="Approve for subsequent manual deployment or reject the proposal",
+    ),
+) -> None:
+    """Record an independent approval decision without applying the proposed change."""
+    from sanctum_suite.core.self_healing_coordinator import (
+        AutonomousSelfHealingCoordinator,
+    )
+
+    try:
+        report = AutonomousSelfHealingCoordinator(database_file).decide_proposal(
+            proposal_id=proposal_id,
+            approver_id=approver_id,
+            approved=approve,
+        )
+    except (OSError, RuntimeError, ValueError) as error:
+        raise typer.BadParameter(str(error)) from error
+    _print_json_report(report)
+
+
+@app.command(name="self-healing-list")
+def self_healing_list_cmd(
+    database_file: Path = typer.Option(
+        ...,
+        "--database-file",
+        exists=True,
+        file_okay=True,
+        dir_okay=False,
+        readable=True,
+        help="Append-only SQLite approval journal",
+    ),
+) -> None:
+    """Verify and list self-healing proposals and their operator decisions."""
+    from sanctum_suite.core.self_healing_coordinator import (
+        AutonomousSelfHealingCoordinator,
+    )
+
+    try:
+        proposals = AutonomousSelfHealingCoordinator(database_file).list_proposals()
+    except (OSError, RuntimeError, ValueError) as error:
+        raise typer.BadParameter(str(error)) from error
+    _print_json_report(
+        {
+            "status": "PROPOSAL_JOURNAL_VERIFIED",
+            "automatic_changes_applied": False,
+            "proposals": proposals,
+        }
+    )
+
+
 @app.command(name="fhe-decrypt-sum")
 def fhe_decrypt_sum_cmd(
     parameters_file: Path = typer.Option(

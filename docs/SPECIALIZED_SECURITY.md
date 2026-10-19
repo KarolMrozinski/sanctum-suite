@@ -118,6 +118,42 @@ sanctum pqc-decrypt `
 
 This encrypts only the explicitly supplied file; it does not encrypt the exported audit archive, replace checkpoint signatures, protect recipient private keys, or authenticate a recipient identity. Independently verify the checkpoint after decryption, and protect the archive and key material using the deployment's separate access-control and backup procedures. The implementation uses the installed `cryptography` provider's standardized primitives but has not undergone an independent cryptographic review or certification.
 
+## FHE accelerator, QKD, and self-healing integration boundaries
+
+### FHE on GPU/FPGA
+
+`sanctum fhe-accelerator-status` and `sanctum security-capabilities` report whether the SEAL Python binding and selected vendor runtime tools are present. Tool presence is not proof of a connected/attested accelerator. The existing Microsoft SEAL BFV path executes on CPU and explicitly labels its execution backend. `FHEAcceleratorBackend` is an injection contract for an independently validated adapter passed to `create_private_graph_bundle(..., fhe_backend=...)`; the repository does not include a GPU/FPGA implementation, automatically offload work, or claim a performance improvement. A backend must be reviewed for ciphertext correctness, side channels, device isolation, memory cleanup, provenance, and reproducible benchmarks before use.
+
+### QKD key-provider adapter
+
+`sanctum_suite.core.qkd.QKDKeyProvider` defines the vendor boundary for acquiring a key for an authenticated peer. The provider must implement peer authentication, key-ID uniqueness/replay prevention, access controls, key expiry, authenticated classical-channel protection and hardware-specific link monitoring. `QKDKeyMaterial` enforces a minimum key length and timezone-aware expiry; `derive_qkd_mlkem_hybrid_key` refuses expired material and derives a key from both the supplied QKD secret and a 32-byte ML-KEM shared secret. Keep the QKD key in memory only, use unique protocol context and salt, and follow the vendor's key-consumption/zeroization procedures. No QKD hardware, key manager, or vendor adapter is configured or simulated by this repository; `sanctum security-capabilities` therefore reports `NOT_CONFIGURED`.
+
+### Human-approved remediation proposals
+
+The self-healing workflow records proposed OPA policy updates and key rotations in a hash-linked, append-only SQLite journal. It stores evidence and proposed-change digests, not policy source or secret key material. A different operator must approve or reject the proposal:
+
+```powershell
+sanctum self-healing-propose `
+  --database-file C:\secure\remediation.sqlite `
+  --target-module sanctum.api.authz `
+  --action opa_policy_update `
+  --reason-code anomaly_detected `
+  --evidence-sha256 "<64 lowercase hex characters>" `
+  --current-policy-version policy-v1 `
+  --proposed-change-sha256 "<64 lowercase hex characters>" `
+  --created-by monitoring-service
+
+sanctum self-healing-decide `
+  --database-file C:\secure\remediation.sqlite `
+  --proposal-id "<proposal UUID>" `
+  --approver-id security-operator `
+  --approve
+
+sanctum self-healing-list --database-file C:\secure\remediation.sqlite
+```
+
+Approval is only authorization to proceed through a separate, reviewed deployment/rotation procedure; these commands never apply OPA policy, alter access control, isolate systems, hot-patch processes, or rotate keys. Store and back up the journal under separate controls: its local hash chain and SQLite triggers do not prevent an administrator from rewriting the database and recomputing the chain. There is no anomaly detector or local model runtime configured. `TEEAnomalyAssessmentProvider` is an integration contract only, and `sanctum security-capabilities` reports local TEE inference as `NOT_CONFIGURED`.
+
 ## Controlled offline-transfer manifest
 
 `AirGapDataDiodeBroker.prepare_offline_package` hashes the payload and emits a canonical JSON manifest digest. If a signature and PEM public key are supplied, the signature is checked over the payload and the public key's DER SubjectPublicKeyInfo SHA-256 is recorded. The command/module does not move the payload; transfer it through the organization's approved offline process and verify the payload digest, signature, and independently trusted signer-key fingerprint at the receiving boundary. A valid signature from a supplied key does not establish key ownership or trust. The manifest digest is not a signature and does not authenticate the manifest by itself.

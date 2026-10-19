@@ -2,13 +2,15 @@ from __future__ import annotations
 
 import base64
 import hashlib
+import importlib.util
 import json
 import os
 import re
+import shutil
 import tempfile
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any
+from typing import Any, Protocol
 
 
 _MAX_GRAPH_NODES = 5_000
@@ -26,6 +28,53 @@ _RESERVED_EDGE_FIELDS = {"case_id", "manifest_id", "relation"}
 
 class PrivacyGraphError(ValueError):
     """Raised when a private graph import cannot safely complete."""
+
+
+class FHEAcceleratorBackend(Protocol):
+    """Adapter contract for an independently validated accelerator implementation."""
+
+    backend_name: str
+
+    def encrypt_and_aggregate(
+        self,
+        *,
+        public_key_path: Path,
+        parameters_path: Path,
+        scores: list[dict[str, Any]],
+    ) -> tuple[list[tuple[str, bytes]], bytes, dict[str, Any]]: ...
+
+
+def fhe_accelerator_capabilities() -> dict[str, Any]:
+    """Report installed FHE support and tooling without claiming device/offload support."""
+    return {
+        "status": "CAPABILITY_REPORT_ONLY",
+        "cpu_backend": {
+            "name": "Microsoft SEAL BFV",
+            "python_binding_available": importlib.util.find_spec("seal") is not None,
+            "execution": "CPU",
+        },
+        "accelerator_backends": {
+            "gpu": {
+                "status": "NOT_IMPLEMENTED",
+                "runtime_tool_present": any(
+                    shutil.which(tool) is not None
+                    for tool in ("nvidia-smi", "rocminfo")
+                ),
+            },
+            "fpga": {
+                "status": "NOT_IMPLEMENTED",
+                "runtime_tool_present": any(
+                    shutil.which(tool) is not None
+                    for tool in ("xrt-smi", "xbutil")
+                ),
+            },
+        },
+        "limitations": (
+            "Runtime tools do not prove an attached device, secure isolation, "
+            "or FHE acceleration. Microsoft SEAL in this package uses the CPU; "
+            "no GPU/FPGA backend is bundled or automatically selected."
+        ),
+    }
 
 
 def _read_limited(path: Path, label: str, *, maximum: int = 32 * 1024 * 1024) -> bytes:
@@ -305,7 +354,54 @@ def _encrypt_scores(
     public_key_path: Path,
     parameters_path: Path,
     scores: list[dict[str, Any]],
+    accelerator_backend: FHEAcceleratorBackend | None = None,
 ):
+    if accelerator_backend is not None:
+        result = accelerator_backend.encrypt_and_aggregate(
+            public_key_path=public_key_path,
+            parameters_path=parameters_path,
+            scores=scores,
+        )
+        if (
+            not isinstance(result, tuple)
+            or len(result) != 3
+            or not isinstance(result[0], list)
+            or not isinstance(result[1], bytes)
+            or not isinstance(result[2], dict)
+            or not isinstance(accelerator_backend.backend_name, str)
+            or not accelerator_backend.backend_name
+        ):
+            raise PrivacyGraphError("FHE accelerator backend returned an invalid result")
+        encrypted_scores, aggregate_bytes, metadata = result
+        try:
+            json.dumps(metadata, allow_nan=False)
+        except (TypeError, ValueError) as error:
+            raise PrivacyGraphError(
+                "FHE accelerator backend returned non-JSON metadata"
+            ) from error
+        if (
+            len(encrypted_scores) != len(scores)
+            or any(
+                not isinstance(item, tuple)
+                or len(item) != 2
+                or not isinstance(item[0], str)
+                or not isinstance(item[1], bytes)
+                or not item[1]
+                for item in encrypted_scores
+            )
+            or not aggregate_bytes
+            or len({node_id for node_id, _ in encrypted_scores})
+            != len(encrypted_scores)
+            or {node_id for node_id, _ in encrypted_scores}
+            != {entry["node_id"] for entry in scores}
+        ):
+            raise PrivacyGraphError(
+                "FHE accelerator backend did not return one ciphertext per score"
+            )
+        return encrypted_scores, aggregate_bytes, {
+            **metadata,
+            "execution_backend": accelerator_backend.backend_name,
+        }
     seal, context, metadata = _load_fhe_context(parameters_path)
     if not public_key_path.is_file():
         raise PrivacyGraphError("FHE public key file does not exist")
@@ -342,7 +438,10 @@ def _encrypt_scores(
         raise PrivacyGraphError(
             "Could not encrypt and aggregate graph scores with Microsoft SEAL"
         ) from error
-    return encrypted, aggregate_bytes, metadata
+    return encrypted, aggregate_bytes, {
+        **metadata,
+        "execution_backend": "microsoft-seal-cpu",
+    }
 
 
 class ApacheAGEGraphStore:
@@ -709,6 +808,7 @@ def create_private_graph_bundle(
     output_directory: Path,
     graph_store: ApacheAGEGraphStore,
     signer: PKCS11ManifestSigner,
+    fhe_backend: FHEAcceleratorBackend | None = None,
 ) -> dict[str, Any]:
     graph_bytes, graph_value = _read_json(graph_path, "Graph JSON")
     _, score_value = _read_json(scores_path, "Private score JSON", maximum=4 * 1024 * 1024)
@@ -723,6 +823,7 @@ def create_private_graph_bundle(
         public_key_path=public_key_path,
         parameters_path=parameters_path,
         scores=scores,
+        accelerator_backend=fhe_backend,
     )
     manifest: dict[str, Any] = {
         "report_type": "SANCTUM_PRIVATE_GRAPH_AGGREGATE",
