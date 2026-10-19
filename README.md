@@ -30,6 +30,7 @@ Narzędzia CLI, API i dashboard wspierające wybrane procesy audytowe, analizę 
 [Pipeline telemetrii Wasm/Arrow/OTel](./docs/TELEMETRY_PIPELINE.md) ·
 [Prywatny graf FHE/HSM/Apache AGE](./docs/PRIVATE_GRAPH_FHE.md) ·
 [Atestowany checkpoint prywatnego ledgeru](./docs/PRIVATE_LEDGER.md) ·
+[SMPC dla trzech stron](./docs/SMPC.md) ·
 [Bramki CI/CD](./docs/SECURE_CICD.md) ·
 [Bezpieczeństwo](./SECURITY.md) ·
 [Licencja](./LICENSE)
@@ -60,6 +61,7 @@ Projekt ma status **beta**. Zakres, dojrzałość i wymagania zależą od konkre
 - **Eksperymentalny dowód ZK dla ocen on-chain** — osobny obwód Groth16 może dowieść, że prywatnie zakodowane oceny dostawcy nie przekraczają progu `medium`, bez publikowania ocen. Dowód nie uwierzytelnia dostawcy ani raportu i nie jest połączony z przypadkiem; wymagany jest niezależny ceremony setup. Szczegóły i ograniczenia opisuje [dokumentacja dowodów ZK](./docs/ZK_AUDIT_PROOFS.md).
 - **Eksperymentalny prywatny agregat grafu** — opcjonalny backend Apache AGE przechowuje graf sprawy i szyfrogramy ocen BFV Microsoft SEAL; klucz prywatny pozostaje po stronie klienta, a osobny klucz RSA w HSM/PKCS#11 podpisuje manifest. FHE umożliwia tu wyłącznie sumowanie liczb całkowitych; graf i identyfikatory w AGE pozostają jawne. Integracja i ograniczenia są opisane w [dokumentacji FHE/HSM/AGE](./docs/PRIVATE_GRAPH_FHE.md).
 - **Eksperymentalne zakotwiczenie checkpointu w prywatnym ledgerze** — `sanctum ledger-anchor` najpierw weryfikuje podpisany checkpoint i świeżą atestację SNP lub SGX, a następnie zapisuje wyłącznie digest SHA-256 w demonstracyjnym lokalnym ledgerze SQLite albo przez operator-managed gateway Hyperledger Fabric. Repozytorium nie zawiera Fabric chaincode ani verifiera Intel DCAP; zakres i ograniczenia opisuje [dokumentacja](./docs/PRIVATE_LEDGER.md).
+- **Eksperymentalne SMPC** — `sanctum smpc-aggregate-demo` uruchamia trzy lokalne procesy MPyC, które wspólnie obliczają sumę ograniczonych liczb i bit progu, ujawniając wyłącznie agregat. To wyłącznie lokalny prototyp w modelu semi-honest, nie zapewnia ochrony przed aktywnie złośliwymi uczestnikami ani izolacji organizacyjnej; szczegóły opisuje [dokumentacja SMPC](./docs/SMPC.md).
 
 ### Ważne ograniczenia
 

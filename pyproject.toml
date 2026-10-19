@@ -53,6 +53,9 @@ privacy-graph = [
     "python-pkcs11>=0.10",
     "psycopg[binary]>=3.2",
 ]
+smpc = [
+    "mpyc>=0.10",
+]
 
 [project.scripts]
 sanctum = "sanctum_suite.main:app"

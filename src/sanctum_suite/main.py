@@ -1316,6 +1316,60 @@ def ledger_verify_cmd(
     _print_json_report(result)
 
 
+@app.command(name="smpc-aggregate-demo")
+def smpc_aggregate_demo_cmd(
+    party_0_input_file: Path = typer.Option(
+        ...,
+        "--party-0-input-file",
+        exists=True,
+        file_okay=True,
+        dir_okay=False,
+        readable=True,
+        help="JSON input file containing only this party's bounded integer value",
+    ),
+    party_1_input_file: Path = typer.Option(
+        ...,
+        "--party-1-input-file",
+        exists=True,
+        file_okay=True,
+        dir_okay=False,
+        readable=True,
+        help="JSON input file containing only this party's bounded integer value",
+    ),
+    party_2_input_file: Path = typer.Option(
+        ...,
+        "--party-2-input-file",
+        exists=True,
+        file_okay=True,
+        dir_okay=False,
+        readable=True,
+        help="JSON input file containing only this party's bounded integer value",
+    ),
+    decision_threshold: int = typer.Option(
+        ...,
+        "--decision-threshold",
+        min=0,
+        max=3_000_000,
+        help="Public aggregate threshold; only the aggregate and threshold bit are revealed",
+    ),
+) -> None:
+    """Run a three-party local MPyC sum and reveal only aggregate outputs."""
+    from sanctum_suite.core.smpc import SMPCError, run_local_smpc_demo
+
+    try:
+        report = run_local_smpc_demo(
+            participant_input_files=[
+                party_0_input_file,
+                party_1_input_file,
+                party_2_input_file,
+            ],
+            decision_threshold=decision_threshold,
+        )
+    except SMPCError as error:
+        raise typer.BadParameter(str(error)) from error
+    _print_json_report(report)
+
+
 @app.command(name="audit-zk-prove")
 def audit_zk_prove_cmd(
     checkpoint_file: Path = typer.Argument(
