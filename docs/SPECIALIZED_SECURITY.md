@@ -2,6 +2,25 @@
 
 These workflows produce bounded review artifacts. None of them discovers a production cryptographic deployment, enforces a kernel policy, operates a physical data diode, or certifies TEMPEST/SDIP-27.
 
+## Sigstore / Cosign artifact verification
+
+`sanctum supply-chain-verify` verifies a local artifact's Sigstore DSSE in-toto attestation by invoking the installed Cosign CLI. It requires the exact expected certificate identity, OIDC issuer, and predicate type; it does not accept an implicit signer identity. Cosign must support `verify-blob-attestation --new-bundle-format`, and the supplied bundle must contain a `dsseEnvelope`. The verifier additionally checks that the decoded in-toto statement has a supported Statement v0.1/v1 type, the requested predicate type, and a SHA-256 subject digest matching the local artifact.
+
+Optional Trivy and Grype JSON reports are parsed and summarized, not executed, authenticated, or cryptographically bound to the artifact. Missing reports are labeled `NOT_PROVIDED`; report data cannot establish that a scan was complete or that it covered this artifact. Findings are reported only: the command does not apply a vulnerability threshold or provide a clean/secure verdict. Obtain the bundle, scan outputs, and expected signer identity through independently trusted release procedures.
+
+```powershell
+sanctum supply-chain-verify `
+  --artifact .\release\sanctum-suite.whl `
+  --attestation-bundle .\release\sanctum-suite.whl.sigstore.json `
+  --certificate-identity "https://github.com/OWNER/REPOSITORY/.github/workflows/release.yml@refs/tags/v1.2.3" `
+  --certificate-oidc-issuer "https://token.actions.githubusercontent.com" `
+  --predicate-type "https://slsa.dev/provenance/v1" `
+  --trivy-report .\release\trivy-report.json `
+  --grype-report .\release\grype-report.json
+```
+
+Trivy and Grype reports must be their respective JSON output formats. This CLI does not download attestations from GitHub or registries, create signatures, run either scanner, verify the reports' authenticity, or convert the repository's existing `gh attestation verify` workflow into a Cosign bundle. GitHub artifact attestations and Cosign bundles are not assumed interchangeable: use an explicitly supported bundle export and independently verify the expected identity/issuer before relying on it. A successful Cosign check authenticates the attestation under the specified trust policy; it does not establish that the build, source, SBOM, or scanner results are trustworthy or complete.
+
 ## Cross-technology security readiness
 
 Run `sanctum security-readiness --input readiness.json` to produce a JSON summary of operator-reported checks for eBPF, Rust, SPIFFE/SPIRE, and cryptographic inventory. The input is a UTF-8 JSON object, limited to 1 MiB. Sections may be omitted; omitted domains are reported as `NOT_ASSESSED`. Boolean checks that are missing are reported as `INCOMPLETE`, and a declared `false` is reported as an operator-reported gap. The report does not verify any declaration or award a readiness score.

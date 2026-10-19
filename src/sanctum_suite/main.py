@@ -308,6 +308,87 @@ def security_readiness_cmd(
     _print_json_report(result)
 
 
+@app.command(name="supply-chain-verify")
+def supply_chain_verify_cmd(
+    artifact: Path = typer.Option(
+        ...,
+        "--artifact",
+        exists=True,
+        file_okay=True,
+        dir_okay=False,
+        readable=True,
+        help="Local artifact whose SHA-256 is bound by the in-toto statement",
+    ),
+    attestation_bundle: Path = typer.Option(
+        ...,
+        "--attestation-bundle",
+        exists=True,
+        file_okay=True,
+        dir_okay=False,
+        readable=True,
+        help="Sigstore JSON bundle containing the DSSE in-toto statement",
+    ),
+    certificate_identity: str = typer.Option(
+        ...,
+        "--certificate-identity",
+        help="Exact expected signer certificate identity",
+    ),
+    certificate_oidc_issuer: str = typer.Option(
+        ...,
+        "--certificate-oidc-issuer",
+        help="Exact expected OIDC issuer",
+    ),
+    predicate_type: str = typer.Option(
+        ...,
+        "--predicate-type",
+        help="Exact expected in-toto predicate type URI",
+    ),
+    trivy_report: Path | None = typer.Option(
+        None,
+        "--trivy-report",
+        exists=True,
+        file_okay=True,
+        dir_okay=False,
+        readable=True,
+        help="Optional Trivy JSON report to summarize",
+    ),
+    grype_report: Path | None = typer.Option(
+        None,
+        "--grype-report",
+        exists=True,
+        file_okay=True,
+        dir_okay=False,
+        readable=True,
+        help="Optional Grype JSON report to summarize",
+    ),
+    cosign_command: str = typer.Option(
+        "cosign",
+        "--cosign-command",
+        help="Cosign executable name or path",
+    ),
+) -> None:
+    """Verify a local artifact's Sigstore in-toto attestation and summarize scans."""
+    from sanctum_suite.core.supply_chain_verify import (
+        SupplyChainArtifactVerifier,
+        SupplyChainVerificationError,
+    )
+
+    try:
+        report = SupplyChainArtifactVerifier().verify(
+            artifact=artifact,
+            attestation_bundle=attestation_bundle,
+            certificate_identity=certificate_identity,
+            certificate_oidc_issuer=certificate_oidc_issuer,
+            predicate_type=predicate_type,
+            trivy_report=trivy_report,
+            grype_report=grype_report,
+            cosign_command=cosign_command,
+        )
+    except SupplyChainVerificationError as error:
+        raise typer.BadParameter(str(error)) from error
+    _print_json_report(report)
+
+
 @app.command(name="issue-license")
 def issue_license_cmd(
     private_key_file: Path = typer.Option(..., "--private-key-file", exists=True, file_okay=True, dir_okay=False, readable=True),
