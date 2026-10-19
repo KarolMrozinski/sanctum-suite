@@ -18,11 +18,15 @@ const mode = process.argv[2];
 const targets = {
   production: "audit_policy_main",
   test: "audit_policy_test",
+  "risk-production": "onchain_risk_policy",
+  "risk-test": "onchain_risk_policy",
 };
 const circuitName = targets[mode];
 
 if (!circuitName) {
-  console.error("Usage: node scripts/compile.mjs <production|test>");
+  console.error(
+    "Usage: node scripts/compile.mjs <production|test|risk-production|risk-test>",
+  );
   process.exit(2);
 }
 if (!existsSync(path.join(circomlibDirectory, "poseidon.circom"))) {

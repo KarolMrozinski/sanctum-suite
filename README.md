@@ -22,6 +22,7 @@ Narzędzia CLI, API i dashboard wspierające wybrane procesy audytowe, analizę 
 [TPM/Measured Boot](./docs/TPM_MEASURED_BOOT.md) ·
 [Confidential Computing](./docs/CONFIDENTIAL_COMPUTING.md) ·
 [Dowody ZK dla audytu](./docs/ZK_AUDIT_PROOFS.md) ·
+[Fundament analizy on-chain](./docs/ONCHAIN_ANALYSIS.md) ·
 [Projekt klauzul EULA / Export Control](./docs/EULA_EXPORT_CONTROL.md) ·
 [Pakiet offline](./docs/OFFLINE_RELEASE.md) ·
 [Wdrożenie air-gapped/Podman](./docs/PODMAN_AIRGAP.md) ·
@@ -46,6 +47,9 @@ Projekt ma status **beta**. Zakres, dojrzałość i wymagania zależą od konkre
 - **AI safety** — moduły do analizy promptów i eksperymentów z zabezpieczeniami modeli.
 - **Interfejsy** — CLI w Pythonie, REST API i WebSocket oraz osobny dashboard oparty na Next.js.
 - **Kontrole i entitlementy** — mapowanie kontroli oraz weryfikacja podpisanych uprawnień do użycia; tagowane wydania dostarczają podpisane attestations SBOM, a skonfigurowane API może egzekwować polityki OPA i blokować operacje przy nieaktualnej atestacji TPM/Measured Boot z Keylime.
+- **Dane on-chain (eksperymentalne)** — jawnie konfigurowane, tylko do odczytu klienty Bitcoin Core i Ethereum JSON-RPC udostępniają wspólny model bloków i transakcji, graf sprawy, obserwacje zdarzeń `Transfer` i ograniczone ślady `callTracer`. Case-scoped Crypto OSINT korzysta wyłącznie z importowanych, niezweryfikowanych raportów; opcjonalne snapshoty bloków są domyślnie wyłączone i zachowują wrażliwe adresy. Endpointy nie deklarują zgodności AML/MiCA, a demonstracyjny dowód ZK nie jest powiązany z dowodami on-chain. Ograniczenia opisuje [dokumentacja](./docs/ONCHAIN_ANALYSIS.md).
+- **Checklist AML/MiCA dla spraw CASP w UE (starter)** — checklist sprawy i append-only rejestr referencji dowodów dla przeglądu MiCA, AMLR, TFR i polskiej ustawy AML. Nie ocenia zgodności, a wszystkie sprawy zachowują status `NOT_ASSESSED`; zakres i ograniczenia opisuje [dokumentacja checklisty](./docs/AML_MICA_CASE_REVIEW.md).
+- **Eksperymentalny dowód ZK dla ocen on-chain** — osobny obwód Groth16 może dowieść, że prywatnie zakodowane oceny dostawcy nie przekraczają progu `medium`, bez publikowania ocen. Dowód nie uwierzytelnia dostawcy ani raportu i nie jest połączony z przypadkiem; wymagany jest niezależny ceremony setup. Szczegóły i ograniczenia opisuje [dokumentacja dowodów ZK](./docs/ZK_AUDIT_PROOFS.md).
 
 ### Ważne ograniczenia
 

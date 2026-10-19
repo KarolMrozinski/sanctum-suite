@@ -105,3 +105,69 @@ Proof bundles and ceremony outputs contain no witness records, but should still
 be handled as audit evidence. Keep proving keys protected and offline. A
 verifier must obtain the verification key and checkpoint public key through
 independent authenticated channels.
+
+## Experimental on-chain provider-rating policy
+
+The separate `sanctum-provider-risk-at-most-medium-v1` circuit demonstrates a
+narrow privacy-preserving predicate over a caller-supplied list of 1–8 rating
+codes. Rating bands map to `unknown=0`, `low=1`, `medium=2`, `high=3`, and
+`severe=4`. The circuit proves that every committed code is below `high`; it
+publishes only a Poseidon commitment root, the number of ratings, and the
+constant policy identifier. Ratings and random salts remain private.
+
+This is an experimental proof primitive, **not** an attestation of an imported
+provider report. The root is not bound to a report digest, provider identity,
+assessment addresses/references, completeness claim, or Sanctum case. It cannot
+prove that the inputs came from Chainalysis, Elliptic, TRM Labs, or Arkham, nor
+that their labels are correct. A user can prove a statement about any chosen
+ratings. The proof does not establish that an address is safe, that an
+assessment was omitted or included, or that any transaction is lawful. Do not
+use the result for a compliance or transaction decision without a separately
+authenticated source and a reviewed binding design.
+
+Compile the circuit with the pinned local Circom toolchain:
+
+```powershell
+Set-Location tools\zk-audit
+npm run compile:risk
+```
+
+For a local test only, `npm run compile:risk:test` compiles the same
+experimental circuit. `npm test` runs both circuit smoke tests and uses
+temporary, publicly deterministic test ceremonies. Those test proving keys
+must never be used for production.
+
+The proof helper accepts a JSON input containing rating labels, for example:
+
+```json
+{"ratings":["low","medium","unknown"]}
+```
+
+After compiling the circuit, preparing an independently operated
+Groth16 ceremony for this exact circuit, and storing the resulting files
+outside the repository, generate and verify a proof:
+
+```powershell
+node scripts\prove-risk.mjs C:\secure\input\rating-bands.json `
+  circuits\onchain_risk_policy_js\onchain_risk_policy.wasm `
+  C:\secure\zk\onchain_risk_policy_final.zkey `
+  C:\secure\zk\onchain_risk_policy_verification_key.json `
+  C:\secure\output\rating-policy-proof.json
+
+node scripts\verify-risk.mjs C:\secure\output\rating-policy-proof.json `
+  C:\secure\zk\onchain_risk_policy_verification_key.json
+```
+
+The helper refuses ratings above `medium` before proving and the circuit also
+enforces the same predicate, so an altered helper cannot produce a valid proof
+for a higher rating. The bundle includes the public commitment root, count,
+policy ID and proof but no labels or salts. Preserve the source material and
+its independently authenticated provenance separately if the statement must
+be linked to a provider report.
+
+The production circuit has 3,779 nonlinear constraints in the pinned
+toolchain build. Operators must verify the circuit source and compiler version,
+conduct a fresh, independently reviewed multi-party Groth16 setup with a
+Powers of Tau power sufficient for the compiled R1CS, and authenticate the
+final verification key out of band. Never use the ephemeral smoke-test
+ceremony or keys as real evidence.

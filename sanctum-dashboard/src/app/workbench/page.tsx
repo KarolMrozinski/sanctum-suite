@@ -215,6 +215,166 @@ interface NormalizedTelemetryEvent {
   ingested_at: string;
 }
 
+interface OnChainGraphNode {
+  id: string;
+  kind: string;
+  label: string;
+  provider: string;
+  chain: string;
+  block_hash: string;
+  block_height: number;
+  observed_at: string;
+  confidence: string;
+  provider_rating?: string;
+  report_reference?: string;
+  value_atomic?: string;
+  unit?: string;
+}
+
+interface OnChainGraphEdge {
+  source: string;
+  target: string;
+  relation: string;
+  provider: string;
+  chain: string;
+  block_hash: string;
+  block_height: number;
+  observed_at: string;
+  confidence: string;
+  provider_rating?: string;
+  category?: string;
+  report_reference?: string;
+  report_sha256?: string;
+  assessed_at?: string;
+  value_atomic?: string;
+  unit?: string;
+}
+
+interface OnChainGraph {
+  case_id: string;
+  chain: string;
+  block_hash: string;
+  block_height: number;
+  source: string;
+  observed_at: string;
+  nodes: OnChainGraphNode[];
+  edges: OnChainGraphEdge[];
+  limitations: string[];
+  storage: {
+    enabled: boolean;
+    snapshot_id: string | null;
+    inserted: boolean;
+    reorg_fork_preserved: boolean;
+    loaded_from_snapshot: boolean;
+  };
+}
+
+interface OnChainSnapshot {
+  snapshot_id: string;
+  chain: "bitcoin" | "ethereum";
+  height: number;
+  block_hash: string;
+  parent_hash: string | null;
+  source: string;
+  block_timestamp: string;
+  fetched_at: string;
+  stored_at: string;
+  payload_bytes: number;
+}
+
+interface OnChainForensicsResult {
+  case_id: string;
+  block: {
+    height: number;
+    block_hash: string;
+    source: string;
+    observed_at: string;
+  };
+  logs: Array<{
+    address: string;
+    topics: string[];
+    transaction_hash: string;
+    log_index: number;
+    removed: boolean;
+  }>;
+  transfer_observations: Array<{
+    token_contract: string;
+    transaction_hash: string;
+    log_index: number;
+    from_address: string;
+    to_address: string;
+    value_atomic: string | null;
+    token_id: string | null;
+    confidence: string;
+  }>;
+  provider_assessments: Array<{
+    address: string;
+    provider: string;
+    provider_rating: string;
+    verification_status: string;
+  }>;
+  regulatory_assessment: {
+    status: string;
+    frameworks: string[];
+  };
+  limitations: string[];
+}
+
+interface OnChainTraceResult {
+  case_id: string;
+  transaction_hash: string;
+  block_hash: string;
+  block_height: number;
+  confidence: string;
+  trace: {
+    call_type: string;
+    from_address: string;
+    to_address: string | null;
+    value_atomic: string;
+    gas_used: string | null;
+    input_selector: string | null;
+    input_bytes: number;
+    error: string | null;
+    calls: unknown[];
+  };
+  regulatory_assessment: {
+    status: string;
+    frameworks: string[];
+  };
+  limitations: string[];
+}
+
+interface RegulatoryChecklistControl {
+  control_id: string;
+  framework: string;
+  title: string;
+  review_prompt: string;
+  official_reference: string;
+  source_url: string;
+  applicability: "not_assessed" | "in_scope" | "out_of_scope" | "needs_legal_review";
+  review_state: "not_assessed" | "evidence_recorded" | "needs_review";
+  summary: string;
+  updated_by: string | null;
+  updated_at: string;
+  evidence: Array<{
+    evidence_id: string;
+    source: string;
+    reference: string;
+    sha256: string;
+    recorded_by: string;
+    recorded_at: string;
+  }>;
+}
+
+interface RegulatoryChecklist {
+  case_id: string;
+  profile: "EU_CASP";
+  profile_version: string;
+  overall_status: "NOT_ASSESSED";
+  controls: RegulatoryChecklistControl[];
+  limitations: string[];
+}
+
 interface ControlCoverageRow {
   mapping_id: string;
   catalog_version: string;
@@ -266,6 +426,199 @@ function isTelemetryConnectorCatalog(value: unknown): value is TelemetryConnecto
     typeof value.push_ingestion_enabled === "boolean" &&
     (typeof value.event_retention_days === "number" || value.event_retention_days === null) &&
     typeof value.limitations === "string"
+  );
+}
+
+function isOnChainGraph(value: unknown): value is OnChainGraph {
+  if (!isRecord(value)) return false;
+  return (
+    typeof value.case_id === "string" &&
+    (value.chain === "bitcoin" || value.chain === "ethereum") &&
+    typeof value.block_hash === "string" &&
+    typeof value.block_height === "number" &&
+    typeof value.source === "string" &&
+    typeof value.observed_at === "string" &&
+    isRecord(value.storage) &&
+    typeof value.storage.enabled === "boolean" &&
+    (typeof value.storage.snapshot_id === "string" || value.storage.snapshot_id === null) &&
+    typeof value.storage.inserted === "boolean" &&
+    typeof value.storage.reorg_fork_preserved === "boolean" &&
+    typeof value.storage.loaded_from_snapshot === "boolean" &&
+    Array.isArray(value.nodes) &&
+    value.nodes.every(
+      (node) =>
+        isRecord(node) &&
+        typeof node.id === "string" &&
+        typeof node.kind === "string" &&
+        typeof node.label === "string" &&
+        typeof node.provider === "string" &&
+        typeof node.chain === "string" &&
+        typeof node.block_hash === "string" &&
+        typeof node.block_height === "number" &&
+        typeof node.observed_at === "string" &&
+        typeof node.confidence === "string" &&
+        (node.provider_rating === undefined || typeof node.provider_rating === "string") &&
+        (node.report_reference === undefined || typeof node.report_reference === "string") &&
+        (node.value_atomic === undefined || typeof node.value_atomic === "string") &&
+        (node.unit === undefined || typeof node.unit === "string"),
+    ) &&
+    Array.isArray(value.edges) &&
+    value.edges.every(
+      (edge) =>
+        isRecord(edge) &&
+        typeof edge.source === "string" &&
+        typeof edge.provider === "string" &&
+        typeof edge.target === "string" &&
+        typeof edge.relation === "string" &&
+        typeof edge.chain === "string" &&
+        typeof edge.block_hash === "string" &&
+        typeof edge.block_height === "number" &&
+        typeof edge.observed_at === "string" &&
+        typeof edge.confidence === "string" &&
+        (edge.provider_rating === undefined || typeof edge.provider_rating === "string") &&
+        (edge.category === undefined || typeof edge.category === "string") &&
+        (edge.report_reference === undefined || typeof edge.report_reference === "string") &&
+        (edge.report_sha256 === undefined || typeof edge.report_sha256 === "string") &&
+        (edge.assessed_at === undefined || typeof edge.assessed_at === "string") &&
+        (edge.value_atomic === undefined || typeof edge.value_atomic === "string") &&
+        (edge.unit === undefined || typeof edge.unit === "string"),
+    ) &&
+    Array.isArray(value.limitations) &&
+    value.limitations.every((limitation) => typeof limitation === "string")
+  );
+}
+
+function isOnChainSnapshot(value: unknown): value is OnChainSnapshot {
+  return (
+    isRecord(value) &&
+    typeof value.snapshot_id === "string" &&
+    (value.chain === "bitcoin" || value.chain === "ethereum") &&
+    typeof value.height === "number" &&
+    typeof value.block_hash === "string" &&
+    (typeof value.parent_hash === "string" || value.parent_hash === null) &&
+    typeof value.source === "string" &&
+    typeof value.block_timestamp === "string" &&
+    typeof value.fetched_at === "string" &&
+    typeof value.stored_at === "string" &&
+    typeof value.payload_bytes === "number"
+  );
+}
+
+function isOnChainForensicsResult(value: unknown): value is OnChainForensicsResult {
+  return (
+    isRecord(value) &&
+    typeof value.case_id === "string" &&
+    isRecord(value.block) &&
+    typeof value.block.height === "number" &&
+    typeof value.block.block_hash === "string" &&
+    typeof value.block.source === "string" &&
+    typeof value.block.observed_at === "string" &&
+    Array.isArray(value.logs) &&
+    value.logs.every(
+      (log) =>
+        isRecord(log) &&
+        typeof log.address === "string" &&
+        Array.isArray(log.topics) &&
+        log.topics.every((topic) => typeof topic === "string") &&
+        typeof log.transaction_hash === "string" &&
+        typeof log.log_index === "number" &&
+        typeof log.removed === "boolean",
+    ) &&
+    Array.isArray(value.transfer_observations) &&
+    value.transfer_observations.every(
+      (transfer) =>
+        isRecord(transfer) &&
+        typeof transfer.token_contract === "string" &&
+        typeof transfer.transaction_hash === "string" &&
+        typeof transfer.log_index === "number" &&
+        typeof transfer.from_address === "string" &&
+        typeof transfer.to_address === "string" &&
+        (typeof transfer.value_atomic === "string" || transfer.value_atomic === null) &&
+        (typeof transfer.token_id === "string" || transfer.token_id === null) &&
+        typeof transfer.confidence === "string",
+    ) &&
+    Array.isArray(value.provider_assessments) &&
+    value.provider_assessments.every(
+      (assessment) =>
+        isRecord(assessment) &&
+        typeof assessment.address === "string" &&
+        typeof assessment.provider === "string" &&
+        typeof assessment.provider_rating === "string" &&
+        typeof assessment.verification_status === "string",
+    ) &&
+    isRecord(value.regulatory_assessment) &&
+    typeof value.regulatory_assessment.status === "string" &&
+    Array.isArray(value.regulatory_assessment.frameworks) &&
+    value.regulatory_assessment.frameworks.every((framework) => typeof framework === "string") &&
+    Array.isArray(value.limitations) &&
+    value.limitations.every((limitation) => typeof limitation === "string")
+  );
+}
+
+function isOnChainTraceResult(value: unknown): value is OnChainTraceResult {
+  return (
+    isRecord(value) &&
+    typeof value.case_id === "string" &&
+    typeof value.transaction_hash === "string" &&
+    typeof value.block_hash === "string" &&
+    typeof value.block_height === "number" &&
+    typeof value.confidence === "string" &&
+    isRecord(value.trace) &&
+    typeof value.trace.call_type === "string" &&
+    typeof value.trace.from_address === "string" &&
+    (typeof value.trace.to_address === "string" || value.trace.to_address === null) &&
+    typeof value.trace.value_atomic === "string" &&
+    (typeof value.trace.gas_used === "string" || value.trace.gas_used === null) &&
+    (typeof value.trace.input_selector === "string" || value.trace.input_selector === null) &&
+    typeof value.trace.input_bytes === "number" &&
+    Array.isArray(value.trace.calls) &&
+    isRecord(value.regulatory_assessment) &&
+    typeof value.regulatory_assessment.status === "string" &&
+    Array.isArray(value.limitations) &&
+    value.limitations.every((limitation) => typeof limitation === "string")
+  );
+}
+
+function isRegulatoryChecklist(value: unknown): value is RegulatoryChecklist {
+  return (
+    isRecord(value) &&
+    typeof value.case_id === "string" &&
+    value.profile === "EU_CASP" &&
+    typeof value.profile_version === "string" &&
+    value.overall_status === "NOT_ASSESSED" &&
+    Array.isArray(value.controls) &&
+    value.controls.every(
+      (control) =>
+        isRecord(control) &&
+        typeof control.control_id === "string" &&
+        typeof control.framework === "string" &&
+        typeof control.title === "string" &&
+        typeof control.review_prompt === "string" &&
+        typeof control.official_reference === "string" &&
+        typeof control.source_url === "string" &&
+        ["not_assessed", "in_scope", "out_of_scope", "needs_legal_review"].includes(
+          String(control.applicability),
+        ) &&
+        ["not_assessed", "evidence_recorded", "needs_review"].includes(
+          String(control.review_state),
+        ) &&
+        typeof control.summary === "string" &&
+        (typeof control.updated_by === "string" || control.updated_by === null) &&
+        typeof control.updated_at === "string" &&
+        Array.isArray(control.evidence) &&
+        control.evidence.every(
+          (entry) =>
+            isRecord(entry) &&
+            typeof entry.evidence_id === "string" &&
+            typeof entry.source === "string" &&
+            typeof entry.reference === "string" &&
+            typeof entry.sha256 === "string" &&
+            typeof entry.recorded_by === "string" &&
+            typeof entry.recorded_at === "string",
+        ),
+    ) &&
+    Array.isArray(value.limitations) &&
+    value.limitations.every((limitation) => typeof limitation === "string")
   );
 }
 
@@ -500,6 +853,27 @@ export default function WorkbenchPage() {
   const [apiKey, setApiKey] = useState("");
   const [createdBy, setCreatedBy] = useState("");
   const [caseRecords, setCaseRecords] = useState<IncidentCaseRecord[]>([]);
+  const [onchainGraphs, setOnchainGraphs] = useState<Record<string, OnChainGraph>>({});
+  const [onchainQueryDrafts, setOnchainQueryDrafts] = useState<
+    Record<string, { chain: "bitcoin" | "ethereum"; height: string }>
+  >({});
+  const [onchainSnapshots, setOnchainSnapshots] = useState<Record<string, OnChainSnapshot[]>>({});
+  const [onchainSnapshotSelections, setOnchainSnapshotSelections] = useState<Record<string, string>>({});
+  const [onchainForensics, setOnchainForensics] = useState<Record<string, OnChainForensicsResult>>({});
+  const [onchainTraceDrafts, setOnchainTraceDrafts] = useState<Record<string, string>>({});
+  const [onchainTraces, setOnchainTraces] = useState<Record<string, OnChainTraceResult>>({});
+  const [regulatoryChecklists, setRegulatoryChecklists] = useState<Record<string, RegulatoryChecklist>>({});
+  const [regulatoryDrafts, setRegulatoryDrafts] = useState<
+    Record<string, {
+      applicability: RegulatoryChecklistControl["applicability"];
+      review_state: RegulatoryChecklistControl["review_state"];
+      summary: string;
+      evidence_source: string;
+      evidence_reference: string;
+      evidence_sha256: string;
+    }>
+  >({});
+  const [onchainRiskReportDrafts, setOnchainRiskReportDrafts] = useState<Record<string, string>>({});
   const [caseMessage, setCaseMessage] = useState("");
   const [caseBusy, setCaseBusy] = useState(false);
   const [assigneeDrafts, setAssigneeDrafts] = useState<Record<string, string>>({});
@@ -723,6 +1097,306 @@ export default function WorkbenchPage() {
       setCaseRecords((previous) => previous.map((item) => item.case_id === caseId ? result : item));
     } catch (error) {
       setCaseMessage(error instanceof Error ? error.message : "Unable to load case details.");
+    } finally {
+      setCaseBusy(false);
+    }
+  }
+
+  async function loadOnChainGraph(
+    caseId: string,
+    query: { chain: "bitcoin" | "ethereum"; height: string },
+    savedBlockHash?: string,
+  ) {
+    if (!query.height.trim() || !/^\d+$/.test(query.height.trim())) {
+      setCaseMessage("Enter a non-negative block height.");
+      return;
+    }
+    setCaseBusy(true);
+    setCaseMessage("");
+    try {
+      const parameters = new URLSearchParams({
+        chain: query.chain,
+        height: query.height.trim(),
+      });
+      if (savedBlockHash) parameters.set("block_hash", savedBlockHash);
+      const result: unknown = await sendCaseRequest(
+        apiKey,
+        `/api/v1/cases/${encodeURIComponent(caseId)}/onchain-graph?${parameters}`,
+      );
+      if (!isOnChainGraph(result) || result.case_id !== caseId) {
+        throw new Error("The API returned an invalid on-chain graph.");
+      }
+      setOnchainGraphs((previous) => ({ ...previous, [caseId]: result }));
+      setCaseMessage(
+        result.storage.loaded_from_snapshot
+          ? `Loaded saved ${result.chain} block ${result.block_height} for case ${caseId}.`
+          : result.storage.inserted
+            ? `Loaded and saved ${result.chain} block ${result.block_height} for case ${caseId}.`
+            : `Loaded ${result.chain} block ${result.block_height} for case ${caseId}.`,
+      );
+    } catch (error) {
+      setCaseMessage(error instanceof Error ? error.message : "Unable to load on-chain graph.");
+    } finally {
+      setCaseBusy(false);
+    }
+  }
+
+  async function loadOnChainSnapshots(caseId: string) {
+    setCaseBusy(true);
+    setCaseMessage("");
+    try {
+      const result: unknown = await sendCaseRequest(
+        apiKey,
+        `/api/v1/cases/${encodeURIComponent(caseId)}/onchain-blocks?limit=100`,
+      );
+      const rawSnapshots =
+        isRecord(result) && Array.isArray(result.snapshots)
+          ? result.snapshots
+          : null;
+      const snapshots = rawSnapshots?.filter(isOnChainSnapshot) ?? null;
+      if (
+        !isRecord(result) ||
+        rawSnapshots === null ||
+        snapshots === null ||
+        snapshots.length !== rawSnapshots.length
+      ) {
+        throw new Error("The API returned an invalid on-chain snapshot list.");
+      }
+      setOnchainSnapshots((previous) => ({
+        ...previous,
+        [caseId]: snapshots,
+      }));
+      setCaseMessage(`Loaded saved block list for case ${caseId}.`);
+    } catch (error) {
+      setCaseMessage(error instanceof Error ? error.message : "Unable to load saved on-chain snapshots.");
+    } finally {
+      setCaseBusy(false);
+    }
+  }
+
+  async function loadOnChainForensics(caseId: string, height: string) {
+    const normalizedHeight = height.trim();
+    if (!/^\d+$/.test(normalizedHeight)) {
+      setCaseMessage("Enter a non-negative Ethereum block height for forensic logs.");
+      return;
+    }
+    setCaseBusy(true);
+    setCaseMessage("");
+    try {
+      const parameters = new URLSearchParams({ height: normalizedHeight });
+      const result: unknown = await sendCaseRequest(
+        apiKey,
+        `/api/v1/cases/${encodeURIComponent(caseId)}/onchain-forensics?${parameters}`,
+      );
+      if (!isOnChainForensicsResult(result) || result.case_id !== caseId) {
+        throw new Error("The API returned an invalid Ethereum forensics result.");
+      }
+      setOnchainForensics((previous) => ({ ...previous, [caseId]: result }));
+      setCaseMessage(
+        `Loaded ${result.logs.length} Ethereum log(s) and ${result.transfer_observations.length} transfer-shaped observation(s).`,
+      );
+    } catch (error) {
+      setCaseMessage(error instanceof Error ? error.message : "Unable to load Ethereum forensic logs.");
+    } finally {
+      setCaseBusy(false);
+    }
+  }
+
+  async function loadOnChainTrace(caseId: string) {
+    const transactionHash = onchainTraceDrafts[caseId]?.trim() ?? "";
+    if (!/^0x[0-9a-fA-F]{64}$/.test(transactionHash)) {
+      setCaseMessage("Enter a 32-byte Ethereum transaction hash.");
+      return;
+    }
+    setCaseBusy(true);
+    setCaseMessage("");
+    try {
+      const result: unknown = await sendCaseRequest(
+        apiKey,
+        `/api/v1/cases/${encodeURIComponent(caseId)}/onchain-traces/${encodeURIComponent(transactionHash)}`,
+      );
+      if (!isOnChainTraceResult(result) || result.case_id !== caseId) {
+        throw new Error("The API returned an invalid Ethereum trace result.");
+      }
+      setOnchainTraces((previous) => ({ ...previous, [caseId]: result }));
+      setCaseMessage(`Loaded bounded call trace for transaction ${transactionHash}.`);
+    } catch (error) {
+      setCaseMessage(error instanceof Error ? error.message : "Unable to load Ethereum trace.");
+    } finally {
+      setCaseBusy(false);
+    }
+  }
+
+  async function loadRegulatoryChecklist(caseId: string) {
+    setCaseBusy(true);
+    setCaseMessage("");
+    try {
+      const result: unknown = await sendCaseRequest(
+        apiKey,
+        `/api/v1/cases/${encodeURIComponent(caseId)}/aml-mica-checklist`,
+      );
+      if (!isRegulatoryChecklist(result) || result.case_id !== caseId) {
+        throw new Error("The API returned an invalid AML/MiCA checklist.");
+      }
+      setRegulatoryChecklists((previous) => ({ ...previous, [caseId]: result }));
+      setCaseMessage(`Loaded the EU CASP regulatory-review checklist for case ${caseId}.`);
+    } catch (error) {
+      setCaseMessage(error instanceof Error ? error.message : "Unable to load AML/MiCA checklist.");
+    } finally {
+      setCaseBusy(false);
+    }
+  }
+
+  async function updateRegulatoryControl(
+    caseId: string,
+    control: RegulatoryChecklistControl,
+  ) {
+    if (!createdBy.trim()) {
+      setCaseMessage("Enter your analyst name before recording a regulatory review.");
+      return;
+    }
+    const draftKey = `${caseId}:${control.control_id}`;
+    const draft = regulatoryDrafts[draftKey];
+    setCaseBusy(true);
+    setCaseMessage("");
+    try {
+      const result: unknown = await sendCaseRequest(
+        apiKey,
+        `/api/v1/cases/${encodeURIComponent(caseId)}/aml-mica-checklist/${encodeURIComponent(control.control_id)}`,
+        {
+          method: "PATCH",
+          body: JSON.stringify({
+            updated_by: createdBy.trim(),
+            applicability: draft?.applicability ?? control.applicability,
+            review_state: draft?.review_state ?? control.review_state,
+            ...(draft?.summary.trim()
+              ? { summary: draft.summary.trim() }
+              : control.summary
+                ? { summary: control.summary }
+                : {}),
+          }),
+        },
+      );
+      if (!isRegulatoryChecklist(result) || result.case_id !== caseId) {
+        throw new Error("The API returned an invalid AML/MiCA checklist update.");
+      }
+      setRegulatoryChecklists((previous) => ({ ...previous, [caseId]: result }));
+      setCaseMessage(`Saved review metadata for ${control.control_id}; overall status remains NOT ASSESSED.`);
+    } catch (error) {
+      setCaseMessage(error instanceof Error ? error.message : "Unable to update the regulatory checklist.");
+    } finally {
+      setCaseBusy(false);
+    }
+  }
+
+  async function addRegulatoryEvidence(
+    caseId: string,
+    control: RegulatoryChecklistControl,
+  ) {
+    if (!createdBy.trim()) {
+      setCaseMessage("Enter your analyst name before recording evidence.");
+      return;
+    }
+    const draftKey = `${caseId}:${control.control_id}`;
+    const draft = regulatoryDrafts[draftKey];
+    if (
+      !draft?.evidence_source.trim() ||
+      !draft.evidence_reference.trim() ||
+      !/^[0-9a-f]{64}$/.test(draft.evidence_sha256.trim())
+    ) {
+      setCaseMessage("Enter an evidence source, reference, and lowercase SHA-256 digest.");
+      return;
+    }
+    setCaseBusy(true);
+    setCaseMessage("");
+    try {
+      const result: unknown = await sendCaseRequest(
+        apiKey,
+        `/api/v1/cases/${encodeURIComponent(caseId)}/aml-mica-checklist/${encodeURIComponent(control.control_id)}/evidence`,
+        {
+          method: "POST",
+          body: JSON.stringify({
+            source: draft.evidence_source.trim(),
+            reference: draft.evidence_reference.trim(),
+            sha256: draft.evidence_sha256.trim(),
+            recorded_by: createdBy.trim(),
+          }),
+        },
+      );
+      if (!isRegulatoryChecklist(result) || result.case_id !== caseId) {
+        throw new Error("The API returned an invalid AML/MiCA evidence record.");
+      }
+      setRegulatoryChecklists((previous) => ({ ...previous, [caseId]: result }));
+      setRegulatoryDrafts((previous) => ({
+        ...previous,
+        [draftKey]: {
+          ...draft,
+          evidence_source: "",
+          evidence_reference: "",
+          evidence_sha256: "",
+        },
+      }));
+      setCaseMessage("Added an evidence reference; no evidence file was uploaded and compliance remains NOT ASSESSED.");
+    } catch (error) {
+      setCaseMessage(error instanceof Error ? error.message : "Unable to record regulatory evidence.");
+    } finally {
+      setCaseBusy(false);
+    }
+  }
+
+  async function selectOnChainRiskReport(caseId: string, file: File | undefined) {
+    if (!file) {
+      setOnchainRiskReportDrafts((previous) => ({ ...previous, [caseId]: "" }));
+      return;
+    }
+    if (file.size > 1_000_000) {
+      setCaseMessage("Risk report cannot exceed 1 MB.");
+      return;
+    }
+    try {
+      const content = await file.text();
+      setOnchainRiskReportDrafts((previous) => ({ ...previous, [caseId]: content }));
+      setCaseMessage(`Selected provider report ${file.name}; it has not been uploaded.`);
+    } catch (error) {
+      setCaseMessage(error instanceof Error ? error.message : "Unable to read provider report.");
+    }
+  }
+
+  async function importOnChainRiskReport(caseId: string) {
+    const content = onchainRiskReportDrafts[caseId];
+    if (!content) {
+      setCaseMessage("Select a normalized provider report file first.");
+      return;
+    }
+    setCaseBusy(true);
+    setCaseMessage("");
+    try {
+      const result: unknown = await sendCaseRequest(
+        apiKey,
+        `/api/v1/cases/${encodeURIComponent(caseId)}/onchain-risk/import`,
+        {
+          method: "POST",
+          body: JSON.stringify({ content }),
+        },
+      );
+      if (
+        !isRecord(result) ||
+        result.case_id !== caseId ||
+        typeof result.report_sha256 !== "string" ||
+        typeof result.record_count !== "number" ||
+        typeof result.inserted_count !== "number" ||
+        typeof result.duplicate_count !== "number" ||
+        result.raw_report_persisted !== false ||
+        result.status !== "IMPORTED_PROVIDER_REPORTS_UNVERIFIED"
+      ) {
+        throw new Error("The API returned an invalid provider report import result.");
+      }
+      setOnchainRiskReportDrafts((previous) => ({ ...previous, [caseId]: "" }));
+      setCaseMessage(
+        `Imported ${result.inserted_count} provider assessment(s); reload the graph to see matching labels. Report SHA-256 ${result.report_sha256}.`,
+      );
+    } catch (error) {
+      setCaseMessage(error instanceof Error ? error.message : "Unable to import provider report.");
     } finally {
       setCaseBusy(false);
     }
@@ -1289,9 +1963,11 @@ export default function WorkbenchPage() {
             <p className="mt-3 text-lg font-bold text-cyan-300">{value}</p>
           </section>
         ))}
-        <section className="md:col-span-3">
-          <AttackGraphVisualizer />
-          <p className="mt-2 text-xs text-slate-500">No live graph integration is configured by default.</p>
+        <section className="rounded-lg border border-slate-800 bg-slate-900 p-6 md:col-span-3">
+          <h2 className="text-sm font-semibold text-slate-200">On-chain case investigations</h2>
+          <p className="mt-2 text-xs text-slate-400">
+            Query a block from an operator-configured, read-only node inside an authenticated case. Graphs are not retained and show direct RPC observations only.
+          </p>
         </section>
         <section className="mt-4 rounded-lg border border-slate-800 bg-slate-900 p-6 md:col-span-3">
           <div className="flex flex-wrap items-end gap-4">
@@ -1671,6 +2347,458 @@ export default function WorkbenchPage() {
                     >
                       {item.notes !== undefined && item.evidence !== undefined ? "Activity loaded" : "Load notes and evidence"}
                     </button>
+                    <div className="mt-4 rounded border border-cyan-900/60 bg-cyan-950/20 p-3">
+                      <h4 className="font-semibold text-cyan-200">On-chain block graph · read only</h4>
+                      <p className="mt-1 text-slate-400">
+                        Queries only the node configured on the API server. Optional case storage retains normalized blocks and on-chain addresses until the configured retention expires.
+                      </p>
+                      <div className="mt-3 flex flex-wrap gap-2">
+                        <select
+                          aria-label={`On-chain network for ${item.title}`}
+                          value={onchainQueryDrafts[item.case_id]?.chain ?? "bitcoin"}
+                          disabled={caseBusy}
+                          onChange={(event) =>
+                            setOnchainQueryDrafts((previous) => ({
+                              ...previous,
+                              [item.case_id]: {
+                                chain: event.target.value as "bitcoin" | "ethereum",
+                                height: previous[item.case_id]?.height ?? "",
+                              },
+                            }))
+                          }
+                          className="rounded border border-slate-700 bg-slate-900 px-3 py-2 text-slate-100"
+                        >
+                          <option value="bitcoin">Bitcoin</option>
+                          <option value="ethereum">Ethereum</option>
+                        </select>
+                        <input
+                          aria-label={`Block height for ${item.title}`}
+                          inputMode="numeric"
+                          pattern="[0-9]*"
+                          placeholder="Block height"
+                          value={onchainQueryDrafts[item.case_id]?.height ?? ""}
+                          disabled={caseBusy}
+                          onChange={(event) =>
+                            setOnchainQueryDrafts((previous) => ({
+                              ...previous,
+                              [item.case_id]: {
+                                chain: previous[item.case_id]?.chain ?? "bitcoin",
+                                height: event.target.value,
+                              },
+                            }))
+                          }
+                          className="min-w-40 rounded border border-slate-700 bg-slate-900 px-3 py-2 text-slate-100"
+                        />
+                        <button
+                          type="button"
+                          disabled={!apiKey || caseBusy}
+                          onClick={() =>
+                            void loadOnChainGraph(item.case_id, {
+                              chain: onchainQueryDrafts[item.case_id]?.chain ?? "bitcoin",
+                              height: onchainQueryDrafts[item.case_id]?.height ?? "",
+                            })
+                          }
+                          className="rounded border border-cyan-800 px-3 py-2 text-cyan-200 disabled:opacity-50"
+                        >
+                          Load block graph
+                        </button>
+                        <button
+                          type="button"
+                          disabled={!apiKey || caseBusy}
+                          onClick={() => void loadOnChainSnapshots(item.case_id)}
+                          className="rounded border border-slate-700 px-3 py-2 text-slate-200 disabled:opacity-50"
+                        >
+                          Load saved blocks
+                        </button>
+                      </div>
+                      {(onchainSnapshots[item.case_id]?.length ?? 0) > 0 && (
+                        <div className="mt-3 flex flex-wrap gap-2">
+                          <select
+                            aria-label={`Saved on-chain block for ${item.title}`}
+                            value={onchainSnapshotSelections[item.case_id] ?? ""}
+                            disabled={caseBusy}
+                            onChange={(event) =>
+                              setOnchainSnapshotSelections((previous) => ({
+                                ...previous,
+                                [item.case_id]: event.target.value,
+                              }))
+                            }
+                            className="min-w-64 rounded border border-slate-700 bg-slate-900 px-3 py-2 text-slate-100"
+                          >
+                            <option value="">Select a saved block</option>
+                            {onchainSnapshots[item.case_id].map((snapshot) => (
+                              <option key={snapshot.snapshot_id} value={snapshot.snapshot_id}>
+                                {snapshot.chain} #{snapshot.height} · {snapshot.block_hash.slice(0, 16)} · {snapshot.stored_at}
+                              </option>
+                            ))}
+                          </select>
+                          <button
+                            type="button"
+                            disabled={
+                              !apiKey ||
+                              caseBusy ||
+                              !onchainSnapshots[item.case_id].some(
+                                (snapshot) => snapshot.snapshot_id === onchainSnapshotSelections[item.case_id],
+                              )
+                            }
+                            onClick={() => {
+                              const snapshot = onchainSnapshots[item.case_id]?.find(
+                                (candidate) =>
+                                  candidate.snapshot_id === onchainSnapshotSelections[item.case_id],
+                              );
+                              if (snapshot) {
+                                void loadOnChainGraph(
+                                  item.case_id,
+                                  { chain: snapshot.chain, height: String(snapshot.height) },
+                                  snapshot.block_hash,
+                                );
+                              }
+                            }}
+                            className="rounded border border-cyan-800 px-3 py-2 text-cyan-200 disabled:opacity-50"
+                          >
+                            Load saved graph
+                          </button>
+                        </div>
+                      )}
+                      {(onchainQueryDrafts[item.case_id]?.chain ?? "bitcoin") === "ethereum" && (
+                        <>
+                          <div className="mt-3 flex flex-wrap items-end gap-2 rounded border border-violet-900/50 bg-violet-950/10 p-3">
+                            <button
+                              type="button"
+                              disabled={!apiKey || caseBusy || !/^\d+$/.test(onchainQueryDrafts[item.case_id]?.height ?? "")}
+                              onClick={() =>
+                                void loadOnChainForensics(
+                                  item.case_id,
+                                  onchainQueryDrafts[item.case_id]?.height ?? "",
+                                )
+                              }
+                              className="rounded border border-violet-800 px-3 py-2 text-violet-200 disabled:opacity-50"
+                            >
+                              Load block logs &amp; token events
+                            </button>
+                            <label className="min-w-72 flex-1 text-slate-400">
+                              Ethereum transaction hash for call trace
+                              <input
+                                aria-label={`Ethereum transaction hash for ${item.title}`}
+                                placeholder="0x + 64 hex characters"
+                                value={onchainTraceDrafts[item.case_id] ?? ""}
+                                disabled={caseBusy}
+                                onChange={(event) =>
+                                  setOnchainTraceDrafts((previous) => ({
+                                    ...previous,
+                                    [item.case_id]: event.target.value,
+                                  }))
+                                }
+                                className="mt-1 w-full rounded border border-slate-700 bg-slate-900 px-3 py-2 text-slate-100"
+                              />
+                            </label>
+                            <button
+                              type="button"
+                              disabled={
+                                !apiKey ||
+                                caseBusy ||
+                                !/^0x[0-9a-fA-F]{64}$/.test(onchainTraceDrafts[item.case_id] ?? "")
+                              }
+                              onClick={() => void loadOnChainTrace(item.case_id)}
+                              className="rounded border border-violet-800 px-3 py-2 text-violet-200 disabled:opacity-50"
+                            >
+                              Load bounded call trace
+                            </button>
+                          </div>
+                          {onchainForensics[item.case_id] && (
+                            <div className="mt-3 rounded border border-violet-900/50 bg-slate-950 p-3">
+                              <h5 className="font-semibold text-violet-200">
+                                Ethereum block {onchainForensics[item.case_id].block.height} ·{" "}
+                                {onchainForensics[item.case_id].logs.length} logs ·{" "}
+                                {onchainForensics[item.case_id].transfer_observations.length} transfer-shaped events
+                              </h5>
+                              <p className="mt-1 text-amber-200">
+                                Provider observations only. AML / MiCA status: NOT ASSESSED.
+                              </p>
+                              {onchainForensics[item.case_id].transfer_observations.length > 0 && (
+                                <ul className="mt-2 space-y-1 text-slate-300">
+                                  {onchainForensics[item.case_id].transfer_observations.slice(0, 20).map((transfer) => (
+                                    <li key={`${transfer.transaction_hash}-${transfer.log_index}`}>
+                                      <span className="text-violet-200">{transfer.token_contract}</span>
+                                      {" · "}{transfer.from_address} → {transfer.to_address}
+                                      {transfer.value_atomic !== null
+                                        ? ` · base units ${transfer.value_atomic}`
+                                        : ` · token ID ${transfer.token_id ?? "unknown"}`}
+                                      {" · "}{transfer.confidence}
+                                    </li>
+                                  ))}
+                                </ul>
+                              )}
+                              {onchainForensics[item.case_id].provider_assessments.length > 0 && (
+                                <p className="mt-2 text-amber-300">
+                                  Matching imported OSINT labels:{" "}
+                                  {onchainForensics[item.case_id].provider_assessments
+                                    .slice(0, 10)
+                                    .map((assessment) => `${assessment.provider} ${assessment.provider_rating} (unverified)`)
+                                    .join(" · ")}
+                                </p>
+                              )}
+                            </div>
+                          )}
+                          {onchainTraces[item.case_id] && (
+                            <div className="mt-3 rounded border border-violet-900/50 bg-slate-950 p-3">
+                              <h5 className="font-semibold text-violet-200">
+                                Bounded trace · block {onchainTraces[item.case_id].block_height} ·{" "}
+                                {onchainTraces[item.case_id].trace.call_type}
+                              </h5>
+                              <p className="mt-1 break-all text-slate-300">
+                                {onchainTraces[item.case_id].trace.from_address}
+                                {" → "}{onchainTraces[item.case_id].trace.to_address ?? "contract creation"}
+                                {" · value (wei): "}{onchainTraces[item.case_id].trace.value_atomic}
+                                {" · selector: "}{onchainTraces[item.case_id].trace.input_selector ?? "none"}
+                                {" · nested calls: "}{onchainTraces[item.case_id].trace.calls.length}
+                              </p>
+                              <p className="mt-1 text-amber-200">
+                                Provider trace only. AML / MiCA status: NOT ASSESSED.
+                              </p>
+                            </div>
+                          )}
+                        </>
+                      )}
+                      <div className="mt-3 grid gap-2 md:grid-cols-[1fr_auto]">
+                        <label className="text-slate-400">
+                          Import normalized provider report (JSON, up to 1 MB)
+                          <input
+                            aria-label={`Provider risk report for ${item.title}`}
+                            type="file"
+                            accept=".json,application/json"
+                            disabled={caseBusy}
+                            onChange={(event) =>
+                              void selectOnChainRiskReport(
+                                item.case_id,
+                                event.currentTarget.files?.[0],
+                              )
+                            }
+                            className="mt-1 block w-full rounded border border-slate-700 bg-slate-900 px-3 py-2 text-slate-300"
+                          />
+                        </label>
+                        <button
+                          type="button"
+                          disabled={!apiKey || !onchainRiskReportDrafts[item.case_id] || caseBusy}
+                          onClick={() => void importOnChainRiskReport(item.case_id)}
+                          className="self-end rounded border border-amber-800 px-3 py-2 text-amber-200 disabled:opacity-50"
+                        >
+                          Import provider report
+                        </button>
+                      </div>
+                      <p className="mt-2 text-[10px] text-amber-200">
+                        Import stores normalized ratings and a digest, not the raw report. Provider signatures and ratings are not verified; view the report format and limitations in the docs.
+                      </p>
+                      {onchainGraphs[item.case_id] && (
+                        <div className="mt-4">
+                          <p className="mb-2 text-xs text-slate-400">
+                            {onchainGraphs[item.case_id].storage.enabled
+                              ? onchainGraphs[item.case_id].storage.loaded_from_snapshot
+                                ? "Loaded from retained case snapshot."
+                                : onchainGraphs[item.case_id].storage.inserted
+                                  ? `Snapshot retained${onchainGraphs[item.case_id].storage.reorg_fork_preserved ? " · another block hash exists at this height" : ""}.`
+                                  : "Snapshot already retained."
+                              : "Snapshot storage is disabled; this graph is an ephemeral RPC observation."}
+                          </p>
+                          <AttackGraphVisualizer data={onchainGraphs[item.case_id]} />
+                        </div>
+                      )}
+                    </div>
+                    <div className="mt-4 rounded border border-amber-900/60 bg-amber-950/10 p-3">
+                      <div className="flex flex-wrap items-center justify-between gap-3">
+                        <div>
+                          <h4 className="font-semibold text-amber-200">
+                            EU CASP · AML / MiCA review checklist
+                          </h4>
+                          <p className="mt-1 text-slate-400">
+                            Case-scoped review metadata and evidence references only; this is not legal advice or a compliance determination.
+                          </p>
+                        </div>
+                        <button
+                          type="button"
+                          disabled={!apiKey || caseBusy}
+                          onClick={() => void loadRegulatoryChecklist(item.case_id)}
+                          className="rounded border border-amber-800 px-3 py-2 text-amber-200 disabled:opacity-50"
+                        >
+                          {regulatoryChecklists[item.case_id] ? "Reload checklist" : "Load checklist"}
+                        </button>
+                      </div>
+                      {regulatoryChecklists[item.case_id] && (
+                        <div className="mt-3 space-y-3">
+                          <p className="rounded border border-amber-900/50 bg-slate-950 p-2 text-amber-200">
+                            Overall status: NOT ASSESSED · profile version {regulatoryChecklists[item.case_id].profile_version}
+                          </p>
+                          {regulatoryChecklists[item.case_id].controls.map((control) => {
+                            const draftKey = `${item.case_id}:${control.control_id}`;
+                            const draft = regulatoryDrafts[draftKey];
+                            return (
+                              <article
+                                key={control.control_id}
+                                className="rounded border border-slate-800 bg-slate-950 p-3"
+                              >
+                                <div className="flex flex-wrap items-start justify-between gap-2">
+                                  <div>
+                                    <h5 className="font-semibold text-slate-200">
+                                      {control.framework} · {control.title}
+                                    </h5>
+                                    <p className="mt-1 text-slate-400">{control.review_prompt}</p>
+                                    <a
+                                      href={control.source_url}
+                                      target="_blank"
+                                      rel="noreferrer"
+                                      className="mt-1 inline-block text-cyan-300 underline"
+                                    >
+                                      {control.official_reference} · official source
+                                    </a>
+                                  </div>
+                                  <span className="text-amber-200">
+                                    {control.applicability.replaceAll("_", " ")} · {control.review_state.replaceAll("_", " ")}
+                                  </span>
+                                </div>
+                                <div className="mt-3 grid gap-2 md:grid-cols-2">
+                                  <label className="text-slate-400">
+                                    Applicability
+                                    <select
+                                      aria-label={`Applicability for ${control.control_id}`}
+                                      value={draft?.applicability ?? control.applicability}
+                                      disabled={caseBusy}
+                                      onChange={(event) =>
+                                        setRegulatoryDrafts((previous) => ({
+                                          ...previous,
+                                          [draftKey]: {
+                                            applicability: event.target.value as RegulatoryChecklistControl["applicability"],
+                                            review_state: previous[draftKey]?.review_state ?? control.review_state,
+                                            summary: previous[draftKey]?.summary ?? control.summary,
+                                            evidence_source: previous[draftKey]?.evidence_source ?? "",
+                                            evidence_reference: previous[draftKey]?.evidence_reference ?? "",
+                                            evidence_sha256: previous[draftKey]?.evidence_sha256 ?? "",
+                                          },
+                                        }))
+                                      }
+                                      className="mt-1 block w-full rounded border border-slate-700 bg-slate-900 px-3 py-2 text-slate-100"
+                                    >
+                                      <option value="not_assessed">Not assessed</option>
+                                      <option value="in_scope">In scope</option>
+                                      <option value="out_of_scope">Out of scope · rationale required</option>
+                                      <option value="needs_legal_review">Needs legal review</option>
+                                    </select>
+                                  </label>
+                                  <label className="text-slate-400">
+                                    Review state
+                                    <select
+                                      aria-label={`Review state for ${control.control_id}`}
+                                      value={draft?.review_state ?? control.review_state}
+                                      disabled={caseBusy}
+                                      onChange={(event) =>
+                                        setRegulatoryDrafts((previous) => ({
+                                          ...previous,
+                                          [draftKey]: {
+                                            applicability: previous[draftKey]?.applicability ?? control.applicability,
+                                            review_state: event.target.value as RegulatoryChecklistControl["review_state"],
+                                            summary: previous[draftKey]?.summary ?? control.summary,
+                                            evidence_source: previous[draftKey]?.evidence_source ?? "",
+                                            evidence_reference: previous[draftKey]?.evidence_reference ?? "",
+                                            evidence_sha256: previous[draftKey]?.evidence_sha256 ?? "",
+                                          },
+                                        }))
+                                      }
+                                      className="mt-1 block w-full rounded border border-slate-700 bg-slate-900 px-3 py-2 text-slate-100"
+                                    >
+                                      <option value="not_assessed">Not assessed</option>
+                                      <option value="evidence_recorded" disabled={control.evidence.length === 0}>
+                                        Evidence recorded
+                                      </option>
+                                      <option value="needs_review">Needs review</option>
+                                    </select>
+                                  </label>
+                                </div>
+                                <label className="mt-2 block text-slate-400">
+                                  Analyst summary / out-of-scope rationale
+                                  <textarea
+                                    value={draft?.summary ?? control.summary}
+                                    disabled={caseBusy}
+                                    onChange={(event) =>
+                                      setRegulatoryDrafts((previous) => ({
+                                        ...previous,
+                                        [draftKey]: {
+                                          applicability: previous[draftKey]?.applicability ?? control.applicability,
+                                          review_state: previous[draftKey]?.review_state ?? control.review_state,
+                                          summary: event.target.value,
+                                          evidence_source: previous[draftKey]?.evidence_source ?? "",
+                                          evidence_reference: previous[draftKey]?.evidence_reference ?? "",
+                                          evidence_sha256: previous[draftKey]?.evidence_sha256 ?? "",
+                                        },
+                                      }))
+                                    }
+                                    rows={2}
+                                    maxLength={4000}
+                                    className="mt-1 w-full rounded border border-slate-700 bg-slate-900 p-2 text-slate-100"
+                                  />
+                                </label>
+                                <div className="mt-2 flex flex-wrap gap-2">
+                                  <button
+                                    type="button"
+                                    disabled={!apiKey || !createdBy.trim() || caseBusy}
+                                    onClick={() => void updateRegulatoryControl(item.case_id, control)}
+                                    className="rounded border border-amber-800 px-3 py-1.5 text-amber-200 disabled:opacity-50"
+                                  >
+                                    Save review metadata
+                                  </button>
+                                </div>
+                                <div className="mt-3 grid gap-2 md:grid-cols-2">
+                                  {([
+                                    ["evidence_source", "Evidence source"],
+                                    ["evidence_reference", "Evidence reference"],
+                                    ["evidence_sha256", "Evidence SHA-256"],
+                                  ] as const).map(([field, label]) => (
+                                    <label key={field} className="text-slate-400">
+                                      {label}
+                                      <input
+                                        aria-label={`${label} for ${control.control_id}`}
+                                        value={draft?.[field] ?? ""}
+                                        disabled={caseBusy}
+                                        onChange={(event) =>
+                                          setRegulatoryDrafts((previous) => ({
+                                            ...previous,
+                                            [draftKey]: {
+                                              applicability: previous[draftKey]?.applicability ?? control.applicability,
+                                              review_state: previous[draftKey]?.review_state ?? control.review_state,
+                                              summary: previous[draftKey]?.summary ?? control.summary,
+                                              evidence_source: previous[draftKey]?.evidence_source ?? "",
+                                              evidence_reference: previous[draftKey]?.evidence_reference ?? "",
+                                              evidence_sha256: previous[draftKey]?.evidence_sha256 ?? "",
+                                              [field]: event.target.value,
+                                            },
+                                          }))
+                                        }
+                                        className="mt-1 w-full rounded border border-slate-700 bg-slate-900 px-3 py-2 text-slate-100"
+                                      />
+                                    </label>
+                                  ))}
+                                  <button
+                                    type="button"
+                                    disabled={!apiKey || !createdBy.trim() || caseBusy}
+                                    onClick={() => void addRegulatoryEvidence(item.case_id, control)}
+                                    className="self-end rounded border border-cyan-800 px-3 py-2 text-cyan-200 disabled:opacity-50"
+                                  >
+                                    Add evidence reference
+                                  </button>
+                                </div>
+                                {control.evidence.length > 0 && (
+                                  <ul className="mt-3 space-y-1 border-t border-slate-800 pt-2 text-slate-400">
+                                    {control.evidence.slice(-5).map((entry) => (
+                                      <li key={entry.evidence_id} className="break-all">
+                                        {entry.source} · {entry.reference} · SHA-256 {entry.sha256} · {entry.recorded_by}
+                                      </li>
+                                    ))}
+                                  </ul>
+                                )}
+                              </article>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
                     <div className="mt-4 rounded border border-amber-900/60 bg-amber-950/20 p-3">
                       <div className="flex flex-wrap items-center justify-between gap-3">
                         <div>

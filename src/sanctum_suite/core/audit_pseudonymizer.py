@@ -35,6 +35,7 @@ class AuditPseudonymizer:
             "tenant": 128,
             "source_event_id": 256,
             "correlation_token": 64,
+            "onchain_address": 256,
         }
         max_length = max_lengths.get(namespace)
         if max_length is None:

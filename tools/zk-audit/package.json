@@ -5,7 +5,9 @@
   "scripts": {
     "compile": "node scripts/compile.mjs production",
     "compile:test": "node scripts/compile.mjs test",
-    "test": "npm run compile:test && node tests/policy-smoke.mjs"
+    "compile:risk": "node scripts/compile.mjs risk-production",
+    "compile:risk:test": "node scripts/compile.mjs risk-test",
+    "test": "npm run compile:test && npm run compile:risk:test && node tests/policy-smoke.mjs && node tests/risk-policy-smoke.mjs"
   },
   "dependencies": {
     "circomlib": "2.0.5",

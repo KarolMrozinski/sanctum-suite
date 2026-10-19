@@ -32,6 +32,28 @@ from sanctum_suite.core.control_catalog import (
     EvidenceInput,
 )
 from sanctum_suite.core.incident_cases import IncidentCaseStore
+from sanctum_suite.core.onchain import (
+    BitcoinCoreClient,
+    ChainName,
+    EthereumJsonRpcClient,
+    OnChainProviderError,
+)
+from sanctum_suite.core.onchain_graph import OnChainGraphBuilder, OnChainGraphTooLarge
+from sanctum_suite.core.onchain_risk import (
+    OnChainRiskImportFile,
+    OnChainRiskResultTooLarge,
+    OnChainRiskStore,
+)
+from sanctum_suite.core.onchain_store import (
+    MAX_SNAPSHOTS_PER_CASE,
+    OnChainBlockStore,
+    OnChainStoreCapacityError,
+)
+from sanctum_suite.core.regulatory_case_checklist import (
+    Applicability,
+    RegulatoryCaseChecklistStore,
+    ReviewState,
+)
 from sanctum_suite.core.incident_governance import IncidentGovernanceStore
 from sanctum_suite.core.audit_pseudonymizer import (
     AuditPseudonymizationConfigurationError,
@@ -87,6 +109,7 @@ app = FastAPI(
     version="6.0.0",
 )
 _LOGGER = logging.getLogger(__name__)
+onchain_graph_builder = OnChainGraphBuilder()
 
 
 @app.exception_handler(RequestValidationError)
@@ -94,7 +117,11 @@ async def sanitized_request_validation_error(
     request: Request,
     error: RequestValidationError,
 ) -> JSONResponse:
-    if not request.url.path.startswith("/api/v1/telemetry"):
+    if not (
+        request.url.path.startswith("/api/v1/telemetry")
+        or request.url.path.endswith("/onchain-risk/import")
+        or "/aml-mica-checklist" in request.url.path
+    ):
         return await request_validation_exception_handler(request, error)
     return JSONResponse(
         status_code=422,
@@ -897,11 +924,17 @@ audit_pseudonymizer: AuditPseudonymizer | None = None
 security_report_signer: SecurityReportSigner | None = None
 incident_playbook_store: IncidentPlaybookStore | None = None
 telemetry_event_store: TelemetryEventStore | None = None
+onchain_risk_store: OnChainRiskStore | None = None
 _tenant_control_catalogs: Dict[str, ControlCatalog] = {}
 _tenant_case_stores: Dict[str, IncidentCaseStore] = {}
 _tenant_governance_stores: Dict[str, IncidentGovernanceStore] = {}
 _tenant_playbook_stores: Dict[str, IncidentPlaybookStore] = {}
 _tenant_telemetry_stores: Dict[str, TelemetryEventStore] = {}
+_tenant_onchain_risk_stores: Dict[str, OnChainRiskStore] = {}
+onchain_block_store: OnChainBlockStore | None = None
+_tenant_onchain_block_stores: Dict[str, OnChainBlockStore] = {}
+regulatory_case_checklist_store: RegulatoryCaseChecklistStore | None = None
+_tenant_regulatory_case_checklist_stores: Dict[str, RegulatoryCaseChecklistStore] = {}
 xdr_correlator = RealtimeXdrMeshCorrelator()
 purple_team_coordinator = PurpleTeamEmulationCoordinator()
 synthetic_incident_lab = SyntheticIncidentLab(xdr_correlator)
@@ -938,6 +971,133 @@ def get_incident_case_store() -> IncidentCaseStore:
             os.environ.get("SANCTUM_CASES_DB", str(default_cases_db))
         )
     return incident_case_store
+
+
+def get_regulatory_case_checklist_store() -> RegulatoryCaseChecklistStore:
+    global regulatory_case_checklist_store
+    case_store = get_incident_case_store()
+    tenant_path = tenant_database_path("cases")
+    if tenant_path is not None:
+        key = str(tenant_path)
+        if key not in _tenant_regulatory_case_checklist_stores:
+            _tenant_regulatory_case_checklist_stores[key] = RegulatoryCaseChecklistStore(
+                tenant_path
+            )
+        return _tenant_regulatory_case_checklist_stores[key]
+    if (
+        regulatory_case_checklist_store is None
+        or regulatory_case_checklist_store.db_path != case_store.db_path
+    ):
+        regulatory_case_checklist_store = RegulatoryCaseChecklistStore(
+            case_store.db_path
+        )
+    return regulatory_case_checklist_store
+
+
+def get_onchain_rpc_client(chain: ChainName) -> BitcoinCoreClient | EthereumJsonRpcClient:
+    if chain is ChainName.BITCOIN:
+        endpoint = os.environ.get("SANCTUM_BITCOIN_RPC_URL", "").strip()
+        username = os.environ.get("SANCTUM_BITCOIN_RPC_USERNAME")
+        password = os.environ.get("SANCTUM_BITCOIN_RPC_PASSWORD")
+        if not endpoint:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="Bitcoin Core RPC is not configured",
+            )
+        try:
+            return BitcoinCoreClient(
+                endpoint,
+                username=username,
+                password=password,
+            )
+        except ValueError as error:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="Bitcoin Core RPC configuration is invalid",
+            ) from error
+
+    endpoint = os.environ.get("SANCTUM_ETHEREUM_RPC_URL", "").strip()
+    if not endpoint:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Ethereum JSON-RPC is not configured",
+        )
+    try:
+        return EthereumJsonRpcClient(endpoint)
+    except ValueError as error:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Ethereum JSON-RPC configuration is invalid",
+        ) from error
+
+
+def get_onchain_risk_store() -> OnChainRiskStore:
+    global onchain_risk_store
+    case_store = get_incident_case_store()
+    db_path = str(case_store.db_path)
+    pseudonymize = (
+        get_audit_pseudonymizer().pseudonymize
+        if production_environment()
+        else None
+    )
+    tenant_path = tenant_database_path("cases")
+    if tenant_path is not None:
+        key = str(tenant_path)
+        if key not in _tenant_onchain_risk_stores:
+            _tenant_onchain_risk_stores[key] = OnChainRiskStore(
+                tenant_path,
+                pseudonymize=pseudonymize,
+            )
+        return _tenant_onchain_risk_stores[key]
+    if onchain_risk_store is None or onchain_risk_store.db_path != db_path:
+        onchain_risk_store = OnChainRiskStore(
+            db_path,
+            pseudonymize=pseudonymize,
+        )
+    return onchain_risk_store
+
+
+def get_onchain_block_store() -> OnChainBlockStore | None:
+    global onchain_block_store
+    enabled = os.environ.get("SANCTUM_ONCHAIN_STORAGE_ENABLED", "").strip().lower()
+    if enabled not in {"", "true", "false"}:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="SANCTUM_ONCHAIN_STORAGE_ENABLED must be true or false",
+        )
+    if enabled != "true":
+        return None
+    raw_retention_days = os.environ.get("SANCTUM_ONCHAIN_RETENTION_DAYS", "").strip()
+    try:
+        retention_days = int(raw_retention_days)
+        if not 1 <= retention_days <= 36_500:
+            raise ValueError
+    except ValueError as error:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Configure SANCTUM_ONCHAIN_RETENTION_DAYS from 1 to 36500 before enabling on-chain storage",
+        ) from error
+
+    case_store = get_incident_case_store()
+    database_path = str(case_store.db_path)
+    tenant_path = tenant_database_path("cases")
+    if tenant_path is not None:
+        key = str(tenant_path)
+        store = _tenant_onchain_block_stores.get(key)
+        if store is None or store.retention_days != retention_days:
+            store = OnChainBlockStore(tenant_path, retention_days=retention_days)
+            _tenant_onchain_block_stores[key] = store
+        return store
+    if (
+        onchain_block_store is None
+        or onchain_block_store.db_path != database_path
+        or onchain_block_store.retention_days != retention_days
+    ):
+        onchain_block_store = OnChainBlockStore(
+            database_path,
+            retention_days=retention_days,
+        )
+    return onchain_block_store
 
 
 def get_incident_playbook_store() -> IncidentPlaybookStore:
@@ -981,6 +1141,33 @@ class ControlAssessmentRequest(BaseModel):
     summary: str = Field(min_length=1, max_length=4_000)
     assessed_by: str = Field(min_length=1, max_length=200)
     evidence: List[EvidenceRequest] = Field(default_factory=list, max_length=20)
+
+
+class RegulatoryCaseControlUpdateRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    updated_by: str = Field(min_length=1, max_length=200)
+    applicability: Applicability | None = None
+    review_state: ReviewState | None = None
+    summary: str | None = Field(default=None, min_length=1, max_length=4_000)
+
+    @model_validator(mode="after")
+    def validate_update(self) -> RegulatoryCaseControlUpdateRequest:
+        if self.applicability is None and self.review_state is None and self.summary is None:
+            raise ValueError("At least one review field must be provided")
+        if self.applicability == "out_of_scope" and self.summary is None:
+            raise ValueError("Out-of-scope controls require a recorded rationale")
+        return self
+
+
+class RegulatoryCaseEvidenceRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    source: str = Field(min_length=1, max_length=100)
+    reference: str = Field(min_length=1, max_length=2_048)
+    sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+    recorded_by: str = Field(min_length=1, max_length=200)
+
 
 class SecurityEvent(BaseModel):
     model_config = ConfigDict(extra="forbid")
@@ -1066,6 +1253,13 @@ class TelemetryImportRequest(BaseModel):
     @classmethod
     def validate_source_name(cls, value: str) -> str:
         return validate_source_id(value)
+
+
+class OnChainRiskImportRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    content: str = Field(min_length=1, max_length=1_000_000)
+
 
 class CaseTimelineEvent(BaseModel):
     model_config = ConfigDict(extra="forbid")
@@ -1686,6 +1880,358 @@ async def get_incident_case(case_id: str) -> Dict[str, Any]:
     if case is None:
         raise HTTPException(status_code=404, detail="Incident case not found")
     return case
+
+
+@app.get(
+    "/api/v1/cases/{case_id}/aml-mica-checklist",
+    dependencies=[Security(verify_api_key)],
+)
+async def get_case_aml_mica_checklist(case_id: str) -> Dict[str, Any]:
+    if get_incident_case_store().get_case(case_id) is None:
+        raise HTTPException(status_code=404, detail="Incident case not found")
+    return get_regulatory_case_checklist_store().get_checklist(case_id)
+
+
+@app.patch(
+    "/api/v1/cases/{case_id}/aml-mica-checklist/{control_id}",
+    dependencies=[Security(verify_api_key)],
+)
+async def update_case_aml_mica_control(
+    case_id: str,
+    control_id: str,
+    payload: RegulatoryCaseControlUpdateRequest,
+) -> Dict[str, Any]:
+    if get_incident_case_store().get_case(case_id) is None:
+        raise HTTPException(status_code=404, detail="Incident case not found")
+    try:
+        return get_regulatory_case_checklist_store().update_control(
+            case_id,
+            control_id,
+            updated_by=_authenticated_actor_label(payload.updated_by),
+            applicability=payload.applicability,
+            review_state=payload.review_state,
+            summary=payload.summary,
+        )
+    except ValueError as error:
+        if str(error).startswith("Unknown regulatory control:"):
+            raise HTTPException(status_code=404, detail=str(error)) from error
+        raise HTTPException(status_code=422, detail=str(error)) from error
+
+
+@app.post(
+    "/api/v1/cases/{case_id}/aml-mica-checklist/{control_id}/evidence",
+    status_code=status.HTTP_201_CREATED,
+    dependencies=[Security(verify_api_key)],
+)
+async def add_case_aml_mica_evidence(
+    case_id: str,
+    control_id: str,
+    payload: RegulatoryCaseEvidenceRequest,
+) -> Dict[str, Any]:
+    if get_incident_case_store().get_case(case_id) is None:
+        raise HTTPException(status_code=404, detail="Incident case not found")
+    try:
+        return get_regulatory_case_checklist_store().add_evidence(
+            case_id,
+            control_id,
+            source=payload.source,
+            reference=payload.reference,
+            sha256=payload.sha256,
+            recorded_by=_authenticated_actor_label(payload.recorded_by),
+        )
+    except ValueError as error:
+        if str(error).startswith("Unknown regulatory control:"):
+            raise HTTPException(status_code=404, detail=str(error)) from error
+        raise HTTPException(status_code=422, detail=str(error)) from error
+
+
+@app.get(
+    "/api/v1/cases/{case_id}/onchain-graph",
+    dependencies=[Security(verify_api_key)],
+)
+async def get_case_onchain_graph(
+    case_id: str,
+    chain: ChainName = Query(...),
+    height: int = Query(..., ge=0, le=2**64 - 1),
+    block_hash: str | None = Query(default=None, min_length=1, max_length=128),
+) -> Dict[str, Any]:
+    case = get_incident_case_store().get_case(case_id)
+    if case is None:
+        raise HTTPException(status_code=404, detail="Incident case not found")
+    try:
+        store = get_onchain_block_store()
+        if block_hash is not None:
+            if store is None:
+                raise HTTPException(
+                    status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                    detail="On-chain snapshot storage is not enabled",
+                )
+            block = await run_in_threadpool(
+                store.get_block,
+                case_id,
+                chain,
+                height,
+                block_hash,
+            )
+            if block is None:
+                raise HTTPException(status_code=404, detail="Saved on-chain snapshot not found")
+            storage_result: Dict[str, Any] = {
+                "enabled": True,
+                "snapshot_id": None,
+                "inserted": False,
+                "reorg_fork_preserved": False,
+                "loaded_from_snapshot": True,
+            }
+        else:
+            client = get_onchain_rpc_client(chain)
+            block = await client.get_block(height)
+            if store is None:
+                storage_result = {
+                    "enabled": False,
+                    "snapshot_id": None,
+                    "inserted": False,
+                    "reorg_fork_preserved": False,
+                    "loaded_from_snapshot": False,
+                }
+            else:
+                storage_result = await run_in_threadpool(
+                    store.store_block,
+                    case_id,
+                    block,
+                )
+                storage_result["loaded_from_snapshot"] = False
+        addresses = [
+            address
+            for transaction in block.transactions
+            for address in [
+                *[item.address for item in transaction.inputs],
+                *[item.address for item in transaction.outputs],
+            ]
+            if address is not None
+        ]
+        assessments = await run_in_threadpool(
+            get_onchain_risk_store().list_for_addresses,
+            case_id,
+            chain,
+            addresses,
+        )
+        graph = onchain_graph_builder.build(
+            block,
+            case_id=case_id,
+            risk_assessments=assessments,
+        )
+        graph["storage"] = storage_result
+        return graph
+    except OnChainStoreCapacityError as error:
+        raise HTTPException(status_code=413, detail=str(error)) from error
+    except OnChainGraphTooLarge as error:
+        raise HTTPException(status_code=413, detail=str(error)) from error
+    except OnChainRiskResultTooLarge as error:
+        raise HTTPException(status_code=413, detail=str(error)) from error
+    except HTTPException:
+        raise
+    except OnChainProviderError as error:
+        _LOGGER.warning(
+            "On-chain RPC request failed for %s block %s (%s)",
+            chain.value,
+            height,
+            type(error).__name__,
+        )
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="Configured blockchain RPC provider could not return a valid block",
+        ) from error
+
+
+@app.get(
+    "/api/v1/cases/{case_id}/onchain-forensics",
+    dependencies=[Security(verify_api_key)],
+)
+async def get_case_ethereum_forensics(
+    case_id: str,
+    height: int = Query(..., ge=0, le=2**64 - 1),
+) -> Dict[str, Any]:
+    if get_incident_case_store().get_case(case_id) is None:
+        raise HTTPException(status_code=404, detail="Incident case not found")
+    try:
+        client = get_onchain_rpc_client(ChainName.ETHEREUM)
+        block, logs, transfers = await client.get_block_logs(height)
+        addresses = sorted(
+            {
+                address
+                for transfer in transfers
+                for address in (transfer.from_address, transfer.to_address)
+            }
+        )
+        provider_assessments = await run_in_threadpool(
+            get_onchain_risk_store().list_for_addresses,
+            case_id,
+            ChainName.ETHEREUM,
+            addresses,
+        )
+        store = get_onchain_block_store()
+        storage = (
+            await run_in_threadpool(store.store_block, case_id, block)
+            if store is not None
+            else {"enabled": False, "inserted": False}
+        )
+        return {
+            "case_id": case_id,
+            "chain": ChainName.ETHEREUM.value,
+            "block": {
+                "height": block.height,
+                "block_hash": block.block_hash,
+                "parent_hash": block.parent_hash,
+                "timestamp": block.timestamp.isoformat(),
+                "source": block.source,
+                "observed_at": block.fetched_at.isoformat(),
+            },
+            "logs": [item.model_dump(mode="json") for item in logs],
+            "transfer_observations": [
+                {
+                    **item.model_dump(mode="json"),
+                    "value_atomic": (
+                        str(item.value_atomic)
+                        if item.value_atomic is not None
+                        else None
+                    ),
+                    "token_id": str(item.token_id) if item.token_id is not None else None,
+                }
+                for item in transfers
+            ],
+            "provider_assessments": provider_assessments,
+            "storage": storage,
+            "regulatory_assessment": {
+                "status": "NOT_ASSESSED",
+                "frameworks": ["AML", "MiCA"],
+                "reason": "On-chain observations and provider labels do not determine legal or regulatory compliance.",
+            },
+            "limitations": [
+                "Logs are provider-returned observations tied to this block hash, not independently verified chain proofs.",
+                "A Transfer-shaped event is not token metadata, an entity attribution, or an AML conclusion.",
+                "The same event signature can be emitted by contracts that do not implement ERC-20 or ERC-721.",
+                "Logs are returned for the requested block only; they are not retained in the block snapshot.",
+                "No compliance with AML requirements or MiCA obligations is inferred.",
+            ],
+        }
+    except OnChainStoreCapacityError as error:
+        raise HTTPException(status_code=413, detail=str(error)) from error
+    except OnChainRiskResultTooLarge as error:
+        raise HTTPException(status_code=413, detail=str(error)) from error
+    except OnChainProviderError as error:
+        _LOGGER.warning(
+            "Ethereum forensic query failed for block %s (%s)",
+            height,
+            type(error).__name__,
+        )
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="Configured Ethereum node could not return valid forensic evidence",
+        ) from error
+
+
+@app.get(
+    "/api/v1/cases/{case_id}/onchain-traces/{transaction_hash}",
+    dependencies=[Security(verify_api_key)],
+)
+async def get_case_ethereum_transaction_trace(
+    case_id: str,
+    transaction_hash: str,
+) -> Dict[str, Any]:
+    if get_incident_case_store().get_case(case_id) is None:
+        raise HTTPException(status_code=404, detail="Incident case not found")
+    if re.fullmatch(r"0x[0-9a-fA-F]{64}", transaction_hash) is None:
+        raise HTTPException(
+            status_code=422,
+            detail="transaction_hash must be a 32-byte EVM hash",
+        )
+    try:
+        client = get_onchain_rpc_client(ChainName.ETHEREUM)
+        result = await client.trace_transaction(transaction_hash)
+        return {
+            "case_id": case_id,
+            **result,
+            "regulatory_assessment": {
+                "status": "NOT_ASSESSED",
+                "frameworks": ["AML", "MiCA"],
+                "reason": "A node trace does not determine legal or regulatory compliance.",
+            },
+        }
+    except OnChainProviderError as error:
+        _LOGGER.warning(
+            "Ethereum trace query failed for transaction %s (%s)",
+            transaction_hash[:10],
+            type(error).__name__,
+        )
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="Configured Ethereum node could not return a valid transaction trace",
+        ) from error
+
+
+@app.get(
+    "/api/v1/cases/{case_id}/onchain-blocks",
+    dependencies=[Security(verify_api_key)],
+)
+async def list_case_onchain_snapshots(
+    case_id: str,
+    chain: ChainName | None = Query(default=None),
+    limit: int = Query(default=100, ge=1, le=500),
+    offset: int = Query(default=0, ge=0, le=MAX_SNAPSHOTS_PER_CASE),
+) -> Dict[str, Any]:
+    if get_incident_case_store().get_case(case_id) is None:
+        raise HTTPException(status_code=404, detail="Incident case not found")
+    store = get_onchain_block_store()
+    if store is None:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="On-chain snapshot storage is not enabled",
+        )
+    try:
+        return await run_in_threadpool(
+            store.list_snapshots,
+            case_id,
+            chain=chain,
+            limit=limit,
+            offset=offset,
+        )
+    except ValueError as error:
+        raise HTTPException(status_code=422, detail=str(error)) from error
+
+
+@app.post(
+    "/api/v1/cases/{case_id}/onchain-risk/import",
+    status_code=status.HTTP_201_CREATED,
+    dependencies=[Security(verify_api_key)],
+)
+async def import_case_onchain_risk_report(
+    case_id: str,
+    payload: OnChainRiskImportRequest,
+) -> Dict[str, Any]:
+    if get_incident_case_store().get_case(case_id) is None:
+        raise HTTPException(status_code=404, detail="Incident case not found")
+    try:
+        report, report_sha256 = OnChainRiskImportFile.parse_content(payload.content)
+        result = await run_in_threadpool(
+            get_onchain_risk_store().import_report,
+            case_id,
+            report,
+            report_sha256=report_sha256,
+        )
+    except ValueError as error:
+        raise HTTPException(
+            status_code=422,
+            detail="Risk report is invalid; verify it matches the documented import schema",
+        ) from error
+    return {
+        **result,
+        "status": "IMPORTED_PROVIDER_REPORTS_UNVERIFIED",
+        "raw_report_persisted": False,
+        "limitations": [
+            "The report is operator-supplied; Sanctum Suite does not authenticate the external provider or verify the provider's signature.",
+            "Imported ratings retain their provider meaning and are not combined into a Sanctum risk score.",
+        ],
+    }
 
 
 @app.post(
