@@ -6,7 +6,7 @@ import hashlib
 import re
 import sqlite3
 import uuid
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
@@ -14,6 +14,7 @@ from typing import Any
 
 _SOURCE_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$")
 _CORRELATION_TOKEN = re.compile(r"^[0-9a-f]{64}$")
+_EVENT_LABEL = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$")
 
 
 def _utc_now() -> datetime:
@@ -40,11 +41,25 @@ def validate_source_id(source_id: str) -> str:
     return source_id
 
 
+def validate_event_label(value: str) -> str:
+    if not isinstance(value, str) or not _EVENT_LABEL.fullmatch(value):
+        raise ValueError(
+            "telemetry labels must be structured identifiers without free text"
+        )
+    return value
+
+
 class TelemetryEventStore:
     """Stores normalized fields only; raw payloads and external IDs are not retained."""
 
-    def __init__(self, db_path: str | Path = "sanctum_cases.db") -> None:
+    def __init__(
+        self,
+        db_path: str | Path = "sanctum_cases.db",
+        *,
+        pseudonymize: Callable[[str, str], str] | None = None,
+    ) -> None:
         self.db_path = str(Path(db_path).expanduser())
+        self._pseudonymize = pseudonymize
         self._initialize()
 
     def _connect(self) -> sqlite3.Connection:
@@ -116,13 +131,24 @@ class TelemetryEventStore:
                 "ON telemetry_ingestion_batches(source_id, received_at DESC)"
             )
 
-    @staticmethod
-    def correlation_digest(token: str | None) -> str | None:
+    def _digest_identifier(self, namespace: str, value: str) -> str:
+        digest = (
+            self._pseudonymize(namespace, value)
+            if self._pseudonymize is not None
+            else hashlib.sha256(value.encode("utf-8")).hexdigest()
+        )
+        if not isinstance(digest, str) or not re.fullmatch(r"[0-9a-f]{64}", digest):
+            raise ValueError(
+                "pseudonymizer must return a lowercase SHA-256-sized hex value"
+            )
+        return digest
+
+    def correlation_digest(self, token: str | None) -> str | None:
         if token is None:
             return None
         if not _CORRELATION_TOKEN.fullmatch(token):
             raise ValueError("correlation_token must be a lowercase 64-character hex token")
-        return hashlib.sha256(token.encode("ascii")).hexdigest()
+        return self._digest_identifier("correlation_token", token)
 
     def ingest(
         self,
@@ -146,11 +172,12 @@ class TelemetryEventStore:
                 or not source_event_id.strip()
                 or len(source_event_id) > 256
                 or not isinstance(event_type, str)
-                or not event_type.strip()
+                or not event_type
                 or len(event_type) > 128
                 or not isinstance(observed_at, str)
             ):
                 raise ValueError("events require source_event_id, event_type, and observed_at")
+            validate_event_label(event_type)
             if severity is not None and severity not in {
                 "CRITICAL",
                 "HIGH",
@@ -165,29 +192,37 @@ class TelemetryEventStore:
                 )
             if detection_scenario_id is not None and (
                 not isinstance(detection_scenario_id, str)
-                or not detection_scenario_id.strip()
+                or not detection_scenario_id
                 or len(detection_scenario_id) > 128
                 or not isinstance(detection_rule_id, str)
-                or not detection_rule_id.strip()
+                or not detection_rule_id
                 or len(detection_rule_id) > 128
             ):
                 raise ValueError("detection identifiers must contain 1 to 128 characters")
+            if detection_scenario_id is not None:
+                validate_event_label(detection_scenario_id)
+                validate_event_label(detection_rule_id)
             normalized_events.append(
                 {
                     "event_id": str(uuid.uuid4()),
-                    "source_event_id_sha256": hashlib.sha256(
-                        source_event_id.encode("utf-8")
-                    ).hexdigest(),
-                    "event_type": event_type.strip(),
+                    "source_event_id_sha256": self._digest_identifier(
+                        "source_event_id", source_event_id
+                    ),
+                    "legacy_source_event_id_sha256": (
+                        hashlib.sha256(source_event_id.encode("utf-8")).hexdigest()
+                        if self._pseudonymize is not None
+                        else None
+                    ),
+                    "event_type": event_type,
                     "observed_at": normalize_timestamp(observed_at),
                     "reported_severity": severity,
                     "detection_scenario_id": (
-                        detection_scenario_id.strip()
+                        detection_scenario_id
                         if detection_scenario_id is not None
                         else None
                     ),
                     "detection_rule_id": (
-                        detection_rule_id.strip() if detection_rule_id is not None else None
+                        detection_rule_id if detection_rule_id is not None else None
                     ),
                     "correlation_token_sha256": self.correlation_digest(correlation_token),
                 }
@@ -207,6 +242,39 @@ class TelemetryEventStore:
                 (batch_id, source_id, len(events), received_at),
             )
             for event in normalized_events:
+                legacy_digest = event["legacy_source_event_id_sha256"]
+                if legacy_digest is not None:
+                    # Raw IDs were discarded, so upgrade legacy hashes only on replay.
+                    legacy_row = connection.execute(
+                        """
+                        SELECT event_id FROM normalized_telemetry_events
+                        WHERE source_id = ? AND source_event_id_sha256 = ?
+                        """,
+                        (source_id, legacy_digest),
+                    ).fetchone()
+                    if legacy_row is not None:
+                        keyed_row = connection.execute(
+                            """
+                            SELECT event_id FROM normalized_telemetry_events
+                            WHERE source_id = ? AND source_event_id_sha256 = ?
+                            """,
+                            (source_id, event["source_event_id_sha256"]),
+                        ).fetchone()
+                        if keyed_row is None:
+                            connection.execute(
+                                """
+                                UPDATE normalized_telemetry_events
+                                SET source_event_id_sha256 = ?,
+                                    correlation_token_sha256 = ?
+                                WHERE event_id = ?
+                                """,
+                                (
+                                    event["source_event_id_sha256"],
+                                    event["correlation_token_sha256"],
+                                    legacy_row["event_id"],
+                                ),
+                            )
+                        continue
                 cursor = connection.execute(
                     """
                     INSERT OR IGNORE INTO normalized_telemetry_events (

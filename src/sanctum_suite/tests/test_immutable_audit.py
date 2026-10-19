@@ -1,4 +1,5 @@
 import hashlib
+import io
 import json
 import asyncio
 from types import SimpleNamespace
@@ -13,6 +14,7 @@ from sanctum_suite.core.immutable_audit import (
     ImmutableAuditError,
     MinioImmutableAuditStore,
 )
+from sanctum_suite.core.audit_chain import canonical_json
 from sanctum_suite.core.incident_cases import IncidentCaseStore
 from sanctum_suite.core.incident_governance import IncidentGovernanceStore
 from sanctum_suite.core.audit_pseudonymizer import (
@@ -42,6 +44,66 @@ class FakeObjectLockClient:
         self.put_arguments.append(kwargs)
         self.retain_until = kwargs["ObjectLockRetainUntilDate"]
         return {"VersionId": "version-1"}
+
+    def get_object_retention(self, **_kwargs):
+        return {
+            "Retention": {
+                "Mode": "COMPLIANCE",
+                "RetainUntilDate": self.retain_until,
+            }
+        }
+
+
+class FakeVersionedAuditClient(FakeObjectLockClient):
+    def __init__(self, records, *, page_size=1):
+        super().__init__()
+        self.records = records
+        self.page_size = page_size
+
+    def list_object_versions(
+        self,
+        *,
+        Prefix,
+        KeyMarker=None,
+        VersionIdMarker=None,
+        MaxKeys,
+        **_kwargs,
+    ):
+        versions = [
+            {"Key": key, "VersionId": version_id}
+            for key, version_id, _body in sorted(self.records)
+            if key.startswith(Prefix)
+        ]
+        offset = 0
+        if KeyMarker is not None:
+            offset = next(
+                index
+                for index, version in enumerate(versions)
+                if (version["Key"], version["VersionId"])
+                == (KeyMarker, VersionIdMarker)
+            ) + 1
+        page_size = min(self.page_size, MaxKeys)
+        page = versions[offset : offset + page_size]
+        truncated = offset + page_size < len(versions)
+        response = {"Versions": page, "IsTruncated": truncated}
+        if truncated:
+            response["NextKeyMarker"] = page[-1]["Key"]
+            response["NextVersionIdMarker"] = page[-1]["VersionId"]
+        return response
+
+    def get_object(self, *, Key, VersionId, **_kwargs):
+        body = next(
+            body
+            for key, version_id, body in self.records
+            if key == Key and version_id == VersionId
+        )
+        self.retain_until = datetime.now(timezone.utc).replace(
+            year=datetime.now(timezone.utc).year + 7
+        )
+        return {
+            "Body": io.BytesIO(body),
+            "Metadata": {"sha256": hashlib.sha256(body).hexdigest()},
+        }
 
     def get_object_retention(self, **_kwargs):
         return {
@@ -127,9 +189,12 @@ def test_audit_pseudonymizer_uses_keyed_namespace_separated_values(
 
     subject = pseudonymizer.pseudonymize("subject", "alice")
     tenant = pseudonymizer.pseudonymize("tenant", "alice")
+    source_event = pseudonymizer.pseudonymize("source_event_id", "alice")
+    correlation = pseudonymizer.pseudonymize("correlation_token", "alice")
 
     assert subject == pseudonymizer.pseudonymize("subject", "alice")
     assert subject != tenant
+    assert len({subject, tenant, source_event, correlation}) == 4
     assert len(subject) == 64
     assert subject != hashlib.sha256(b"alice").hexdigest()
 
@@ -237,6 +302,107 @@ def test_minio_rejects_unverified_object_retention(monkeypatch):
                 "event_type": "request_started",
             }
         )
+
+
+def test_minio_reads_all_pinned_versions_and_checks_retention(monkeypatch):
+    _configure_minio(monkeypatch)
+    first_id = "b2b5fb01-e42c-4ea5-9d97-07d2d4737932"
+    second_id = "f6c68b80-6077-45d3-b7c1-2035244cc200"
+    first_key = f"api-access/2026/10/19/{first_id}.json"
+    second_key = f"api-access/2026/10/19/{second_id}.json"
+    first_body = canonical_json(
+        {
+            "event_id": first_id,
+            "event_type": "request_started",
+            "occurred_at": "2026-10-19T10:00:00+00:00",
+        }
+    )
+    second_body = canonical_json(
+        {
+            "event_id": second_id,
+            "event_type": "request_completed",
+            "occurred_at": "2026-10-19T10:01:00+00:00",
+        }
+    )
+    client = FakeVersionedAuditClient(
+        [
+            (second_key, "version-2", second_body),
+            (first_key, "version-1", first_body),
+        ]
+    )
+    store = MinioImmutableAuditStore(client=client)
+
+    records = store.read_audit_records()
+
+    assert [(record["key"], record["version_id"]) for record in records] == [
+        (first_key, "version-1"),
+        (second_key, "version-2"),
+    ]
+    assert records[0]["body"] == first_body
+
+
+def test_minio_audit_export_rejects_delete_markers(monkeypatch):
+    _configure_minio(monkeypatch)
+
+    class DeletedAuditClient(FakeVersionedAuditClient):
+        def list_object_versions(self, **kwargs):
+            return {"Versions": [], "DeleteMarkers": [{"Key": "api-access/x"}]}
+
+    store = MinioImmutableAuditStore(client=DeletedAuditClient([]))
+    with pytest.raises(ImmutableAuditError, match="delete markers"):
+        store.read_audit_records()
+
+
+def test_minio_audit_export_rejects_unstable_inventory(monkeypatch):
+    _configure_minio(monkeypatch)
+
+    class ChangingInventoryClient(FakeVersionedAuditClient):
+        listing_count = 0
+
+        def list_object_versions(self, **_kwargs):
+            self.listing_count += 1
+            return {
+                "Versions": [
+                    {
+                        "Key": "api-access/2026/10/19/"
+                        "b2b5fb01-e42c-4ea5-9d97-07d2d4737932.json",
+                        "VersionId": f"version-{self.listing_count}",
+                    }
+                ],
+                "IsTruncated": False,
+            }
+
+    store = MinioImmutableAuditStore(client=ChangingInventoryClient([]))
+    with pytest.raises(ImmutableAuditError, match="inventory changed"):
+        store.read_audit_records()
+
+
+def test_minio_audit_export_rejects_short_object_retention(monkeypatch):
+    _configure_minio(monkeypatch)
+    event_id = "b2b5fb01-e42c-4ea5-9d97-07d2d4737932"
+    key = f"api-access/2026/10/19/{event_id}.json"
+    body = canonical_json(
+        {
+            "event_id": event_id,
+            "event_type": "request_started",
+            "occurred_at": "2026-10-19T10:00:00+00:00",
+        }
+    )
+
+    class ShortRetentionClient(FakeVersionedAuditClient):
+        def get_object_retention(self, **_kwargs):
+            return {
+                "Retention": {
+                    "Mode": "COMPLIANCE",
+                    "RetainUntilDate": datetime(2027, 1, 1, tzinfo=timezone.utc),
+                }
+            }
+
+    store = MinioImmutableAuditStore(
+        client=ShortRetentionClient([(key, "version-1", body)])
+    )
+    with pytest.raises(ImmutableAuditError, match="retention verification"):
+        store.read_audit_records()
 
 
 def test_production_request_is_not_processed_if_audit_prewrite_fails(
@@ -420,6 +586,7 @@ def test_air_gapped_readiness_rejects_legacy_only_configuration(monkeypatch):
     monkeypatch.delenv("SANCTUM_OIDC_ISSUER", raising=False)
     monkeypatch.delenv("SANCTUM_OIDC_AUDIENCE", raising=False)
     monkeypatch.delenv("SANCTUM_KMS_BACKEND", raising=False)
+    monkeypatch.setattr(server, "security_report_signer", None)
 
     class ReadyAuditStore:
         def verify_configuration(self):
@@ -434,4 +601,5 @@ def test_air_gapped_readiness_rejects_legacy_only_configuration(monkeypatch):
         "vault_transit_configuration": False,
         "minio_object_lock_configuration": True,
         "audit_pseudonymization": False,
+        "report_signing": False,
     }

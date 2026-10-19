@@ -93,7 +93,7 @@ podman run --detach \
   <approved-image-reference>
 ```
 
-The API uses TLS in the container and is published only on host loopback. Place an explicitly configured TLS-terminating proxy in front of it if remote clients are required; do not publish the API directly to a general network. Check `https://localhost:8000/readyz` from the host. Production readiness requires OIDC, Vault Transit, the audit pseudonymization key, and reachable MinIO Object Lock configuration. The first authenticated API operation additionally verifies its WORM write; on failure, that operation is not executed.
+The API uses TLS in the container and is published only on host loopback. Place an explicitly configured TLS-terminating proxy in front of it if remote clients are required; do not publish the API directly to a general network. Check `https://localhost:8000/readyz` from the host. Production readiness requires OIDC, Vault Transit, the audit pseudonymization key, a valid RSA report-signing key pair, and reachable MinIO Object Lock configuration. The first authenticated API operation additionally verifies its WORM write; on failure, that operation is not executed.
 
 ## Recovery and operation
 

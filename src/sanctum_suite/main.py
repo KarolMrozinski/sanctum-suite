@@ -1,4 +1,6 @@
 import io
+import hashlib
+import hmac
 import ipaddress
 import json
 import os
@@ -33,6 +35,13 @@ from sanctum_suite.core.offline_release import (
     public_key_fingerprint,
     verify_release_manifest,
 )
+from sanctum_suite.core.signer import SecurityReportSigner
+from sanctum_suite.core.audit_chain import (
+    canonical_json,
+    create_audit_checkpoint,
+    verify_audit_checkpoint,
+)
+from sanctum_suite.core.immutable_audit import MinioImmutableAuditStore
 
 _ASCII_TRANSLATION = {
     ord("ą"): "a",
@@ -439,6 +448,204 @@ def offline_release_verify_cmd(
     )
 
 
+@app.command(name="report-verify")
+def report_verify_cmd(
+    report_file: Path = typer.Argument(
+        ...,
+        exists=True,
+        file_okay=True,
+        dir_okay=False,
+        readable=True,
+    ),
+    public_key_file: Path = typer.Option(
+        ...,
+        "--public-key-file",
+        exists=True,
+        file_okay=True,
+        dir_okay=False,
+        readable=True,
+    ),
+) -> None:
+    """Verify a signed API report with an independently trusted RSA public key."""
+    try:
+        document = json.loads(report_file.read_bytes())
+        public_key_pem = public_key_file.read_bytes()
+    except (OSError, json.JSONDecodeError) as error:
+        raise typer.BadParameter("Report or public-key file is invalid or unreadable") from error
+    if not isinstance(document, dict):
+        raise typer.BadParameter("Signed report must be a JSON object")
+    signature_record = document.pop("report_signature", None)
+    if not isinstance(signature_record, dict) or set(signature_record) != {
+        "algorithm",
+        "signer_sha256",
+        "signature_base64",
+    }:
+        raise typer.BadParameter("Report signature metadata is missing or invalid")
+    if signature_record["algorithm"] != "RSA-PSS-SHA256":
+        raise typer.BadParameter("Unsupported report signature algorithm")
+    if not all(
+        isinstance(signature_record[field], str)
+        for field in ("signer_sha256", "signature_base64")
+    ):
+        raise typer.BadParameter("Report signature metadata has invalid field types")
+    report_digest = document.get("report_sha256")
+    digest_payload = {
+        key: value for key, value in document.items() if key != "report_sha256"
+    }
+    canonical_digest_payload = json.dumps(
+        digest_payload, ensure_ascii=False, sort_keys=True, separators=(",", ":")
+    ).encode("utf-8")
+    if not isinstance(report_digest, str) or not hmac.compare_digest(
+        report_digest, hashlib.sha256(canonical_digest_payload).hexdigest()
+    ):
+        raise typer.BadParameter("Report SHA-256 digest does not match its content")
+    try:
+        public_key = serialization.load_pem_public_key(public_key_pem)
+        public_key_der = public_key.public_bytes(
+            encoding=serialization.Encoding.DER,
+            format=serialization.PublicFormat.SubjectPublicKeyInfo,
+        )
+        signer_fingerprint = hashlib.sha256(public_key_der).hexdigest()
+        if not hmac.compare_digest(signature_record["signer_sha256"], signer_fingerprint):
+            raise ValueError("Report signer fingerprint does not match trusted public key")
+        signed_payload = json.dumps(
+            document, ensure_ascii=False, sort_keys=True, separators=(",", ":")
+        ).encode("utf-8")
+        SecurityReportSigner.verify_bytes(
+            signed_payload,
+            signature_record["signature_base64"],
+            public_key_pem,
+        )
+    except (TypeError, ValueError) as error:
+        raise typer.BadParameter(str(error)) from error
+    typer.echo(
+        f"Verified report; signer SHA-256: {signer_fingerprint}; "
+        f"report SHA-256: {report_digest}"
+    )
+
+
+def _write_private_audit_file(path: Path, content: bytes) -> None:
+    descriptor = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+    with os.fdopen(descriptor, "wb") as output:
+        output.write(content)
+    if os.name != "nt":
+        path.chmod(0o600)
+
+
+@app.command(name="audit-checkpoint")
+def audit_checkpoint_cmd(
+    archive_directory: Path = typer.Option(
+        ...,
+        "--archive-directory",
+        file_okay=False,
+        help="New directory for the version-pinned audit record export",
+    ),
+    checkpoint_file: Path = typer.Option(
+        ...,
+        "--checkpoint-file",
+        file_okay=True,
+        dir_okay=False,
+        help="New output file for the RSA-signed hash-chain checkpoint",
+    ),
+) -> None:
+    """Export locked audit versions and create a signed chain checkpoint."""
+    if archive_directory.exists():
+        raise typer.BadParameter("Audit archive directory must not already exist")
+    if checkpoint_file.exists():
+        raise typer.BadParameter("Audit checkpoint file must not already exist")
+    try:
+        store = MinioImmutableAuditStore()
+        stored_records = store.read_audit_records()
+        signer = SecurityReportSigner()
+        records = [
+            {
+                "key": str(record["key"]),
+                "version_id": str(record["version_id"]),
+                "record_sha256": str(record["record_sha256"]),
+            }
+            for record in stored_records
+        ]
+        checkpoint = create_audit_checkpoint(
+            bucket=store.bucket,
+            records=records,
+            signer=signer,
+            created_at=datetime.now(timezone.utc).isoformat(),
+        )
+        archive_directory.mkdir(parents=True, exist_ok=False)
+        if os.name != "nt":
+            archive_directory.chmod(0o700)
+        for record in stored_records:
+            object_path = archive_directory / Path(str(record["key"]))
+            object_path.parent.mkdir(parents=True, exist_ok=True)
+            if os.name != "nt":
+                object_path.parent.chmod(0o700)
+            body = record["body"]
+            if not isinstance(body, bytes):
+                raise ValueError("MinIO returned an invalid audit record body")
+            _write_private_audit_file(object_path, body)
+        checkpoint_file.parent.mkdir(parents=True, exist_ok=True)
+        _write_private_audit_file(
+            checkpoint_file,
+            canonical_json(checkpoint) + b"\n",
+        )
+    except (OSError, ValueError, RuntimeError) as error:
+        raise typer.BadParameter(
+            "Audit checkpoint creation failed; any partial export is not verifiable "
+            "and must not be used"
+        ) from error
+    typer.echo(
+        f"Created signed checkpoint for {len(records)} immutable audit object version(s); "
+        f"chain head: {checkpoint['chain_head_sha256']}"
+    )
+
+
+@app.command(name="audit-verify")
+def audit_verify_cmd(
+    checkpoint_file: Path = typer.Argument(
+        ...,
+        exists=True,
+        file_okay=True,
+        dir_okay=False,
+        readable=True,
+    ),
+    archive_directory: Path = typer.Option(
+        ...,
+        "--archive-directory",
+        exists=True,
+        file_okay=False,
+        readable=True,
+    ),
+    public_key_file: Path = typer.Option(
+        ...,
+        "--public-key-file",
+        exists=True,
+        file_okay=True,
+        dir_okay=False,
+        readable=True,
+    ),
+) -> None:
+    """Verify an exported WORM audit chain using an independently trusted key."""
+    try:
+        if checkpoint_file.stat().st_size > 256_000_000:
+            raise ValueError("Audit checkpoint exceeds the 256-megabyte size limit")
+        checkpoint = json.loads(checkpoint_file.read_bytes())
+        public_key_pem = public_key_file.read_bytes()
+        if not isinstance(checkpoint, dict):
+            raise ValueError("Audit checkpoint must be a JSON object")
+        result = verify_audit_checkpoint(
+            checkpoint=checkpoint,
+            archive_directory=archive_directory,
+            public_key_pem=public_key_pem,
+        )
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError, TypeError, ValueError) as error:
+        raise typer.BadParameter(str(error)) from error
+    typer.echo(
+        f"Verified {result['record_count']} audit object version(s); "
+        f"chain head: {result['chain_head_sha256']}; "
+        f"signer SHA-256: {result['signer_sha256']}"
+    )
+
+
 @app.command(name="serve")
 def start_api_server(
     host: str = typer.Option("127.0.0.1", help=_safe_text("Adres IP interfejsu serwera API")),
@@ -485,6 +692,7 @@ def start_api_server(
         host=host,
         port=port,
         reload=False,
+        access_log=False,
         ssl_certfile=certificate,
         ssl_keyfile=private_key,
     )

@@ -10,6 +10,7 @@ from sanctum_suite.core.immutable_audit import (
     MinioImmutableAuditStore,
 )
 from sanctum_suite.core.kms_vault import VaultTransitError, ZeroTrustKMSVault
+from sanctum_suite.core.signer import SecurityReportSigner
 from sanctum_suite.core.target_authorization import require_authorized_target
 
 
@@ -30,6 +31,8 @@ def run_production_check() -> int:
         print("[SANCTUM-SUITE] Vault Transit encrypt/decrypt access verified.")
         AuditPseudonymizer()
         print("[SANCTUM-SUITE] Audit pseudonymization key verified.")
+        SecurityReportSigner()
+        print("[SANCTUM-SUITE] RSA report-signing key pair verified.")
         MinioImmutableAuditStore().verify_access()
         print("[SANCTUM-SUITE] MinIO Compliance Object Lock write/retention verified.")
         print("[SANCTUM-SUITE] Configuration preflight passed. This is not a production-readiness sign-off.")

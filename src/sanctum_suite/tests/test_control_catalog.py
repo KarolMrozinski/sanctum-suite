@@ -1,3 +1,4 @@
+import asyncio
 import hashlib
 import json
 import sqlite3
@@ -8,9 +9,11 @@ from fastapi.testclient import TestClient
 from sanctum_suite.api import server
 from sanctum_suite.core.control_catalog import (
     AssessmentState,
+    CATALOG_VERSION,
     ControlCatalog,
     EvidenceInput,
 )
+from sanctum_suite.core.signer import SecurityReportSigner
 
 
 def test_catalog_has_versioned_framework_references():
@@ -31,6 +34,21 @@ def test_catalog_has_versioned_framework_references():
         for control in controls
         for reference in control["references"]
     )
+    references = [
+        (reference["framework"], reference["reference"])
+        for control in controls
+        for reference in control["references"]
+    ]
+    assert any(framework == "NIS2" and "Article 21(2)(e)" in reference for framework, reference in references)
+    assert any(framework == "DORA" and "Article 24" in reference for framework, reference in references)
+    assert any(framework == "ISO/IEC 42001" and "Clauses 4-10" in reference for framework, reference in references)
+    assert any(framework == "NIST SP 800-53" and "RA-5" in reference for framework, reference in references)
+    assert {
+        "APP-SDLC-001",
+        "APP-SUPPLY-001",
+        "APP-RESILIENCE-001",
+        "APP-CRYPTO-001",
+    }.issubset({control["control_id"] for control in controls})
 
 
 def test_assessment_requires_evidence_when_verified(tmp_path):
@@ -74,7 +92,7 @@ def test_coverage_report_is_versioned_and_preserves_mapping_history(tmp_path):
     initial_report = catalog.get_coverage_report(framework="CWE Top 25")
     initial_history = catalog.list_mapping_history(framework="CWE Top 25")
 
-    assert initial_report["catalog_version"] == "1.0.0"
+    assert initial_report["catalog_version"] == CATALOG_VERSION
     assert initial_report["certification_status"] == "NOT_ASSESSED"
     assert initial_report["mappings"]
     assert initial_report["state_counts"]["not_assessed"] == len(
@@ -106,7 +124,7 @@ def test_coverage_report_is_versioned_and_preserves_mapping_history(tmp_path):
     )
     assert matching_control["assessment_state"] == "verified"
     assert matching_control["assessment_id"] == assessment["assessment_id"]
-    assert matching_control["assessment_catalog_version"] == "1.0.0"
+    assert matching_control["assessment_catalog_version"] == CATALOG_VERSION
     assert updated_report["state_counts"]["verified"] == 1
     assert "not independently" in " ".join(updated_report["limitations"])
 
@@ -115,7 +133,35 @@ def test_coverage_report_is_versioned_and_preserves_mapping_history(tmp_path):
     assert sqlite3.connect(database).execute(
         "SELECT catalog_version FROM control_assessments WHERE assessment_id = ?",
         (assessment["assessment_id"],),
-    ).fetchone() == ("1.0.0",)
+    ).fetchone() == (CATALOG_VERSION,)
+
+
+def test_production_coverage_report_includes_verifiable_rsa_signature(
+    monkeypatch, tmp_path
+):
+    signer = SecurityReportSigner(key_dir=str(tmp_path / "report-keys"))
+    monkeypatch.setattr(server, "control_catalog", ControlCatalog(tmp_path / "signed.db"))
+    monkeypatch.setattr(server, "security_report_signer", signer)
+    monkeypatch.setattr(server, "production_environment", lambda: True)
+
+    report = asyncio.run(server.get_control_coverage_report(framework=None))
+
+    signature = report.pop("report_signature")
+    assert signature["algorithm"] == "RSA-PSS-SHA256"
+    assert signature["signer_sha256"] == signer.public_key_fingerprint
+    signed_payload = json.dumps(
+        report, ensure_ascii=False, sort_keys=True, separators=(",", ":")
+    ).encode("utf-8")
+    signer.verify_bytes(
+        signed_payload,
+        signature["signature_base64"],
+        signer.public_key_path.read_bytes(),
+    )
+    report_digest = report.pop("report_sha256")
+    digest_payload = json.dumps(
+        report, ensure_ascii=False, sort_keys=True, separators=(",", ":")
+    ).encode("utf-8")
+    assert report_digest == hashlib.sha256(digest_payload).hexdigest()
 
 
 def test_existing_assessment_database_migrates_to_catalog_version(tmp_path):
@@ -166,6 +212,40 @@ def test_existing_assessment_database_migrates_to_catalog_version(tmp_path):
     assert catalog.get_coverage_report()["mapping_count"] > 0
 
 
+def test_catalog_upgrade_preserves_prior_mapping_snapshots(tmp_path):
+    database = tmp_path / "mapping-history.db"
+    catalog = ControlCatalog(database)
+    with sqlite3.connect(database) as connection:
+        connection.execute(
+            """
+            INSERT INTO control_catalog_mappings (
+                mapping_id, catalog_version, control_id, framework,
+                framework_version, source_reference, mapping_type, recorded_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                "legacy-mapping",
+                "1.0.0",
+                "APP-VULN-001",
+                "NIST SP 800-53",
+                "Rev. 5",
+                "RA; SA; SI control families",
+                "related",
+                "2026-01-01T00:00:00+00:00",
+            ),
+        )
+
+    upgraded = ControlCatalog(database)
+    history = upgraded.list_mapping_history(framework="NIST SP 800-53")
+
+    assert any(
+        mapping["mapping_id"] == "legacy-mapping"
+        and mapping["catalog_version"] == "1.0.0"
+        for mapping in history
+    )
+    assert any(mapping["catalog_version"] == CATALOG_VERSION for mapping in history)
+
+
 def test_control_assessment_api_is_authenticated_and_fail_closed(monkeypatch, tmp_path):
     monkeypatch.setenv("SANCTUM_API_KEY", "test-key-" + "x" * 32)
     monkeypatch.delenv("SANCTUM_AUTHORIZED_TARGETS", raising=False)
@@ -186,7 +266,7 @@ def test_control_assessment_api_is_authenticated_and_fail_closed(monkeypatch, tm
     headers = {"X-API-Key": "test-key-" + "x" * 32}
     controls_response = client.get("/api/v1/controls", headers=headers)
     assert controls_response.status_code == 200
-    assert controls_response.json()["catalog_version"] == "1.0.0"
+    assert controls_response.json()["catalog_version"] == CATALOG_VERSION
     assert client.get("/api/v1/controls/coverage").status_code == 401
     coverage = client.get("/api/v1/controls/coverage", headers=headers)
     assert coverage.status_code == 200

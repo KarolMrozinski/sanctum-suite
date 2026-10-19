@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 import hashlib
+import hmac
 import json
 import os
 import re
+import time
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
@@ -11,6 +13,7 @@ from typing import Any
 from urllib.parse import urlparse
 
 import boto3
+from sanctum_suite.core.audit_chain import canonical_json
 from botocore.client import BaseClient
 from botocore.config import Config
 from botocore.exceptions import BotoCoreError, ClientError
@@ -18,7 +21,14 @@ from botocore.exceptions import BotoCoreError, ClientError
 
 _BUCKET_PATTERN = re.compile(r"^[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]$")
 _SHA256_PATTERN = re.compile(r"^[0-9a-f]{64}$")
+_AUDIT_OBJECT_KEY_PATTERN = re.compile(
+    r"^api-access/\d{4}/\d{2}/\d{2}/"
+    r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\.json$"
+)
 _RETENTION_YEARS = 7
+_MAX_CHECKPOINT_RECORDS = 100_000
+_MAX_AUDIT_OBJECT_BYTES = 64_000
+_MAX_CHECKPOINT_ARCHIVE_BYTES = 256_000_000
 _ALLOWED_RECORD_FIELDS = {
     "event_id",
     "request_id",
@@ -236,7 +246,9 @@ class MinioImmutableAuditStore:
                 "MinIO failed to store or verify an immutable audit record"
             ) from error
 
-        object_retention = retention.get("Retention", {})
+        object_retention = (
+            retention.get("Retention", {}) if isinstance(retention, dict) else {}
+        )
         mode = object_retention.get("Mode")
         retain_until = object_retention.get("RetainUntilDate")
         if (
@@ -257,3 +269,171 @@ class MinioImmutableAuditStore:
                 "source": "sanctum-suite",
             }
         )
+
+    def _list_audit_versions_once(self) -> list[tuple[str, str]]:
+        versions: list[tuple[str, str]] = []
+        key_marker: str | None = None
+        version_marker: str | None = None
+        seen_markers: set[tuple[str | None, str | None]] = set()
+        while True:
+            arguments: dict[str, Any] = {
+                "Bucket": self.bucket,
+                "Prefix": "api-access/",
+                "MaxKeys": 1_000,
+            }
+            if key_marker is not None:
+                arguments["KeyMarker"] = key_marker
+            if version_marker is not None:
+                arguments["VersionIdMarker"] = version_marker
+            try:
+                page = self._client.list_object_versions(**arguments)
+            except (BotoCoreError, ClientError) as error:
+                raise ImmutableAuditError(
+                    "MinIO failed to enumerate immutable audit object versions"
+                ) from error
+            if page.get("DeleteMarkers"):
+                raise ImmutableAuditError(
+                    "Audit checkpoint refused because the WORM prefix contains delete markers"
+                )
+            for version in page.get("Versions", []):
+                key = version.get("Key")
+                version_id = version.get("VersionId")
+                if (
+                    not isinstance(key, str)
+                    or not _AUDIT_OBJECT_KEY_PATTERN.fullmatch(key)
+                    or not isinstance(version_id, str)
+                    or not version_id
+                ):
+                    raise ImmutableAuditError(
+                        "MinIO returned an invalid audit object version"
+                    )
+                versions.append((key, version_id))
+                if len(versions) > _MAX_CHECKPOINT_RECORDS:
+                    raise ImmutableAuditError(
+                        "Audit checkpoint exceeds the 100000-version limit"
+                    )
+            if not page.get("IsTruncated"):
+                break
+            next_key_marker = page.get("NextKeyMarker")
+            next_version_marker = page.get("NextVersionIdMarker")
+            cursor = (next_key_marker, next_version_marker)
+            if (
+                not isinstance(next_key_marker, str)
+                or not next_key_marker
+                or cursor in seen_markers
+            ):
+                raise ImmutableAuditError(
+                    "MinIO returned an invalid audit version pagination cursor"
+                )
+            seen_markers.add(cursor)
+            key_marker, version_marker = cursor
+        return sorted(versions)
+
+    def _stable_audit_inventory(self) -> list[tuple[str, str]]:
+        previous: list[tuple[str, str]] | None = None
+        for _ in range(5):
+            current = self._list_audit_versions_once()
+            if current == previous:
+                return current
+            previous = current
+            time.sleep(0.05)
+        raise ImmutableAuditError(
+            "Audit object inventory changed during checkpoint creation; retry later"
+        )
+
+    def read_audit_records(self) -> list[dict[str, str | bytes]]:
+        """Read a stable, version-pinned snapshot of retained audit objects."""
+        inventory = self._stable_audit_inventory()
+        records: list[dict[str, str | bytes]] = []
+        total_bytes = 0
+        for key, version_id in inventory:
+            try:
+                response = self._client.get_object(
+                    Bucket=self.bucket,
+                    Key=key,
+                    VersionId=version_id,
+                )
+                body_stream = response["Body"]
+                try:
+                    body = body_stream.read(1_000_001)
+                finally:
+                    body_stream.close()
+                retention = self._client.get_object_retention(
+                    Bucket=self.bucket,
+                    Key=key,
+                    VersionId=version_id,
+                )
+            except (BotoCoreError, ClientError, KeyError, OSError) as error:
+                raise ImmutableAuditError(
+                    "MinIO failed to read or verify an audit object version"
+                ) from error
+            if len(body) > _MAX_AUDIT_OBJECT_BYTES:
+                raise ImmutableAuditError(
+                    "Audit object exceeds the 64-kilobyte checkpoint limit"
+                )
+            metadata = response.get("Metadata", {})
+            recorded_digest = metadata.get("sha256") if isinstance(metadata, dict) else None
+            digest = hashlib.sha256(body).hexdigest()
+            if not isinstance(recorded_digest, str) or not hmac.compare_digest(
+                recorded_digest, digest
+            ):
+                raise ImmutableAuditError(
+                    "MinIO audit object content does not match its SHA-256 metadata"
+                )
+            try:
+                record = json.loads(body)
+            except (UnicodeDecodeError, json.JSONDecodeError) as error:
+                raise ImmutableAuditError(
+                    "MinIO audit object is not valid UTF-8 JSON"
+                ) from error
+            event_id = record.get("event_id") if isinstance(record, dict) else None
+            try:
+                expected_event_id = str(uuid.UUID(key.rsplit("/", 1)[1][:-5]))
+            except (ValueError, IndexError) as error:
+                raise ImmutableAuditError(
+                    "MinIO returned an invalid audit object key"
+                ) from error
+            object_retention = retention.get("Retention", {})
+            occurred_at = record.get("occurred_at") if isinstance(record, dict) else None
+            try:
+                record_timestamp = datetime.fromisoformat(occurred_at)
+            except (TypeError, ValueError) as error:
+                raise ImmutableAuditError(
+                    "MinIO audit record has an invalid occurrence timestamp"
+                ) from error
+            retain_until = object_retention.get("RetainUntilDate")
+            if (
+                not isinstance(record, dict)
+                or canonical_json(record) != body
+                or event_id != expected_event_id
+                or record.get("event_type")
+                not in {
+                    "request_started",
+                    "request_completed",
+                    "storage_preflight",
+                }
+                or record_timestamp.tzinfo is None
+                or record_timestamp.utcoffset() is None
+                or not isinstance(object_retention, dict)
+                or object_retention.get("Mode") != "COMPLIANCE"
+                or not isinstance(retain_until, datetime)
+                or retain_until.tzinfo is None
+                or retain_until < self._retention_date(record_timestamp)
+            ):
+                raise ImmutableAuditError(
+                    "MinIO audit object version failed content or retention verification"
+                )
+            records.append(
+                {
+                    "key": key,
+                    "version_id": version_id,
+                    "record_sha256": digest,
+                    "body": body,
+                }
+            )
+            total_bytes += len(body)
+            if total_bytes > _MAX_CHECKPOINT_ARCHIVE_BYTES:
+                raise ImmutableAuditError(
+                    "Audit checkpoint archive exceeds the 256-megabyte limit"
+                )
+        return records

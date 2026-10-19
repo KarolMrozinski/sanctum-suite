@@ -20,6 +20,7 @@ Narzędzia CLI, API i dashboard wspierające wybrane procesy audytowe, analizę 
 [Przepływy specjalistyczne](./docs/SPECIALIZED_SECURITY.md) ·
 [Pakiet offline](./docs/OFFLINE_RELEASE.md) ·
 [Wdrożenie air-gapped/Podman](./docs/PODMAN_AIRGAP.md) ·
+[Bramki CI/CD](./docs/SECURE_CICD.md) ·
 [Bezpieczeństwo](./SECURITY.md) ·
 [Licencja](./LICENSE)
 
@@ -61,9 +62,13 @@ Obsługiwane ścieżki:
 - **Import plików:** `POST /api/v1/telemetry/import`; obsługiwane formaty JSON, JSONL i CEF, do 4 MB i 1000 zdarzeń na import. W Workbench można załadować plik, sprawdzić źródła i przeglądać zapisane, znormalizowane zdarzenia.
 - **Pull:** dostępny jest zabezpieczony endpoint do ręcznego uruchamiania jawnie zarejestrowanych adapterów oraz wspólny kontrakt mapowania danych. Repozytorium nie zawiera konektora konkretnego dostawcy, harmonogramu pobierania ani domyślnych połączeń wychodzących.
 
-Zdarzenia przechodzą walidację wspólnego schematu, a następnie trafiają do SQLite. Surowe payloady nie są zapisywane; identyfikatory źródłowe i tokeny korelacji są haszowane, a powtórzenia deduplikowane. Korelacja grupuje wyłącznie dokładne dopasowania pseudonimowych tokenów w skonfigurowanym oknie czasu — nie stanowi detekcji ani oceny zagrożenia. Tokeny pseudonimowe nie są anonimowe; przed wysłaniem danych należy ograniczyć je do niezbędnego zakresu i stosować zatwierdzoną politykę pseudonimizacji.
+Zdarzenia przechodzą walidację wspólnego schematu, a następnie trafiają do SQLite. Surowe payloady nie są zapisywane; identyfikatory źródłowe i tokeny korelacji są pseudonimizowane, a powtórzenia deduplikowane. Produkcja używa kluczowanych HMAC z odrębnymi przestrzeniami nazw, a środowisko developerskie zachowuje haszowanie SHA-256. Etykiety zdarzeń i reguł muszą być ustrukturyzowane, bez tekstu swobodnego. Korelacja grupuje wyłącznie dokładne dopasowania pseudonimowych tokenów w skonfigurowanym oknie czasu — nie stanowi detekcji ani oceny zagrożenia. Tokeny pseudonimowe nie są anonimowe; przed wysłaniem danych należy ograniczyć je do niezbędnego zakresu i stosować zatwierdzoną politykę pseudonimizacji.
 
 Konfiguracja endpointów i schematów znajduje się w [przewodniku instalacji](./docs/INSTALLATION.md#preparing-external-telemetry-ingestion). Podłączenie tej ścieżki nie uruchamia automatycznych reakcji ani nie zasila strumienia WebSocket.
+
+### Weryfikowalny audyt WORM
+
+W trybie produkcyjnym API zapisuje minimalne zdarzenia audytowe do wersjonowanego MinIO Object Lock. Operator może eksportować wersje obiektów i utworzyć podpisany RSA-PSS hash-chain checkpoint poleceniem `sanctum audit-checkpoint`; niezależny host weryfikuje checkpoint, archiwum, podpis i ciągłość łańcucha przez `sanctum audit-verify`. Podpisany checkpoint potwierdza konkretny spis wersji zaobserwowany w trakcie skanowania — nie jest globalnym licznikiem czasu rzeczywistego ani dowodem prawdziwości zdarzeń. Eksport ma jawne limity: 100 000 wersji, 64 KiB na rekord i 256 MB danych. Procedurę konfiguracji uprawnień i ograniczenia opisuje [przewodnik instalacji](./docs/INSTALLATION.md#minio-immutable-access-audit).
 
 ## Szybki start
 

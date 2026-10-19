@@ -1,9 +1,13 @@
 import base64
+import hashlib
+import json
 
 import pytest
 from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.asymmetric import padding, rsa
+from typer.testing import CliRunner
 
+from sanctum_suite import main as cli_main
 from sanctum_suite.core.signer import SecurityReportSigner
 
 
@@ -34,7 +38,8 @@ def test_development_signer_generates_and_uses_a_matching_key_pair(
     report = tmp_path / "report.pdf"
     report.write_bytes(b"test report")
 
-    signature = base64.b64decode(signer.sign_file(str(report)))
+    signature_base64 = signer.sign_file(str(report))
+    signature = base64.b64decode(signature_base64)
     public_key = serialization.load_pem_public_key(signer.public_key_path.read_bytes())
     public_key.verify(
         signature,
@@ -45,6 +50,75 @@ def test_development_signer_generates_and_uses_a_matching_key_pair(
         ),
         hashes.SHA256(),
     )
+    assert signer.public_key_fingerprint
+    signer.verify_bytes(
+        report.read_bytes(),
+        signature_base64,
+        signer.public_key_path.read_bytes(),
+    )
+
+
+def test_report_signer_rejects_tampered_report(monkeypatch, tmp_path):
+    monkeypatch.delenv("SANCTUM_ENVIRONMENT", raising=False)
+    signer = SecurityReportSigner(key_dir=str(tmp_path / ".keys"))
+    signature = signer.sign_bytes(b"original report")
+
+    with pytest.raises(ValueError, match="verification failed"):
+        signer.verify_bytes(
+            b"changed report",
+            signature,
+            signer.public_key_path.read_bytes(),
+        )
+
+
+def test_report_verify_cli_checks_digest_and_signature(monkeypatch, tmp_path):
+    monkeypatch.delenv("SANCTUM_ENVIRONMENT", raising=False)
+    signer = SecurityReportSigner(key_dir=str(tmp_path / ".keys"))
+    unsigned = {"catalog_version": "1.1.0", "certification_status": "NOT_ASSESSED"}
+    unsigned_bytes = json.dumps(
+        unsigned, sort_keys=True, separators=(",", ":")
+    ).encode("utf-8")
+    report = {
+        **unsigned,
+        "report_sha256": hashlib.sha256(unsigned_bytes).hexdigest(),
+    }
+    signed_bytes = json.dumps(
+        report, sort_keys=True, separators=(",", ":")
+    ).encode("utf-8")
+    report["report_signature"] = {
+        "algorithm": "RSA-PSS-SHA256",
+        "signer_sha256": signer.public_key_fingerprint,
+        "signature_base64": signer.sign_bytes(signed_bytes),
+    }
+    report_path = tmp_path / "signed-report.json"
+    report_path.write_text(json.dumps(report), encoding="utf-8")
+
+    result = CliRunner().invoke(
+        cli_main.app,
+        [
+            "report-verify",
+            str(report_path),
+            "--public-key-file",
+            str(signer.public_key_path),
+        ],
+    )
+
+    assert result.exit_code == 0, result.output
+    assert "Verified report" in result.output
+
+    report["certification_status"] = "COMPLIANT"
+    report_path.write_text(json.dumps(report), encoding="utf-8")
+    tampered = CliRunner().invoke(
+        cli_main.app,
+        [
+            "report-verify",
+            str(report_path),
+            "--public-key-file",
+            str(signer.public_key_path),
+        ],
+    )
+    assert tampered.exit_code != 0
+    assert "digest does not match" in tampered.output
 
 
 def test_production_signer_requires_explicit_key_files(monkeypatch):

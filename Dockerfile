@@ -20,7 +20,6 @@ RUN mkdir -p /etc/sanctum/pki && chmod 755 /etc/sanctum /etc/sanctum/pki
 
 COPY --from=builder /usr/local/lib/python3.11/site-packages /usr/local/lib/python3.11/site-packages
 COPY --from=builder /usr/local/bin /usr/local/bin
-COPY --from=builder /app /app
 
 RUN chown -R sanctumuser:sanctumuser /app
 USER sanctumuser

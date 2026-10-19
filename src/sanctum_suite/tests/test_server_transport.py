@@ -28,6 +28,7 @@ def test_api_server_allows_plaintext_bind_only_with_proxy_approval(monkeypatch):
 
     main.start_api_server("0.0.0.0", 8000)
 
+    assert captured["access_log"] is False
     assert captured["ssl_certfile"] is None
     assert captured["ssl_keyfile"] is None
 

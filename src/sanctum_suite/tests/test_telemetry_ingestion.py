@@ -1,4 +1,5 @@
 import hashlib
+import hmac
 import json
 import sqlite3
 
@@ -85,6 +86,104 @@ def test_registered_pull_adapter_ingests_normalized_events_and_returns_cursor(
     ).fetchone()
     assert "external-event-1" not in " ".join(persisted)
     assert TOKEN not in " ".join(persisted)
+
+
+def test_production_telemetry_uses_keyed_namespace_separated_pseudonyms(
+    monkeypatch, tmp_path
+):
+    key_file = tmp_path / "pseudonym-key"
+    key_file.write_bytes(b"k" * 32)
+    monkeypatch.setenv("SANCTUM_AUDIT_PSEUDONYM_KEY_FILE", str(key_file))
+    monkeypatch.setenv("SANCTUM_ENVIRONMENT", "production")
+    monkeypatch.setattr(server, "audit_pseudonymizer", None)
+    monkeypatch.setattr(server, "telemetry_event_store", None)
+    monkeypatch.setattr(server, "_tenant_telemetry_stores", {})
+    monkeypatch.setattr(
+        server,
+        "get_incident_case_store",
+        lambda: type("CaseStore", (), {"db_path": tmp_path / "telemetry.sqlite3"})(),
+    )
+    store = server.get_telemetry_event_store()
+    source_event_id = "sensitive-external-id"
+    store.ingest(
+        "identity-provider",
+        [
+            {
+                "source_event_id": source_event_id,
+                "event_type": "identity.login",
+                "observed_at": TIMESTAMP,
+                "correlation_token": TOKEN,
+            }
+        ],
+    )
+
+    connection = sqlite3.connect(store.db_path)
+    persisted = connection.execute(
+        "SELECT source_event_id_sha256, correlation_token_sha256 "
+        "FROM normalized_telemetry_events"
+    ).fetchone()
+    connection.close()
+    pseudonymizer = server.get_audit_pseudonymizer()
+    assert persisted == (
+        pseudonymizer.pseudonymize("source_event_id", source_event_id),
+        pseudonymizer.pseudonymize("correlation_token", TOKEN),
+    )
+    assert source_event_id not in " ".join(persisted)
+    assert TOKEN not in " ".join(persisted)
+
+
+def test_production_telemetry_rekeys_legacy_hashes_on_event_replay(tmp_path):
+    database = tmp_path / "legacy-telemetry.sqlite3"
+    source_event_id = "legacy-source-event"
+    event = {
+        "source_event_id": source_event_id,
+        "event_type": "identity.login",
+        "observed_at": TIMESTAMP,
+        "correlation_token": TOKEN,
+    }
+    TelemetryEventStore(database).ingest("identity-provider", [event])
+    key = b"k" * 32
+
+    def pseudonymize(namespace, value):
+        return hmac.new(
+            key, f"{namespace}:{value}".encode(), hashlib.sha256
+        ).hexdigest()
+
+    store = TelemetryEventStore(database, pseudonymize=pseudonymize)
+    result = store.ingest("identity-provider", [event])
+
+    assert result["inserted_count"] == 0
+    assert result["duplicate_count"] == 1
+    persisted = sqlite3.connect(database).execute(
+        "SELECT source_event_id_sha256, correlation_token_sha256 "
+        "FROM normalized_telemetry_events"
+    ).fetchone()
+    assert persisted == (
+        pseudonymize("source_event_id", source_event_id),
+        pseudonymize("correlation_token", TOKEN),
+    )
+
+
+def test_telemetry_rejects_unstructured_labels(monkeypatch, tmp_path):
+    client, _ = configure_telemetry(monkeypatch, tmp_path)
+    response = client.post(
+        "/api/v1/telemetry/ingest",
+        headers={
+            "X-Sanctum-Source-ID": "identity-provider",
+            "X-Sanctum-Source-Key": SOURCE_KEY,
+        },
+        json={
+            "events": [
+                {
+                    "source_event_id": "private-event",
+                    "event_type": "user@example.test login",
+                    "observed_at": TIMESTAMP,
+                }
+            ]
+        },
+    )
+    assert response.status_code == 422
+    assert "user@example.test" not in response.text
 
 
 def test_pull_endpoint_requires_registered_configured_adapter_and_sanitizes_invalid_events(

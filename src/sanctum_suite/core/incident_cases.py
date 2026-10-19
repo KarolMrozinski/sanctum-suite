@@ -439,18 +439,22 @@ class IncidentCaseStore:
             ).fetchone()
             if row is None:
                 return None
-            fields = ["updated_at = ?"]
-            values: list[Any] = [_utc_now()]
-            if status is not None:
-                fields.append("status = ?")
-                values.append(status)
-            if update_assignee:
-                fields.append("assigned_to = ?")
-                values.append(assigned_to.strip() if assigned_to else None)
-            values.append(case_id)
             connection.execute(
-                f"UPDATE incident_cases SET {', '.join(fields)} WHERE case_id = ?",
-                values,
+                """
+                UPDATE incident_cases
+                SET updated_at = ?,
+                    status = CASE WHEN ? THEN ? ELSE status END,
+                    assigned_to = CASE WHEN ? THEN ? ELSE assigned_to END
+                WHERE case_id = ?
+                """,
+                (
+                    _utc_now(),
+                    status is not None,
+                    status,
+                    update_assignee,
+                    assigned_to.strip() if assigned_to else None,
+                    case_id,
+                ),
             )
         return self.get_case(case_id)
 

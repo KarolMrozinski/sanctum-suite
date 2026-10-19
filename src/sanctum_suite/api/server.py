@@ -43,11 +43,13 @@ from sanctum_suite.core.immutable_audit import (
     MinioImmutableAuditStore,
 )
 from sanctum_suite.core.kms_vault import KMSConfigurationError, ZeroTrustKMSVault
+from sanctum_suite.core.signer import SecurityReportSigner
 from sanctum_suite.core.incident_playbooks import IncidentPlaybookStore
 from sanctum_suite.core.synthetic_incident_lab import SyntheticIncidentLab
 from sanctum_suite.core.telemetry_adapters import TelemetryAdapterRegistry
 from sanctum_suite.core.telemetry_store import (
     TelemetryEventStore,
+    validate_event_label,
     validate_source_id,
 )
 from sanctum_suite.core.xdr_correlator import RealtimeXdrMeshCorrelator
@@ -117,14 +119,23 @@ _CORRELATION_TOKEN_PATTERN = r"^[0-9a-f]{64}$"
 
 def get_telemetry_event_store() -> TelemetryEventStore:
     global telemetry_event_store
+    pseudonymize = (
+        get_audit_pseudonymizer().pseudonymize
+        if production_environment()
+        else None
+    )
     tenant_path = tenant_database_path("cases")
     if tenant_path is not None:
         if tenant_path not in _tenant_telemetry_stores:
-            _tenant_telemetry_stores[tenant_path] = TelemetryEventStore(tenant_path)
+            _tenant_telemetry_stores[tenant_path] = TelemetryEventStore(
+                tenant_path,
+                pseudonymize=pseudonymize,
+            )
         return _tenant_telemetry_stores[tenant_path]
     if telemetry_event_store is None:
         telemetry_event_store = TelemetryEventStore(
-            get_incident_case_store().db_path
+            get_incident_case_store().db_path,
+            pseudonymize=pseudonymize,
         )
     return telemetry_event_store
 
@@ -211,6 +222,13 @@ def get_immutable_audit_store() -> MinioImmutableAuditStore:
     if immutable_audit_store is None:
         immutable_audit_store = MinioImmutableAuditStore()
     return immutable_audit_store
+
+
+def get_report_signer() -> SecurityReportSigner:
+    global security_report_signer
+    if security_report_signer is None:
+        security_report_signer = SecurityReportSigner()
+    return security_report_signer
 
 
 def get_audit_pseudonymizer() -> AuditPseudonymizer:
@@ -578,7 +596,10 @@ async def audit_incident_api_access(request: Request, call_next):
                     },
                 )
             except (ImmutableAuditConfigurationError, ImmutableAuditError) as error:
-                _LOGGER.error("Immutable audit completion write failed: %s", error)
+                _LOGGER.error(
+                    "Immutable audit completion write failed (%s)",
+                    type(error).__name__,
+                )
                 return JSONResponse(
                     status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
                     content={
@@ -625,6 +646,7 @@ incident_case_store: IncidentCaseStore | None = None
 incident_governance_store: IncidentGovernanceStore | None = None
 immutable_audit_store: MinioImmutableAuditStore | None = None
 audit_pseudonymizer: AuditPseudonymizer | None = None
+security_report_signer: SecurityReportSigner | None = None
 incident_playbook_store: IncidentPlaybookStore | None = None
 telemetry_event_store: TelemetryEventStore | None = None
 _tenant_control_catalogs: Dict[str, ControlCatalog] = {}
@@ -744,6 +766,18 @@ class NormalizedTelemetryEvent(BaseModel):
         if not value.strip():
             raise ValueError("Value cannot be blank")
         return value
+
+    @field_validator("event_type", "detection_scenario_id", "detection_rule_id")
+    @classmethod
+    def require_structured_labels(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        try:
+            return validate_event_label(value)
+        except ValueError as error:
+            raise ValueError(
+                "Telemetry labels must be structured identifiers without free text"
+            ) from error
 
     @model_validator(mode="after")
     def require_detection_identifier_pair(self):
@@ -930,6 +964,28 @@ async def get_control_coverage_report(
     report["report_sha256"] = hashlib.sha256(
         canonical_report.encode("utf-8")
     ).hexdigest()
+    if production_environment():
+        try:
+            signer = get_report_signer()
+            signature = signer.sign_bytes(
+                json.dumps(
+                    report,
+                    ensure_ascii=False,
+                    sort_keys=True,
+                    separators=(",", ":"),
+                ).encode("utf-8")
+            )
+        except (OSError, ValueError) as error:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="Compliance report signing is unavailable",
+                headers={"Retry-After": "5"},
+            ) from error
+        report["report_signature"] = {
+            "algorithm": "RSA-PSS-SHA256",
+            "signer_sha256": signer.public_key_fingerprint,
+            "signature_base64": signature,
+        }
     return report
 
 
@@ -1279,9 +1335,11 @@ def _telemetry_store_events(
         "external_actions_executed": False,
         "limitations": (
             "Only allow-listed normalized metadata is stored. Raw source identifiers "
-            "and correlation tokens are hashed, not retained. Correlation is exact "
-            "pseudonymous-token grouping within the configured ingestion window and "
-            "does not establish malicious activity."
+            "and correlation tokens are retained only as keyed, namespace-separated "
+            "pseudonyms in production; development uses unkeyed hashes. Structured "
+            "labels are metadata and must not contain personal data. Correlation is "
+            "exact pseudonymous-token grouping within the configured ingestion window "
+            "and does not establish malicious activity."
         ),
     }
 
@@ -1698,6 +1756,7 @@ async def readyz():
     kms_ready: bool | None = None
     audit_ready: bool | None = None
     pseudonymization_ready: bool | None = None
+    report_signing_ready: bool | None = None
     if oidc_required:
         try:
             ZeroTrustKMSVault(require_production=True)
@@ -1711,6 +1770,12 @@ async def readyz():
             pseudonymization_ready = False
         else:
             pseudonymization_ready = True
+        try:
+            get_report_signer()
+        except (OSError, ValueError):
+            report_signing_ready = False
+        else:
+            report_signing_ready = True
     if immutable_audit_required():
         try:
             await run_in_threadpool(get_immutable_audit_store().verify_configuration)
@@ -1724,6 +1789,7 @@ async def readyz():
         or kms_ready is False
         or audit_ready is False
         or pseudonymization_ready is False
+        or report_signing_ready is False
     ):
         return Response(
             content=json.dumps(
@@ -1734,6 +1800,7 @@ async def readyz():
                         "vault_transit_configuration": kms_ready,
                         "minio_object_lock_configuration": audit_ready,
                         "audit_pseudonymization": pseudonymization_ready,
+                        "report_signing": report_signing_ready,
                     },
                 }
             ),
@@ -1749,6 +1816,7 @@ async def readyz():
         "vault_transit_configured": kms_ready,
         "minio_object_lock_configured": audit_ready,
         "audit_pseudonymization_configured": pseudonymization_ready,
+        "report_signing_configured": report_signing_ready,
     }
 
 @app.get("/metrics")

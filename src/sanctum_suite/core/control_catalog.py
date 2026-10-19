@@ -57,9 +57,11 @@ _CONTROLS: tuple[Control, ...] = (
             FrameworkReference("CWE Top 25", "2025", "Weakness prioritization", "related"),
             FrameworkReference("CIS Controls", "8.1", "Control 7: Continuous Vulnerability Management", "related"),
             FrameworkReference("NIST CSF", "2.0", "ID.RA; PR.PS", "related"),
-            FrameworkReference("NIST SP 800-53", "Rev. 5", "RA; SA; SI control families", "related"),
-            FrameworkReference("NIS2", "Directive (EU) 2022/2555", "Risk-management measures", "related"),
-            FrameworkReference("DORA", "Regulation (EU) 2022/2554", "ICT risk management", "related"),
+            FrameworkReference("NIST SP 800-53", "Rev. 5", "RA-5 Vulnerability Monitoring and Scanning", "related"),
+            FrameworkReference("NIST SP 800-53", "Rev. 5", "SA-11 Developer Testing and Evaluation", "related"),
+            FrameworkReference("NIST SP 800-53", "Rev. 5", "SI-2 Flaw Remediation", "related"),
+            FrameworkReference("NIS2", "Directive (EU) 2022/2555", "Article 21(2)(e): security in acquisition, development, and maintenance", "related"),
+            FrameworkReference("DORA", "Regulation (EU) 2022/2554", "Article 24: digital operational resilience testing", "related"),
         ),
     ),
     Control(
@@ -71,9 +73,9 @@ _CONTROLS: tuple[Control, ...] = (
             FrameworkReference("OWASP ASVS", "5.0.0", "Authentication and access control", "related"),
             FrameworkReference("CIS Controls", "8.1", "Control 6: Access Control Management", "related"),
             FrameworkReference("NIST CSF", "2.0", "PR.AA", "related"),
-            FrameworkReference("NIST SP 800-53", "Rev. 5", "AC; IA control families", "related"),
-            FrameworkReference("NIS2", "Directive (EU) 2022/2555", "Risk-management measures", "related"),
-            FrameworkReference("DORA", "Regulation (EU) 2022/2554", "ICT risk management", "related"),
+            FrameworkReference("NIST SP 800-53", "Rev. 5", "AC-2 Account Management; AC-3 Access Enforcement; IA-2 Identification and Authentication", "related"),
+            FrameworkReference("NIS2", "Directive (EU) 2022/2555", "Article 21(2)(i)-(j): human-resources, access-control, and authentication policies", "related"),
+            FrameworkReference("DORA", "Regulation (EU) 2022/2554", "Article 9: protection and prevention", "related"),
         ),
     ),
     Control(
@@ -85,9 +87,9 @@ _CONTROLS: tuple[Control, ...] = (
             FrameworkReference("OWASP ASVS", "5.0.0", "Configuration and secure architecture", "related"),
             FrameworkReference("CIS Controls", "8.1", "Control 4: Secure Configuration of Enterprise Assets and Software", "related"),
             FrameworkReference("NIST CSF", "2.0", "PR.PS", "related"),
-            FrameworkReference("NIST SP 800-53", "Rev. 5", "CM control family", "related"),
-            FrameworkReference("NIS2", "Directive (EU) 2022/2555", "Risk-management measures", "related"),
-            FrameworkReference("DORA", "Regulation (EU) 2022/2554", "ICT risk management", "related"),
+            FrameworkReference("NIST SP 800-53", "Rev. 5", "CM-2 Baseline Configuration; CM-6 Configuration Settings", "related"),
+            FrameworkReference("NIS2", "Directive (EU) 2022/2555", "Article 21(2)(e)-(f): secure maintenance and effectiveness assessment", "related"),
+            FrameworkReference("DORA", "Regulation (EU) 2022/2554", "Article 9: protection and prevention", "related"),
         ),
     ),
     Control(
@@ -99,9 +101,9 @@ _CONTROLS: tuple[Control, ...] = (
             FrameworkReference("OWASP ASVS", "5.0.0", "Logging and error handling", "related"),
             FrameworkReference("CIS Controls", "8.1", "Control 8: Audit Log Management", "related"),
             FrameworkReference("NIST CSF", "2.0", "DE.CM", "related"),
-            FrameworkReference("NIST SP 800-53", "Rev. 5", "AU; SI control families", "related"),
-            FrameworkReference("NIS2", "Directive (EU) 2022/2555", "Incident handling", "related"),
-            FrameworkReference("DORA", "Regulation (EU) 2022/2554", "ICT-related incident management", "related"),
+            FrameworkReference("NIST SP 800-53", "Rev. 5", "AU-2 Event Logging; AU-9 Protection of Audit Information; AU-11 Audit Record Retention", "related"),
+            FrameworkReference("NIS2", "Directive (EU) 2022/2555", "Article 21(2)(b): incident handling", "related"),
+            FrameworkReference("DORA", "Regulation (EU) 2022/2554", "Article 10: detection", "related"),
         ),
     ),
     Control(
@@ -112,9 +114,9 @@ _CONTROLS: tuple[Control, ...] = (
         (
             FrameworkReference("CIS Controls", "8.1", "Control 17: Incident Response Management", "related"),
             FrameworkReference("NIST CSF", "2.0", "RS.MA; RS.CO", "related"),
-            FrameworkReference("NIST SP 800-53", "Rev. 5", "IR control family", "related"),
-            FrameworkReference("NIS2", "Directive (EU) 2022/2555", "Incident handling and reporting", "related"),
-            FrameworkReference("DORA", "Regulation (EU) 2022/2554", "ICT-related incident management", "related"),
+            FrameworkReference("NIST SP 800-53", "Rev. 5", "IR-4 Incident Handling; IR-6 Incident Reporting", "related"),
+            FrameworkReference("NIS2", "Directive (EU) 2022/2555", "Articles 21(2)(b) and 23: incident handling and reporting", "related"),
+            FrameworkReference("DORA", "Regulation (EU) 2022/2554", "Articles 17 and 19: incident management and reporting", "related"),
         ),
     ),
     Control(
@@ -123,16 +125,61 @@ _CONTROLS: tuple[Control, ...] = (
         "Maintain an inventory, documented risk ownership, and lifecycle review for AI systems.",
         "Review system inventory, assigned owners, risk assessments, and lifecycle review evidence.",
         (
-            FrameworkReference("ISO/IEC 42001", "2023", "AI management system", "related"),
+            FrameworkReference("ISO/IEC 42001", "2023", "Clauses 4-10: AI management system requirements", "related"),
+            FrameworkReference("ISO/IEC 42001", "2023", "Annex A: AI management system control objectives", "related"),
             FrameworkReference("NIST AI RMF", "1.0", "Govern; Map; Measure; Manage", "related"),
             FrameworkReference("NIST CSF", "2.0", "GV.RM; GV.OV", "related"),
+        ),
+    ),
+    Control(
+        "APP-SDLC-001",
+        "Secure software development and verification",
+        "Apply documented secure development, code review, automated security testing, and remediation before release.",
+        "Review approved development standards and representative, reproducible SAST, DAST, fuzz, review, and remediation evidence.",
+        (
+            FrameworkReference("NIST SP 800-53", "Rev. 5", "SA-3 System Development Life Cycle; SA-11 Developer Testing and Evaluation", "related"),
+            FrameworkReference("NIS2", "Directive (EU) 2022/2555", "Article 21(2)(e): security in acquisition, development, and maintenance", "related"),
+            FrameworkReference("DORA", "Regulation (EU) 2022/2554", "Article 24: digital operational resilience testing", "related"),
+        ),
+    ),
+    Control(
+        "APP-SUPPLY-001",
+        "ICT supply-chain risk management",
+        "Identify, assess, and monitor security risks from software, service providers, and technology dependencies.",
+        "Review the scoped dependency and supplier inventory, risk decisions, SBOMs, and remediation or exception records.",
+        (
+            FrameworkReference("NIST SP 800-53", "Rev. 5", "SR-3 Supply Chain Controls and Processes; SR-5 Acquisition Strategies, Tools, and Methods", "related"),
+            FrameworkReference("NIS2", "Directive (EU) 2022/2555", "Article 21(2)(d): supply-chain security", "related"),
+            FrameworkReference("DORA", "Regulation (EU) 2022/2554", "Articles 28 and 29: ICT third-party risk and critical ICT third-party providers", "related"),
+        ),
+    ),
+    Control(
+        "APP-RESILIENCE-001",
+        "Continuity, backup, and recovery",
+        "Maintain tested recovery capabilities, protected backups, and assigned continuity responsibilities.",
+        "Review approved recovery objectives, backup protection, and dated restoration exercise evidence.",
+        (
+            FrameworkReference("NIST SP 800-53", "Rev. 5", "CP-2 Contingency Plan; CP-9 System Backup; CP-10 System Recovery and Reconstitution", "related"),
+            FrameworkReference("NIS2", "Directive (EU) 2022/2555", "Article 21(2)(c): business continuity, backup management, and disaster recovery", "related"),
+            FrameworkReference("DORA", "Regulation (EU) 2022/2554", "Articles 11 and 12: response, recovery, backup, and restoration", "related"),
+        ),
+    ),
+    Control(
+        "APP-CRYPTO-001",
+        "Cryptographic protection and key management",
+        "Use approved cryptographic mechanisms and controlled lifecycle management for cryptographic keys.",
+        "Review cryptographic policies, key ownership and rotation, and evidence of approved implementation and recovery.",
+        (
+            FrameworkReference("NIST SP 800-53", "Rev. 5", "SC-12 Cryptographic Key Establishment and Management; SC-13 Cryptographic Protection", "related"),
+            FrameworkReference("NIS2", "Directive (EU) 2022/2555", "Article 21(2)(h): policies and procedures regarding cryptography and encryption", "related"),
+            FrameworkReference("DORA", "Regulation (EU) 2022/2554", "Article 9: protection and prevention", "related"),
         ),
     ),
 )
 
 _CONTROL_BY_ID = {control.control_id: control for control in _CONTROLS}
 _SHA256_PATTERN = re.compile(r"^[0-9a-f]{64}$")
-CATALOG_VERSION = "1.0.0"
+CATALOG_VERSION = "1.1.0"
 
 
 def _utc_now() -> str:
@@ -170,7 +217,7 @@ class ControlCatalog:
                 CREATE TABLE IF NOT EXISTS control_assessments (
                     assessment_id TEXT PRIMARY KEY,
                     control_id TEXT NOT NULL,
-                    catalog_version TEXT NOT NULL DEFAULT '1.0.0',
+                    catalog_version TEXT NOT NULL DEFAULT '1.1.0',
                     state TEXT NOT NULL CHECK (
                         state IN ('verified', 'failed', 'needs_review', 'not_assessed', 'not_applicable')
                     ),

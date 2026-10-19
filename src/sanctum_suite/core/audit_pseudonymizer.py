@@ -9,7 +9,7 @@ class AuditPseudonymizationConfigurationError(ValueError):
 
 
 class AuditPseudonymizer:
-    """Creates stable, keyed pseudonyms for identity fields in audit records."""
+    """Creates stable, namespace-separated keyed pseudonyms for privacy-sensitive IDs."""
 
     def __init__(self) -> None:
         key_file = os.environ.get("SANCTUM_AUDIT_PSEUDONYM_KEY_FILE", "").strip()
@@ -30,9 +30,16 @@ class AuditPseudonymizer:
         self._key = key
 
     def pseudonymize(self, namespace: str, value: str) -> str:
-        if namespace not in {"subject", "tenant"}:
-            raise ValueError("Audit pseudonym namespace is not supported")
-        if not value or len(value) > 255:
-            raise ValueError("Audit identity value is invalid")
+        max_lengths = {
+            "subject": 255,
+            "tenant": 128,
+            "source_event_id": 256,
+            "correlation_token": 64,
+        }
+        max_length = max_lengths.get(namespace)
+        if max_length is None:
+            raise ValueError("Pseudonym namespace is not supported")
+        if not isinstance(value, str) or not value or len(value) > max_length:
+            raise ValueError("Pseudonym input value is invalid")
         message = f"{namespace}:{value}".encode("utf-8")
         return hmac.new(self._key, message, hashlib.sha256).hexdigest()
