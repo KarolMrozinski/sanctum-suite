@@ -26,3 +26,4 @@ tools/zk-audit/circuits/*.ptau
 .env
 .env.*
 !.env.example
+opa.exe
