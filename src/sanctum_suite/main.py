@@ -41,6 +41,10 @@ from sanctum_suite.core.audit_chain import (
     create_audit_checkpoint,
     verify_audit_checkpoint,
 )
+from sanctum_suite.core.zk_audit import (
+    create_zk_audit_proof,
+    verify_zk_audit_proof,
+)
 from sanctum_suite.core.immutable_audit import MinioImmutableAuditStore
 
 _ASCII_TRANSLATION = {
@@ -643,6 +647,140 @@ def audit_verify_cmd(
         f"Verified {result['record_count']} audit object version(s); "
         f"chain head: {result['chain_head_sha256']}; "
         f"signer SHA-256: {result['signer_sha256']}"
+    )
+
+
+@app.command(name="audit-zk-prove")
+def audit_zk_prove_cmd(
+    checkpoint_file: Path = typer.Argument(
+        ...,
+        exists=True,
+        file_okay=True,
+        dir_okay=False,
+        readable=True,
+    ),
+    archive_directory: Path = typer.Option(
+        ...,
+        "--archive-directory",
+        exists=True,
+        file_okay=False,
+        readable=True,
+    ),
+    checkpoint_public_key_file: Path = typer.Option(
+        ...,
+        "--checkpoint-public-key-file",
+        exists=True,
+        file_okay=True,
+        dir_okay=False,
+        readable=True,
+    ),
+    wasm_file: Path = typer.Option(
+        ...,
+        "--wasm-file",
+        exists=True,
+        file_okay=True,
+        dir_okay=False,
+        readable=True,
+    ),
+    proving_key_file: Path = typer.Option(
+        ...,
+        "--proving-key-file",
+        exists=True,
+        file_okay=True,
+        dir_okay=False,
+        readable=True,
+    ),
+    verification_key_file: Path = typer.Option(
+        ...,
+        "--verification-key-file",
+        exists=True,
+        file_okay=True,
+        dir_okay=False,
+        readable=True,
+    ),
+    output_file: Path = typer.Option(
+        ...,
+        "--output-file",
+        file_okay=True,
+        dir_okay=False,
+        help="New output path for the signed Groth16 proof bundle",
+    ),
+) -> None:
+    """Prove the v1.0 access-control rule over a verified complete WORM snapshot."""
+    try:
+        binding = create_zk_audit_proof(
+            checkpoint_file=checkpoint_file,
+            archive_directory=archive_directory,
+            checkpoint_public_key_file=checkpoint_public_key_file,
+            wasm_file=wasm_file,
+            proving_key_file=proving_key_file,
+            verification_key_file=verification_key_file,
+            output_file=output_file,
+            signer=SecurityReportSigner(),
+        )
+    except (OSError, TypeError, ValueError, RuntimeError) as error:
+        raise typer.BadParameter(f"ZK audit proof creation failed: {error}") from error
+    typer.echo(
+        f"Created signed Groth16 proof for {binding['record_count']} audit version(s); "
+        f"Poseidon root: {binding['poseidon_root']}"
+    )
+
+
+@app.command(name="audit-zk-verify")
+def audit_zk_verify_cmd(
+    proof_file: Path = typer.Argument(
+        ...,
+        exists=True,
+        file_okay=True,
+        dir_okay=False,
+        readable=True,
+    ),
+    checkpoint_file: Path = typer.Option(
+        ...,
+        "--checkpoint-file",
+        exists=True,
+        file_okay=True,
+        dir_okay=False,
+        readable=True,
+    ),
+    archive_directory: Path = typer.Option(
+        ...,
+        "--archive-directory",
+        exists=True,
+        file_okay=False,
+        readable=True,
+    ),
+    checkpoint_public_key_file: Path = typer.Option(
+        ...,
+        "--checkpoint-public-key-file",
+        exists=True,
+        file_okay=True,
+        dir_okay=False,
+        readable=True,
+    ),
+    verification_key_file: Path = typer.Option(
+        ...,
+        "--verification-key-file",
+        exists=True,
+        file_okay=True,
+        dir_okay=False,
+        readable=True,
+    ),
+) -> None:
+    """Verify a Groth16 proof, its signature, and its complete WORM snapshot binding."""
+    try:
+        binding = verify_zk_audit_proof(
+            proof_file=proof_file,
+            checkpoint_file=checkpoint_file,
+            archive_directory=archive_directory,
+            checkpoint_public_key_file=checkpoint_public_key_file,
+            verification_key_file=verification_key_file,
+        )
+    except (OSError, TypeError, ValueError, RuntimeError) as error:
+        raise typer.BadParameter(f"ZK audit proof verification failed: {error}") from error
+    typer.echo(
+        f"Verified Groth16 proof for {binding['record_count']} audit version(s); "
+        f"policy: {binding['policy_id']}; chain head: {binding['chain_head_sha256']}"
     )
 
 

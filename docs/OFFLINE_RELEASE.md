@@ -1,6 +1,6 @@
 # Air-gapped release bundle
 
-This workflow signs and verifies the exact files in a release directory before physical transfer. It does not build or scan container images, generate an SBOM, establish source provenance, transfer media, or accredit the destination environment.
+This offline-bundle workflow signs and verifies the exact files in a release directory before physical transfer. It does not itself build or scan container images, generate an SBOM, establish source provenance, transfer media, or accredit the destination environment. The tag-triggered CI process described in [SECURE_CICD.md](./SECURE_CICD.md) builds the release artifacts, generates CycloneDX SBOMs, and attests their provenance; those outputs still need independent review before inclusion in an offline bundle.
 
 ## Prepare artifacts in the connected staging zone
 

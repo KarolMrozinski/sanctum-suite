@@ -1,0 +1,16 @@
+{
+  "name": "sanctum-zk-audit",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "compile": "node scripts/compile.mjs production",
+    "compile:test": "node scripts/compile.mjs test",
+    "test": "npm run compile:test && node tests/policy-smoke.mjs"
+  },
+  "dependencies": {
+    "circomlib": "2.0.5",
+    "circomlibjs": "0.1.7",
+    "circom2": "0.2.23",
+    "snarkjs": "0.7.6"
+  }
+}

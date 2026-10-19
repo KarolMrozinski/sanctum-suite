@@ -1,7 +1,9 @@
 # Secure CI/CD gates
 
-The `ci.yml` workflow runs the regression suite, Python distribution build, and
-dashboard lint/build. The separate `security.yml` workflow adds:
+The `ci.yml` workflow tests the Rego authorization policy with OPA, model-checks
+the authorization/audit TLA+ specification with TLC, runs the regression suite,
+builds the Python distribution, and lints/builds the dashboard. The separate
+`security.yml` workflow adds:
 
 - Bandit static analysis for Python at medium-or-higher severity and confidence.
 - `pip-audit` for known Python dependency vulnerabilities.
@@ -19,6 +21,26 @@ dashboard lint/build. The separate `security.yml` workflow adds:
 Python security reports, the DAST report, and the image SBOM are retained as
 workflow artifacts for 30 days. Do not upload production datasets, credentials,
 or classified material to CI artifacts. CI uses synthetic test data only.
+
+The `release-sbom.yml` workflow runs only for `v*` tags. It builds the Python
+wheel/sdist, a standalone dashboard archive, and a local OCI image archive;
+generates a CycloneDX SBOM for each; and creates a digest manifest linking each
+SBOM to its release artifacts and recording the container image ID. It compares
+each SBOM to the latest published GitHub release when it contains all three
+SBOM assets; otherwise the report records that no baseline SBOM was available.
+A changed dependency is reported for review and does not by itself block
+publication.
+
+GitHub artifact attestations use short-lived Sigstore identities to sign both
+the SBOM-to-artifact relationship and build provenance. A separate job verifies
+those attestations before `gh release create` publishes any assets. This requires
+GitHub artifact attestations to be enabled and available for the repository's
+visibility/plan. The CI signature is an identity/provenance assertion, not an
+offline release-key signature or evidence that the source, dependency inventory,
+or scan result is correct. Consumers should independently verify attestations
+against the expected repository/workflow and review SBOM diffs and scan results.
+GitHub Actions workflow artifacts are retained for 90 days; published release
+assets persist according to repository release policy.
 
 Dependabot checks Python, dashboard npm, and GitHub Actions dependencies weekly.
 Review update PRs and their tests; dependency automation is not authorization

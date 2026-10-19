@@ -16,6 +16,13 @@ build/
 report_*.pdf
 report_*.html
 reports/
+tools/zk-audit/node_modules/
+tools/zk-audit/circuits/*_js/
+tools/zk-audit/circuits/*.r1cs
+tools/zk-audit/circuits/*.sym
+tools/zk-audit/circuits/*.wasm
+tools/zk-audit/circuits/*.zkey
+tools/zk-audit/circuits/*.ptau
 .env
 .env.*
 !.env.example

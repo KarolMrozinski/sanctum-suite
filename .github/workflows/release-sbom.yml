@@ -1,0 +1,277 @@
+name: Signed release artifacts and SBOMs
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build-and-attest:
+    name: Build, scan, and attest release artifacts
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+      attestations: write
+      artifact-metadata: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Prepare release directories
+        run: |
+          mkdir -p release/python release/dashboard release/container release/sbom release/reports
+          mkdir -p sbom-input/python/site-packages sbom-input/dashboard
+          cp sanctum-dashboard/package.json sanctum-dashboard/package-lock.json sbom-input/dashboard/
+
+      - name: Run Python test suite
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e ".[test]"
+          python -m pytest -q
+
+      - name: Build Python distributions
+        run: |
+          python -m pip install build
+          python -m build --outdir release/python
+          python -m pip install --target sbom-input/python/site-packages release/python/*.whl
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: sanctum-dashboard/package-lock.json
+
+      - name: Build standalone dashboard
+        working-directory: sanctum-dashboard
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          npm ci
+          npm run lint
+          npm run build
+          mkdir -p .next/standalone/.next
+          cp -R .next/static .next/standalone/.next/static
+          cp -R public .next/standalone/public
+          tar -czf "../release/dashboard/sanctum-dashboard-${RELEASE_TAG}.tar.gz" -C .next/standalone .
+
+      - name: Generate Python CycloneDX SBOM
+        uses: aquasecurity/trivy-action@0.35.0
+        with:
+          scan-type: fs
+          scan-ref: sbom-input/python
+          format: cyclonedx
+          output: release/sbom/sanctum-python-sbom.cdx.json
+          scanners: vuln
+          exit-code: "0"
+
+      - name: Generate dashboard CycloneDX SBOM
+        uses: aquasecurity/trivy-action@0.35.0
+        with:
+          scan-type: fs
+          scan-ref: sbom-input/dashboard
+          format: cyclonedx
+          output: release/sbom/sanctum-dashboard-sbom.cdx.json
+          scanners: vuln
+          exit-code: "0"
+
+      - name: Build container image
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: docker build --tag "sanctum-suite:${RELEASE_TAG}" .
+
+      - name: Scan container and generate CycloneDX SBOM
+        uses: aquasecurity/trivy-action@0.35.0
+        with:
+          image-ref: sanctum-suite:${{ github.ref_name }}
+          scan-type: image
+          format: cyclonedx
+          output: release/sbom/sanctum-container-sbom.cdx.json
+          scanners: vuln,secret,misconfig
+          severity: HIGH,CRITICAL
+          ignore-unfixed: true
+          exit-code: "1"
+
+      - name: Archive container image
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          docker image save --output "release/container/sanctum-suite-${RELEASE_TAG}.tar" "sanctum-suite:${RELEASE_TAG}"
+          echo "CONTAINER_IMAGE_ID=$(docker image inspect --format='{{.Id}}' "sanctum-suite:${RELEASE_TAG}")" >> "$GITHUB_ENV"
+
+      - name: Compare SBOMs with previous GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          previous_tag=""
+          while IFS= read -r tag; do
+            if [ "$tag" != "$GITHUB_REF_NAME" ]; then
+              previous_tag="$tag"
+              break
+            fi
+          done < <(gh release list --limit 100 --json tagName,isDraft,isPrerelease \
+            --jq '.[] | select(.isDraft == false and .isPrerelease == false) | .tagName')
+          if [ -n "$previous_tag" ]; then
+            asset_names="$(gh release view "$previous_tag" --repo "$GITHUB_REPOSITORY" --json assets --jq '.assets[].name')"
+            for component in python dashboard container; do
+              if ! grep -Fxq "sanctum-${component}-sbom.cdx.json" <<< "$asset_names"; then
+                previous_tag=""
+                break
+              fi
+            done
+          fi
+          if [ -n "$previous_tag" ]; then
+            mkdir -p sbom-baseline
+          fi
+          for component in python dashboard container; do
+            args=(--current "release/sbom/sanctum-${component}-sbom.cdx.json" --output "release/reports/${component}-sbom-diff.json")
+            if [ -n "$previous_tag" ]; then
+              gh release download "$previous_tag" --repo "$GITHUB_REPOSITORY" \
+                --pattern "sanctum-${component}-sbom.cdx.json" --dir sbom-baseline
+              args+=(--baseline "sbom-baseline/sanctum-${component}-sbom.cdx.json")
+            fi
+            python scripts/compare_sbom.py "${args[@]}"
+          done
+
+      - name: Create release digest manifest
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+          SOURCE_REVISION: ${{ github.sha }}
+        run: |
+          python scripts/create_release_manifest.py \
+            --directory release \
+            --release-tag "$RELEASE_TAG" \
+            --source-revision "$SOURCE_REVISION" \
+            --container-image-id "$CONTAINER_IMAGE_ID"
+
+      - name: Attest Python SBOM
+        uses: actions/attest@v4
+        with:
+          subject-path: release/python/*
+          sbom-path: release/sbom/sanctum-python-sbom.cdx.json
+
+      - name: Attest dashboard SBOM
+        uses: actions/attest@v4
+        with:
+          subject-path: release/dashboard/*
+          sbom-path: release/sbom/sanctum-dashboard-sbom.cdx.json
+
+      - name: Attest container SBOM
+        uses: actions/attest@v4
+        with:
+          subject-path: release/container/*
+          sbom-path: release/sbom/sanctum-container-sbom.cdx.json
+
+      - name: Attest Python build provenance
+        uses: actions/attest@v4
+        with:
+          subject-path: release/python/*
+
+      - name: Attest dashboard build provenance
+        uses: actions/attest@v4
+        with:
+          subject-path: release/dashboard/*
+
+      - name: Attest container build provenance
+        uses: actions/attest@v4
+        with:
+          subject-path: release/container/*
+
+      - name: Attest release digest manifest
+        uses: actions/attest@v4
+        with:
+          subject-path: release/release-manifest.json
+
+      - name: Upload release bundle for verification
+        uses: actions/upload-artifact@v4
+        with:
+          name: sanctum-release-${{ github.ref_name }}
+          path: release/
+          if-no-files-found: error
+          retention-days: 90
+
+  verify-attestations:
+    name: Independently verify release attestations
+    needs: build-and-attest
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      attestations: read
+    steps:
+      - name: Download release bundle
+        uses: actions/download-artifact@v4
+        with:
+          name: sanctum-release-${{ github.ref_name }}
+          path: release
+
+      - name: Checkout manifest verifier
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Verify release file digests
+        run: python scripts/create_release_manifest.py --directory release --verify
+
+      - name: Verify signatures and provenance
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          for subject in release/python/* release/dashboard/* release/container/* release/release-manifest.json; do
+            gh attestation verify "$subject" --repo "$GITHUB_REPOSITORY" >/dev/null
+          done
+          for component in python dashboard container; do
+            case "$component" in
+              python) subject_glob=(release/python/*) ;;
+              dashboard) subject_glob=(release/dashboard/*) ;;
+              container) subject_glob=(release/container/*) ;;
+            esac
+            for subject in "${subject_glob[@]}"; do
+              gh attestation verify "$subject" --repo "$GITHUB_REPOSITORY" \
+                --predicate-type https://cyclonedx.org/bom >/dev/null
+            done
+          done
+
+  publish-release:
+    name: Publish verified release assets
+    needs: verify-attestations
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Download verified release bundle
+        uses: actions/download-artifact@v4
+        with:
+          name: sanctum-release-${{ github.ref_name }}
+          path: release
+
+      - name: Publish GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          gh release create "$RELEASE_TAG" \
+            --repo "$GITHUB_REPOSITORY" \
+            --verify-tag \
+            --title "SANCTUM-SUITE ${RELEASE_TAG}" \
+            --generate-notes \
+            release/python/* \
+            release/dashboard/* \
+            release/container/* \
+            release/sbom/*.cdx.json \
+            release/reports/*.json \
+            release/release-manifest.json

@@ -88,7 +88,7 @@ sanctum audit-verify `
 
 Verification checks the checkpoint signature and signer fingerprint, each archive record's canonical JSON digest and event identity, the complete hash-link sequence, and the declared chain head. A checkpoint is a signed snapshot of the object versions observed during its inventory scan, not a real-time sequence number or proof that no events arrived concurrently or after the snapshot. Repeat checkpoints on an approved schedule and investigate any inventory growth or verification failure. The writer remains append-only and concurrent request writes do not contend on a shared global chain counter; the chain order is a deterministic inventory order, not event chronology. This integrity mechanism does not prove event truth, eliminate operator/key compromise, or establish legal or regulatory compliance.
 
-Records contain a request ID, method, route template/group, response code, authentication method, timestamp, a SHA-256 credential fingerprint, and keyed pseudonyms for subject and tenant in production. Pseudonyms support correlation but are not anonymous; do not treat them as permission to store classified content. Records do not contain request/response bodies, query strings, client IP addresses, or raw identity claims. This audit feature is not approval to store classified information: keep classified payloads and identifying evidence outside SANCTUM-SUITE unless the deployment has received the required independent authorization/accreditation. The seven-year Compliance lock prevents early deletion; confirm legal retention, privacy obligations, encryption-at-rest, backup, access, and destruction requirements before deployment.
+Records contain a request ID, method, route template/group, response code, authentication method, authorization engine/decision and OPA policy version when evaluated, timestamp, a SHA-256 credential fingerprint, and keyed pseudonyms for subject and tenant in production. Pseudonyms support correlation but are not anonymous; do not treat them as permission to store classified content. Records do not contain request/response bodies, query strings, client IP addresses, or raw identity claims. This audit feature is not approval to store classified information: keep classified payloads and identifying evidence outside SANCTUM-SUITE unless the deployment has received the required independent authorization/accreditation. The seven-year Compliance lock prevents early deletion; confirm legal retention, privacy obligations, encryption-at-rest, backup, access, and destruction requirements before deployment.
 
 ### OIDC users, roles, and tenant-scoped data
 
@@ -153,11 +153,82 @@ Approval means **approved for manual review only**. It does not authorize or tri
 
 ### Privacy, access audit, and retention
 
-Keep case text to the minimum needed for triage. Do not enter passwords, tokens, raw evidence, or unnecessary personal data into titles, summaries, notes, event fields, or evidence references. Evidence files are not uploaded. The access audit records the request method and route template, HTTP response code, timestamp, and a truncated credential fingerprint. For OIDC requests it also records the validated subject, tenant, and authentication method; for legacy API-key requests, the fingerprint identifies only the shared credential. It does not record request bodies, credentials, query strings, IP addresses, or the user-supplied analyst labels.
+Keep case text to the minimum needed for triage. Do not enter passwords, tokens, raw evidence, or unnecessary personal data into titles, summaries, notes, event fields, or evidence references. Evidence files are not uploaded. The access audit records the request method and route template, HTTP response code, timestamp, authorization outcome/engine and policy version when configured, and a truncated credential fingerprint. For OIDC requests it also records the validated subject, tenant, and authentication method; for legacy API-key requests, the fingerprint identifies only the shared credential. It does not record request bodies, credentials, query strings, IP addresses, or the user-supplied analyst labels.
 
 `GET /api/v1/governance/access-log` returns recent access records. `SANCTUM_CASE_RETENTION_DAYS` optionally deletes cases in `resolved` or `closed` status whose last update is older than the configured number of days. Deletion cascades to timeline entries, notes, evidence references, playbooks, and their decisions; open and in-progress cases are retained. `SANCTUM_ACCESS_AUDIT_RETENTION_DAYS` optionally deletes audit records older than the configured number of days. Both settings are unset by default (automatic deletion disabled) and accept values from 1 to 36500 days. Retention runs when an authenticated case, playbook, governance, event-correlation, or telemetry endpoint is called. `POST /api/v1/governance/retention/purge` applies the configured policies immediately and returns deletion counts. A `retention` audit entry records case purges; if audit retention is configured, old audit records including prior retention entries may also be deleted.
 
 When OIDC is not configured, the API continues to use one shared `SANCTUM_API_KEY`; it does not provide per-user identity, roles, or tenant isolation. Its credential fingerprint identifies the shared key only. Request-provided reviewer/analyst names remain caller labels in legacy mode, not authenticated identities. Configure retention to meet approved organizational/legal requirements, protect backups to the same standard, and remember that SQLite/WAL backups may retain deleted data.
+
+### Open Policy Agent authorization
+
+Production and air-gapped profiles require an operator-managed OPA endpoint over
+HTTPS. Set `SANCTUM_OPA_URL` to the OPA server base URL (the API appends
+`/v1/data/sanctum/api/authz/decision`). Optionally set
+`SANCTUM_OPA_BEARER_TOKEN_FILE` to a mounted secret file and
+`SANCTUM_OPA_CA_CERT` to a trusted private CA bundle. Never put the bearer token
+in an environment variable or source file. The `/readyz` probe evaluates a
+deliberately denied canary decision and fails if OPA is unreachable, its policy
+is missing/invalid, or the policy unexpectedly allows the canary. The
+production preflight runs the same check.
+
+Every authenticated `/api/v1` operation with OPA configured is evaluated before
+the route runs. OPA receives only the authenticated tenant ID, supported roles,
+authentication method, HTTP method, and matched route template; it receives no
+request body, query string, credential, or subject identifier. The built-in
+OIDC role/tenant checks remain an additional authorization boundary, so OPA can
+deny an operation but cannot override an existing local denial. An OPA denial
+returns HTTP 403. Timeout, invalid response, or an unusable policy decision
+returns HTTP 503; there is no RBAC fallback when OPA is configured. In
+development, OPA is optional; if no endpoint is configured, the existing local
+RBAC behavior remains active.
+
+The bundled starter policy is [authz.rego](../policies/sanctum/api/authz.rego).
+It preserves the current role behavior and denies OIDC access to global,
+non-tenant-scoped legacy audit/analytics routes. Load and manage that policy
+through the organization's approved OPA deployment process. Increment
+`policy_version` whenever policy behavior changes. Each local or immutable
+access-audit record stores the authorization engine, allow/deny/error outcome,
+and evaluated policy version; it does not store policy inputs or request
+content. Review the [OPA policy guide](./OPA_POLICY.md) before deployment.
+
+### TPM 2.0 measured boot with Keylime
+
+Production and air-gapped profiles also require a fresh measured-boot
+attestation from the operator-managed Keylime verifier. Install a Keylime agent
+on the service host, provision an approved TPM/Measured Boot reference state,
+and configure Sanctum with the verifier URL, enrolled agent UUID, trusted CA,
+and dedicated mTLS client certificate/key files. The client key must remain a
+protected runtime secret. The Keylime simple authorization provider may grant
+administrator access to trusted client certificates; use a narrowly scoped
+read-only proxy if a read-only Keylime identity is unavailable.
+
+Sanctum checks the exact agent's Keylime v2.5 status endpoint during readiness
+and before every authenticated `/api/v1` operation. The verifier must report
+`PASS`, a configured measured-boot reference state, and a successful quote
+within `SANCTUM_TPM_MAX_ATTESTATION_AGE_SECONDS` (default 120; allowed 10-3600).
+Timeouts, invalid responses, stale quotes, absent reference state, or
+misconfiguration fail closed with HTTP 503. See the complete
+[TPM/Measured Boot deployment guide](./TPM_MEASURED_BOOT.md) for environment
+variables, Compose/Podman secrets, verifier access restrictions, and assurance
+limits.
+
+### Confidential Computing: AMD SEV-SNP and Intel TDX
+
+Production and air-gapped profiles additionally require fresh, challenge-bound
+TEE claims from the operator-managed Trustee JSON gateway. Configure its HTTPS
+endpoint and mTLS credentials, exact workload ID, and a read-only baseline file
+containing approved SHA-384 measurements and SHA-256 workload digests for both
+SNP and TDX. The gateway must bind its claims to the random challenge Sanctum
+sends and reject debug-enabled or revoked/invalid platform evidence.
+
+The API validates the response schema, platform, challenge, freshness,
+`evidence_sig: "valid"` assertion, disabled debug flag, and exact baseline
+matches before each authenticated `/api/v1` request. Missing configuration or
+any validation/gateway failure returns HTTP 503. The supplied Trustee gateway
+endpoint is an external integration: Sanctum does not implement the gateway or
+the hardware evidence verifier. See the
+[Confidential Computing guide](./CONFIDENTIAL_COMPUTING.md) for the exact JSON
+contract, baseline file shape, Compose/Podman mounts, and trust limitations.
 
 ### Synthetic incident lab
 
@@ -264,4 +335,4 @@ Do not place webhook credentials in `NEXT_PUBLIC_*` variables. Do not accept sen
 
 This guide does not certify the application as production-safe. Operators remain responsible for validating their deployment and applicable legal obligations.
 
-Several platform-specific modules are placeholders, not operational integrations. Container/SBOM and memory-forensics scanning, firmware analysis, GPU isolation, hardware enclaves, classified-data storage, autonomous red-team, multimodal/multi-turn model testing, EDR/XDR collection, satellite telemetry, covert channels, biometric coercion detection, hot-patching, and dead-man-switch actions are not performed unless a separately validated integration is supplied. The built-in envelope-encryption helper uses an ephemeral process-memory key unless Vault Transit is explicitly configured; production preflight requires Vault Transit.
+Several platform-specific modules are placeholders, not operational integrations. Container/SBOM scanning is performed in CI for tagged releases only; the running application does not scan deployed environments. Memory-forensics scanning, firmware analysis, GPU isolation, hardware enclaves, classified-data storage, autonomous red-team, multimodal/multi-turn model testing, EDR/XDR collection, satellite telemetry, covert channels, biometric coercion detection, hot-patching, and dead-man-switch actions are not performed unless a separately validated integration is supplied. The built-in envelope-encryption helper uses an ephemeral process-memory key unless Vault Transit is explicitly configured; production preflight requires Vault Transit.

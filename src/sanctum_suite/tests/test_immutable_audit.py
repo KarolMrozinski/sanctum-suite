@@ -602,4 +602,7 @@ def test_air_gapped_readiness_rejects_legacy_only_configuration(monkeypatch):
         "minio_object_lock_configuration": True,
         "audit_pseudonymization": False,
         "report_signing": False,
+        "opa_policy": False,
+        "tpm_measured_boot": False,
+        "confidential_computing": False,
     }

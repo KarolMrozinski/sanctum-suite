@@ -273,8 +273,16 @@ def test_oidc_api_enforces_roles_and_tenant_data_isolation(monkeypatch, tmp_path
     assert audit.status_code == 200
     records = audit.json()["records"]
     assert all(record["tenant_id"] == "tenant-a" for record in records)
-    assert {record["subject_id"] for record in records} == {"subject-a"}
+    assert {record["subject_id"] for record in records} == {
+        "subject-a",
+        "viewer-a",
+    }
     assert all(record["authentication_method"] == "oidc" for record in records)
+    denied_access = next(
+        record for record in records if record["subject_id"] == "viewer-a"
+    )
+    assert denied_access["authorization_decision"] == "deny"
+    assert denied_access["authorization_engine"] == "local_rbac"
 
 
 def test_governance_audit_migrates_existing_table(tmp_path):

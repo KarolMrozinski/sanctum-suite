@@ -1,3 +1,4 @@
+import asyncio
 import os
 import sys
 
@@ -10,8 +11,23 @@ from sanctum_suite.core.immutable_audit import (
     MinioImmutableAuditStore,
 )
 from sanctum_suite.core.kms_vault import VaultTransitError, ZeroTrustKMSVault
+from sanctum_suite.core.opa_policy import (
+    OPAPolicyClient,
+    OPAPolicyConfigurationError,
+    OPAPolicyUnavailable,
+)
 from sanctum_suite.core.signer import SecurityReportSigner
 from sanctum_suite.core.target_authorization import require_authorized_target
+from sanctum_suite.core.tpm_attestation import (
+    KeylimeVerifierClient,
+    TPMAttestationConfigurationError,
+    TPMAttestationUnavailable,
+)
+from sanctum_suite.core.tee_attestation import (
+    TEEAttestationConfigurationError,
+    TEEAttestationUnavailable,
+    TrusteeClaimsClient,
+)
 
 
 def run_production_check() -> int:
@@ -33,11 +49,40 @@ def run_production_check() -> int:
         print("[SANCTUM-SUITE] Audit pseudonymization key verified.")
         SecurityReportSigner()
         print("[SANCTUM-SUITE] RSA report-signing key pair verified.")
+        opa = OPAPolicyClient.from_environment(required=True)
+        if opa is None:
+            raise OPAPolicyConfigurationError("SANCTUM_OPA_URL is required")
+        asyncio.run(opa.verify_readiness())
+        print("[SANCTUM-SUITE] OPA authorization policy and version verified.")
+        tpm_attestation = KeylimeVerifierClient.from_environment(required=True)
+        if tpm_attestation is None:
+            raise TPMAttestationConfigurationError(
+                "SANCTUM TPM measured-boot verifier is required"
+            )
+        asyncio.run(tpm_attestation.verify_readiness())
+        print("[SANCTUM-SUITE] Keylime TPM measured-boot attestation verified.")
+        tee_attestation = TrusteeClaimsClient.from_environment(required=True)
+        if tee_attestation is None:
+            raise TEEAttestationConfigurationError(
+                "SANCTUM confidential-computing verifier is required"
+            )
+        asyncio.run(tee_attestation.verify_readiness())
+        print("[SANCTUM-SUITE] Trustee SNP/TDX workload claims verified.")
         MinioImmutableAuditStore().verify_access()
         print("[SANCTUM-SUITE] MinIO Compliance Object Lock write/retention verified.")
         print("[SANCTUM-SUITE] Configuration preflight passed. This is not a production-readiness sign-off.")
         return 0
-    except (HTTPException, ValueError, ImmutableAuditError, VaultTransitError) as error:
+    except (
+        HTTPException,
+        ValueError,
+        ImmutableAuditError,
+        VaultTransitError,
+        OPAPolicyUnavailable,
+        TPMAttestationConfigurationError,
+        TPMAttestationUnavailable,
+        TEEAttestationConfigurationError,
+        TEEAttestationUnavailable,
+    ) as error:
         print(f"[SANCTUM-SUITE] Configuration preflight failed: {error}")
         return 1
 

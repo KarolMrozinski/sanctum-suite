@@ -19,6 +19,19 @@ _MAX_CHECKPOINT_RECORDS = 100_000
 _MAX_AUDIT_OBJECT_BYTES = 64_000
 _MAX_CHECKPOINT_ARCHIVE_BYTES = 256_000_000
 _SHA256_PATTERN = re.compile(r"^[0-9a-f]{64}$")
+_AUTHORIZATION_ENGINES = {
+    "local_rbac",
+    "opa",
+    "opa+rbac",
+    "keylime",
+    "trustee",
+    "keylime+local_rbac",
+    "keylime+opa+rbac",
+    "trustee+local_rbac",
+    "trustee+opa+rbac",
+    "keylime+trustee+local_rbac",
+    "keylime+trustee+opa+rbac",
+}
 _OBJECT_KEY_PATTERN = re.compile(
     r"^api-access/\d{4}/\d{2}/\d{2}/"
     r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\.json$"
@@ -222,6 +235,9 @@ def verify_audit_checkpoint(
                 "subject_pseudonym",
                 "tenant_pseudonym",
                 "authentication_method",
+                "authorization_engine",
+                "authorization_decision",
+                "authorization_policy_version",
                 "outcome_code",
                 "source",
                 "occurred_at",
@@ -236,6 +252,35 @@ def verify_audit_checkpoint(
             raise ValueError(
                 f"Audit archive record digest or schema does not match: {key}"
             )
+        authorization_engine = record.get("authorization_engine")
+        authorization_decision = record.get("authorization_decision")
+        policy_version = record.get("authorization_policy_version")
+        outcome_code = record.get("outcome_code")
+        if (
+            authorization_engine is not None
+            and (
+                not isinstance(authorization_engine, str)
+                or authorization_engine not in _AUTHORIZATION_ENGINES
+            )
+        ):
+            raise ValueError(f"Audit archive authorization engine is invalid: {key}")
+        if authorization_decision is not None and (
+            not isinstance(authorization_decision, str)
+            or authorization_decision not in {"allow", "deny", "error"}
+        ):
+            raise ValueError(f"Audit archive authorization decision is invalid: {key}")
+        if policy_version is not None and (
+            not isinstance(policy_version, str)
+            or not policy_version
+            or len(policy_version) > 128
+        ):
+            raise ValueError(f"Audit archive policy version is invalid: {key}")
+        if outcome_code is not None and (
+            isinstance(outcome_code, bool)
+            or not isinstance(outcome_code, int)
+            or not 100 <= outcome_code <= 599
+        ):
+            raise ValueError(f"Audit archive outcome code is invalid: {key}")
         try:
             occurred_at = datetime.fromisoformat(record["occurred_at"])
         except (KeyError, TypeError, ValueError) as error:

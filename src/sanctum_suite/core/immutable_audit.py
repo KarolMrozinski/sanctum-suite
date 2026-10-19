@@ -40,6 +40,9 @@ _ALLOWED_RECORD_FIELDS = {
     "subject_pseudonym",
     "tenant_pseudonym",
     "authentication_method",
+    "authorization_engine",
+    "authorization_decision",
+    "authorization_policy_version",
     "outcome_code",
     "source",
 }
@@ -202,6 +205,35 @@ class MinioImmutableAuditStore:
             "storage_preflight",
         }:
             raise ValueError("Immutable audit event_type is not supported")
+        authorization_engine = record.get("authorization_engine")
+        if authorization_engine is not None and authorization_engine not in {
+            "local_rbac",
+            "opa",
+            "opa+rbac",
+            "keylime",
+            "trustee",
+            "keylime+local_rbac",
+            "keylime+opa+rbac",
+            "trustee+local_rbac",
+            "trustee+opa+rbac",
+            "keylime+trustee+local_rbac",
+            "keylime+trustee+opa+rbac",
+        }:
+            raise ValueError("authorization_engine is not supported")
+        authorization_decision = record.get("authorization_decision")
+        if authorization_decision is not None and authorization_decision not in {
+            "allow",
+            "deny",
+            "error",
+        }:
+            raise ValueError("authorization_decision is not supported")
+        policy_version = record.get("authorization_policy_version")
+        if policy_version is not None and (
+            not isinstance(policy_version, str)
+            or not policy_version
+            or len(policy_version) > 128
+        ):
+            raise ValueError("authorization_policy_version is invalid")
         outcome_code = record.get("outcome_code")
         if outcome_code is not None and (
             isinstance(outcome_code, bool)

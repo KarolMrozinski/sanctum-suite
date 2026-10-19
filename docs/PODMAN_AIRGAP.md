@@ -13,7 +13,7 @@ sanctum offline-release-verify /media/release-bundle \
 podman load --input /media/release-bundle/sanctum-suite.oci.tar
 ```
 
-Use the exact image reference recorded in the approved release record. Restrict the host's egress to the approved Keycloak, Vault, and MinIO endpoints; the application itself does not establish host network isolation.
+Use the exact image reference recorded in the approved release record. Restrict the host's egress to the approved Keycloak, Vault, MinIO, OPA, and Keylime endpoints; the application itself does not establish host network isolation.
 
 ## Provision runtime secrets and data
 
@@ -29,6 +29,12 @@ podman secret create sanctum-report-signing-key /secure/report-signing-private.p
 podman secret create sanctum-audit-pseudonym-key /secure/audit-pseudonym.key
 ```
 
+Create the Keylime verifier CA and dedicated mTLS client certificate/key as
+Podman secrets as described in the [TPM/Measured Boot guide](./TPM_MEASURED_BOOT.md).
+Create the Trustee gateway CA/client credentials and approved SNP/TDX claims
+file as Podman secrets as described in the
+[Confidential Computing guide](./CONFIDENTIAL_COMPUTING.md).
+
 The report-signing public key and trusted CA bundle are public configuration, but must still be installed from approved sources. The signing key is separate from the Ed25519 key used to sign offline release manifests.
 
 Create `/etc/sanctum/airgap.env` with non-secret deployment settings and access limited to the service operator:
@@ -38,6 +44,21 @@ SANCTUM_ENVIRONMENT=air-gapped
 SANCTUM_OIDC_ISSUER=https://keycloak.internal/realms/lab
 SANCTUM_OIDC_AUDIENCE=sanctum-api
 SANCTUM_OIDC_CA_CERT=/etc/sanctum/pki/internal-ca.pem
+SANCTUM_OPA_URL=https://opa.internal
+SANCTUM_OPA_CA_CERT=/etc/sanctum/pki/internal-ca.pem
+SANCTUM_TPM_VERIFIER_URL=https://keylime-verifier.internal
+SANCTUM_TPM_AGENT_ID=00000000-0000-0000-0000-000000000000
+SANCTUM_TPM_CA_CERT_FILE=/run/secrets/keylime-verifier-ca.pem
+SANCTUM_TPM_CLIENT_CERT_FILE=/run/secrets/keylime-client-cert.pem
+SANCTUM_TPM_CLIENT_KEY_FILE=/run/secrets/keylime-client-key.pem
+SANCTUM_TPM_MAX_ATTESTATION_AGE_SECONDS=120
+SANCTUM_TEE_VERIFIER_URL=https://trustee-gateway.internal/api/v1/attestation/verify
+SANCTUM_TEE_WORKLOAD_ID=sanctum-api-prod
+SANCTUM_TEE_CA_CERT_FILE=/run/secrets/trustee-verifier-ca.pem
+SANCTUM_TEE_CLIENT_CERT_FILE=/run/secrets/trustee-client-cert.pem
+SANCTUM_TEE_CLIENT_KEY_FILE=/run/secrets/trustee-client-key.pem
+SANCTUM_TEE_EXPECTED_CLAIMS_FILE=/run/secrets/tee-expected-claims.json
+SANCTUM_TEE_MAX_ATTESTATION_AGE_SECONDS=120
 SANCTUM_KMS_BACKEND=vault-transit
 SANCTUM_VAULT_ADDR=https://vault.internal:8200
 SANCTUM_VAULT_TOKEN_FILE=/run/secrets/vault-token
@@ -86,6 +107,13 @@ podman run --detach \
   --secret id=sanctum-minio-secret-key,target=/run/secrets/minio-secret-key,uid=10001,gid=10001,mode=0400 \
   --secret id=sanctum-report-signing-key,target=/run/secrets/report-signing-private.pem,uid=10001,gid=10001,mode=0400 \
   --secret id=sanctum-audit-pseudonym-key,target=/run/secrets/audit-pseudonym-key,uid=10001,gid=10001,mode=0400 \
+  --secret id=sanctum-keylime-verifier-ca,target=/run/secrets/keylime-verifier-ca.pem,uid=10001,gid=10001,mode=0400 \
+  --secret id=sanctum-keylime-client-cert,target=/run/secrets/keylime-client-cert.pem,uid=10001,gid=10001,mode=0400 \
+  --secret id=sanctum-keylime-client-key,target=/run/secrets/keylime-client-key.pem,uid=10001,gid=10001,mode=0400 \
+  --secret id=sanctum-trustee-verifier-ca,target=/run/secrets/trustee-verifier-ca.pem,uid=10001,gid=10001,mode=0400 \
+  --secret id=sanctum-trustee-client-cert,target=/run/secrets/trustee-client-cert.pem,uid=10001,gid=10001,mode=0400 \
+  --secret id=sanctum-trustee-client-key,target=/run/secrets/trustee-client-key.pem,uid=10001,gid=10001,mode=0400 \
+  --secret id=sanctum-tee-expected-claims,target=/run/secrets/tee-expected-claims.json,uid=10001,gid=10001,mode=0400 \
   --env-file /etc/sanctum/airgap.env \
   --publish 127.0.0.1:8000:8000 \
   --cap-drop=all \
@@ -93,7 +121,7 @@ podman run --detach \
   <approved-image-reference>
 ```
 
-The API uses TLS in the container and is published only on host loopback. Place an explicitly configured TLS-terminating proxy in front of it if remote clients are required; do not publish the API directly to a general network. Check `https://localhost:8000/readyz` from the host. Production readiness requires OIDC, Vault Transit, the audit pseudonymization key, a valid RSA report-signing key pair, and reachable MinIO Object Lock configuration. The first authenticated API operation additionally verifies its WORM write; on failure, that operation is not executed.
+The API uses TLS in the container and is published only on host loopback. Place an explicitly configured TLS-terminating proxy in front of it if remote clients are required; do not publish the API directly to a general network. Check `https://localhost:8000/readyz` from the host. Production readiness requires OIDC, Vault Transit, the audit pseudonymization key, a valid RSA report-signing key pair, reachable MinIO Object Lock configuration, a fresh passing Keylime measured-boot attestation, and fresh Trustee SNP/TDX claims matching approved baselines. Each authenticated API request checks both external verifiers; stale, failed, or mismatched evidence blocks the operation. The first authenticated API operation additionally verifies its WORM write; on failure, that operation is not executed.
 
 ## Recovery and operation
 

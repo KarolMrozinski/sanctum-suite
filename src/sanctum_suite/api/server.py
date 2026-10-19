@@ -62,6 +62,21 @@ from sanctum_suite.core.oidc import (
     oidc_token_verifier,
     tenant_database_path,
 )
+from sanctum_suite.core.opa_policy import (
+    OPAPolicyClient,
+    OPAPolicyConfigurationError,
+    OPAPolicyUnavailable,
+)
+from sanctum_suite.core.tpm_attestation import (
+    KeylimeVerifierClient,
+    TPMAttestationConfigurationError,
+    TPMAttestationUnavailable,
+)
+from sanctum_suite.core.tee_attestation import (
+    TEEAttestationConfigurationError,
+    TEEAttestationUnavailable,
+    TrusteeClaimsClient,
+)
 from sanctum_suite.core.methodology_catalog import list_methodology_references
 from sanctum_suite.core.target_authorization import TargetAuthorizationError, require_authorized_target
 from sanctum_suite.core.billing import CommercialLicenseManager
@@ -231,6 +246,22 @@ def get_report_signer() -> SecurityReportSigner:
     return security_report_signer
 
 
+def get_opa_policy_client(*, required: bool) -> OPAPolicyClient | None:
+    return OPAPolicyClient.from_environment(required=required)
+
+
+def get_tpm_attestation_client(
+    *, required: bool
+) -> KeylimeVerifierClient | None:
+    return KeylimeVerifierClient.from_environment(required=required)
+
+
+def get_tee_attestation_client(
+    *, required: bool
+) -> TrusteeClaimsClient | None:
+    return TrusteeClaimsClient.from_environment(required=required)
+
+
 def get_audit_pseudonymizer() -> AuditPseudonymizer:
     global audit_pseudonymizer
     if audit_pseudonymizer is None:
@@ -388,13 +419,15 @@ async def verify_api_key(
     else:
         identity = _authenticate_legacy_api_key(api_key)
 
-    _authorize_identity(request, identity)
     context_token = current_identity.set(identity)
     request.state.credential_fingerprint = identity.credential_fingerprint
     request.state.identity_subject = identity.subject
     request.state.identity_tenant = identity.tenant_id
     request.state.authentication_method = identity.authentication_method
     request.state.authenticated_identity = identity
+    request.state.authorization_engine = "local_rbac"
+    request.state.authorization_decision = "error"
+    request.state.authorization_policy_version = None
     try:
         await record_immutable_audit_start(
             request,
@@ -403,6 +436,22 @@ async def verify_api_key(
             else api_key,
             identity,
         )
+        tpm_attested = await _verify_tpm_attestation(request)
+        tee_attested = await _verify_tee_attestation(request)
+        policy_enabled = await _apply_opa_policy(request, identity)
+        request.state.authorization_engine = _authorization_engine(
+            tpm_attested=tpm_attested,
+            tee_attested=tee_attested,
+            policy_enabled=policy_enabled,
+        )
+        try:
+            _authorize_identity(request, identity)
+        except HTTPException:
+            request.state.authorization_decision = "deny"
+            raise
+        if policy_enabled:
+            request.state.authorization_engine = "opa+rbac"
+        request.state.authorization_decision = "allow"
         if request.url.path.startswith(
             (
                 "/api/v1/cases",
@@ -416,6 +465,93 @@ async def verify_api_key(
         yield identity
     finally:
         current_identity.reset(context_token)
+
+
+def _authorization_engine(
+    *,
+    tpm_attested: bool,
+    tee_attested: bool,
+    policy_enabled: bool,
+) -> str:
+    factors = []
+    if tpm_attested:
+        factors.append("keylime")
+    if tee_attested:
+        factors.append("trustee")
+    factors.append("opa+rbac" if policy_enabled else "local_rbac")
+    return "+".join(factors)
+
+
+async def _verify_tpm_attestation(request: Request) -> bool:
+    tpm_required = production_environment()
+    try:
+        client = get_tpm_attestation_client(required=tpm_required)
+    except TPMAttestationConfigurationError as error:
+        request.state.authorization_engine = "keylime"
+        request.state.authorization_decision = "error"
+        _LOGGER.warning(
+            "TPM measured-boot configuration is invalid (%s)",
+            type(error).__name__,
+        )
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="TPM measured-boot attestation is not configured",
+            headers={"Retry-After": "5"},
+        ) from error
+    if client is None:
+        return False
+
+    request.state.authorization_engine = "keylime"
+    try:
+        await client.verify_readiness()
+    except TPMAttestationUnavailable as error:
+        request.state.authorization_decision = "error"
+        _LOGGER.warning(
+            "TPM measured-boot verification failed (%s)",
+            type(error).__name__,
+        )
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="TPM measured-boot attestation is unavailable or stale",
+            headers={"Retry-After": "5"},
+        ) from error
+    return True
+
+
+async def _verify_tee_attestation(request: Request) -> bool:
+    tee_required = production_environment()
+    try:
+        client = get_tee_attestation_client(required=tee_required)
+    except TEEAttestationConfigurationError as error:
+        request.state.authorization_engine = "trustee"
+        request.state.authorization_decision = "error"
+        _LOGGER.warning(
+            "Confidential-computing configuration is invalid (%s)",
+            type(error).__name__,
+        )
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Confidential-computing attestation is not configured",
+            headers={"Retry-After": "5"},
+        ) from error
+    if client is None:
+        return False
+
+    request.state.authorization_engine = "trustee"
+    try:
+        await client.verify_readiness()
+    except TEEAttestationUnavailable as error:
+        request.state.authorization_decision = "error"
+        _LOGGER.warning(
+            "Confidential-computing verification failed (%s)",
+            type(error).__name__,
+        )
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Confidential-computing attestation is unavailable or stale",
+            headers={"Retry-After": "5"},
+        ) from error
+    return True
 
 
 def _authenticate_legacy_api_key(api_key: str | None) -> AuthenticatedIdentity:
@@ -469,6 +605,86 @@ def _authorize_identity(request: Request, identity: AuthenticatedIdentity) -> No
         status_code=403,
         detail="The authenticated OIDC role is not authorized for this operation",
     )
+
+
+async def _apply_opa_policy(
+    request: Request,
+    identity: AuthenticatedIdentity,
+) -> bool:
+    policy_required = production_environment()
+    try:
+        policy_client = get_opa_policy_client(required=policy_required)
+    except OPAPolicyConfigurationError as error:
+        policy_settings = (
+            os.environ.get("SANCTUM_OPA_URL", ""),
+            os.environ.get("SANCTUM_OPA_BEARER_TOKEN_FILE", ""),
+            os.environ.get("SANCTUM_OPA_CA_CERT", ""),
+        )
+        policy_configured = policy_required or any(
+            value.strip() for value in policy_settings
+        )
+        request.state.authorization_engine = (
+            "opa" if policy_configured else "local_rbac"
+        )
+        request.state.authorization_decision = "error"
+        _LOGGER.warning(
+            "OPA policy configuration is invalid (%s)",
+            type(error).__name__,
+        )
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Authorization policy service is not configured",
+            headers={"Retry-After": "5"},
+        ) from error
+    if policy_client is None:
+        request.state.authorization_engine = "local_rbac"
+        return False
+
+    request.state.authorization_engine = "opa"
+    route = request.scope.get("route")
+    route_template = getattr(route, "path", None)
+    if not isinstance(route_template, str) or not route_template.startswith(
+        "/api/v1/"
+    ):
+        request.state.authorization_decision = "error"
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Authorization policy route context is unavailable",
+            headers={"Retry-After": "5"},
+        )
+    try:
+        decision = await policy_client.evaluate(
+            {
+                "identity": {
+                    "authentication_method": identity.authentication_method,
+                    "tenant_id": identity.tenant_id,
+                    "roles": sorted(identity.roles),
+                },
+                "request": {
+                    "method": request.method,
+                    "route": route_template,
+                },
+            }
+        )
+    except OPAPolicyUnavailable as error:
+        request.state.authorization_decision = "error"
+        _LOGGER.warning(
+            "OPA policy evaluation failed (%s)",
+            type(error).__name__,
+        )
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Authorization policy service is unavailable",
+            headers={"Retry-After": "5"},
+        ) from error
+    request.state.authorization_policy_version = decision.policy_version
+    if not decision.allow:
+        request.state.authorization_decision = "deny"
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="The authorization policy denied this operation",
+        )
+    return True
 
 
 def _authenticated_actor_label(requested_label: str) -> str:
@@ -537,8 +753,20 @@ async def verify_event_source(
     request.state.identity_tenant = source_identity.tenant_id
     request.state.authentication_method = source_identity.authentication_method
     request.state.authenticated_identity = source_identity
+    request.state.authorization_engine = "local_rbac"
+    request.state.authorization_decision = "error"
+    request.state.authorization_policy_version = None
     try:
         await record_immutable_audit_start(request, source_key, source_identity)
+        tpm_attested = await _verify_tpm_attestation(request)
+        tee_attested = await _verify_tee_attestation(request)
+        policy_enabled = await _apply_opa_policy(request, source_identity)
+        request.state.authorization_engine = _authorization_engine(
+            tpm_attested=tpm_attested,
+            tee_attested=tee_attested,
+            policy_enabled=policy_enabled,
+        )
+        request.state.authorization_decision = "allow"
         try:
             get_telemetry_event_store().delete_expired_events(
                 retention_days=retention_days
@@ -593,6 +821,17 @@ async def audit_incident_api_access(request: Request, call_next):
                             request.state, "authentication_method", None
                         ),
                         "outcome_code": response.status_code,
+                        "authorization_engine": getattr(
+                            request.state, "authorization_engine", None
+                        ),
+                        "authorization_decision": getattr(
+                            request.state, "authorization_decision", None
+                        ),
+                        "authorization_policy_version": getattr(
+                            request.state,
+                            "authorization_policy_version",
+                            None,
+                        ),
                     },
                 )
             except (ImmutableAuditConfigurationError, ImmutableAuditError) as error:
@@ -630,6 +869,15 @@ async def audit_incident_api_access(request: Request, call_next):
             ),
             action=f"{request.method} {action}",
             outcome_code=response.status_code,
+            authorization_engine=getattr(
+                request.state, "authorization_engine", None
+            ),
+            authorization_decision=getattr(
+                request.state, "authorization_decision", None
+            ),
+            authorization_policy_version=getattr(
+                request.state, "authorization_policy_version", None
+            ),
         )
     finally:
         if context_token is not None:
@@ -1740,6 +1988,75 @@ async def readyz():
         oidc_invalid = True
     else:
         oidc_invalid = False
+    opa_ready: bool | None = None
+    opa_policy_version: str | None = None
+    try:
+        opa_client = get_opa_policy_client(required=production_environment())
+    except OPAPolicyConfigurationError:
+        opa_client = None
+        opa_ready = False
+    if opa_client is not None:
+        try:
+            opa_policy_version = await opa_client.verify_readiness()
+        except OPAPolicyUnavailable as error:
+            opa_ready = False
+            _LOGGER.warning(
+                "OPA readiness probe failed (%s)",
+                type(error).__name__,
+            )
+        else:
+            opa_ready = True
+    elif production_environment():
+        opa_ready = False
+
+    tpm_ready: bool | None = None
+    try:
+        tpm_client = get_tpm_attestation_client(required=production_environment())
+    except TPMAttestationConfigurationError as error:
+        tpm_client = None
+        tpm_ready = False
+        _LOGGER.warning(
+            "TPM measured-boot readiness configuration is invalid (%s)",
+            type(error).__name__,
+        )
+    if tpm_client is not None:
+        try:
+            await tpm_client.verify_readiness()
+        except TPMAttestationUnavailable as error:
+            tpm_ready = False
+            _LOGGER.warning(
+                "TPM measured-boot readiness probe failed (%s)",
+                type(error).__name__,
+            )
+        else:
+            tpm_ready = True
+    elif production_environment():
+        tpm_ready = False
+
+    tee_ready: bool | None = None
+    try:
+        tee_client = get_tee_attestation_client(required=production_environment())
+    except TEEAttestationConfigurationError as error:
+        tee_client = None
+        tee_ready = False
+        _LOGGER.warning(
+            "Confidential-computing readiness configuration is invalid (%s)",
+            type(error).__name__,
+        )
+    if tee_client is not None:
+        try:
+            await tee_client.verify_readiness()
+        except TEEAttestationUnavailable as error:
+            tee_ready = False
+            _LOGGER.warning(
+                "Confidential-computing readiness probe failed (%s)",
+                type(error).__name__,
+            )
+        else:
+            tee_ready = True
+    elif production_environment():
+        tee_ready = False
+
     legacy_configured = len(os.environ.get("SANCTUM_API_KEY", "").encode("utf-8")) >= 32
     oidc_required = production_environment()
     legacy_enabled = os.environ.get(
@@ -1790,6 +2107,9 @@ async def readyz():
         or audit_ready is False
         or pseudonymization_ready is False
         or report_signing_ready is False
+        or opa_ready is False
+        or tpm_ready is False
+        or tee_ready is False
     ):
         return Response(
             content=json.dumps(
@@ -1801,6 +2121,9 @@ async def readyz():
                         "minio_object_lock_configuration": audit_ready,
                         "audit_pseudonymization": pseudonymization_ready,
                         "report_signing": report_signing_ready,
+                        "opa_policy": opa_ready,
+                        "tpm_measured_boot": tpm_ready,
+                        "confidential_computing": tee_ready,
                     },
                 }
             ),
@@ -1817,6 +2140,10 @@ async def readyz():
         "minio_object_lock_configured": audit_ready,
         "audit_pseudonymization_configured": pseudonymization_ready,
         "report_signing_configured": report_signing_ready,
+        "opa_policy_configured": opa_ready,
+        "opa_policy_version": opa_policy_version,
+        "tpm_measured_boot_configured": tpm_ready,
+        "confidential_computing_configured": tee_ready,
     }
 
 @app.get("/metrics")

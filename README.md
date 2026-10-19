@@ -18,6 +18,11 @@ Narzędzia CLI, API i dashboard wspierające wybrane procesy audytowe, analizę 
 [Katalog kontroli](./docs/CONTROL_CATALOG.md) ·
 [Laboratorium Parrot](./docs/PARROT_LAB.md) ·
 [Przepływy specjalistyczne](./docs/SPECIALIZED_SECURITY.md) ·
+[Polityki OPA](./docs/OPA_POLICY.md) ·
+[TPM/Measured Boot](./docs/TPM_MEASURED_BOOT.md) ·
+[Confidential Computing](./docs/CONFIDENTIAL_COMPUTING.md) ·
+[Dowody ZK dla audytu](./docs/ZK_AUDIT_PROOFS.md) ·
+[Projekt klauzul EULA / Export Control](./docs/EULA_EXPORT_CONTROL.md) ·
 [Pakiet offline](./docs/OFFLINE_RELEASE.md) ·
 [Wdrożenie air-gapped/Podman](./docs/PODMAN_AIRGAP.md) ·
 [Bramki CI/CD](./docs/SECURE_CICD.md) ·
@@ -40,11 +45,11 @@ Projekt ma status **beta**. Zakres, dojrzałość i wymagania zależą od konkre
 - **Analiza i obsługa incydentów** — lokalna korelacja zdarzeń, trwałe sprawy SQLite, przypisania, statusy, notatki i odnośniki do dowodów, symulowane rekomendacje reakcji, audyt dostępu, opcjonalna retencja, fikcyjne scenariusze demonstracyjne oraz przygotowany, domyślnie wyłączony przepływ ingestii telemetrii przez push API i import JSON/JSONL/CEF. Opcjonalne OIDC zapewnia tokenową tożsamość użytkownika, role i oddzielne magazyny SQLite dla tenantów. Brak domyślnie aktywnych integracji dostawców i automatycznych reakcji.
 - **AI safety** — moduły do analizy promptów i eksperymentów z zabezpieczeniami modeli.
 - **Interfejsy** — CLI w Pythonie, REST API i WebSocket oraz osobny dashboard oparty na Next.js.
-- **Kontrole i entitlementy** — mapowanie kontroli oraz weryfikacja podpisanych uprawnień do użycia.
+- **Kontrole i entitlementy** — mapowanie kontroli oraz weryfikacja podpisanych uprawnień do użycia; tagowane wydania dostarczają podpisane attestations SBOM, a skonfigurowane API może egzekwować polityki OPA i blokować operacje przy nieaktualnej atestacji TPM/Measured Boot z Keylime.
 
 ### Ważne ograniczenia
 
-Część modułów jest eksperymentalna, zależna od platformy lub stanowi jedynie punkt integracji. Repozytorium nie dostarcza działających integracji dla skanowania kontenerów/SBOM, analizy firmware i pamięci, telemetrii EDR/XDR, inspekcji GPU, sprzętowych enklaw ani magazynowania danych niejawnych. Funkcje kampanii red-team, C2/covert-channel, spoofingu satelitarnego, biometrii, hot-patchingu i dead-man switch nie wykonują opisanych działań. Brak integracji jest raportowany jako brak oceny, a nie jako pozytywny wynik.
+Część modułów jest eksperymentalna, zależna od platformy lub stanowi jedynie punkt integracji. Aplikacja nie komunikuje się bezpośrednio z TPM ani nie weryfikuje samodzielnie quote; produkcyjny gate odczytuje status atestacji/measured boot z zewnętrznego Keylime verifiera. Analogicznie, gate SEV-SNP/TDX ufa operator-managed Trustee JSON gateway i wymaga zatwierdzonych pomiarów workloadu; repozytorium nie dostarcza samego verifiera ani sprzętowej enklawy. Nie ma również działających integracji dla skanowania kontenerów/SBOM w aplikacji, analizy firmware i pamięci, telemetrii EDR/XDR, inspekcji GPU ani magazynowania danych niejawnych. CI skanuje obraz kontenera i tworzy jego SBOM; pipeline tagowanego wydania przygotowuje SBOM CycloneDX dla pakietu Python, dashboardu i obrazu oraz podpisywane attestations. Nie oznacza to automatycznego skanowania wdrożonych systemów ani certyfikacji. Funkcje kampanii red-team, C2/covert-channel, spoofingu satelitarnego, biometrii, hot-patchingu i dead-man switch nie wykonują opisanych działań. Brak integracji jest raportowany jako brak oceny, a nie jako pozytywny wynik.
 
 Dashboard nie otrzymuje obecnie rzeczywistej telemetrii przez WebSocket. Znormalizowane dane można po jawnej konfiguracji źródła importować przez zabezpieczone API i przeglądać w Workbench; nie jest skonfigurowany konkretny dostawca ani harmonogram pull. Szyfrowanie `ZeroTrustKMSVault` działa lokalnie z kluczem efemerycznym wyłącznie w trybie developerskim albo przez jawnie skonfigurowany HashiCorp Vault Transit. Tryb produkcyjny i air-gapped wymaga Vault Transit; szczegóły opisuje [przewodnik instalacji](./docs/INSTALLATION.md#vault-transit-key-management).
 

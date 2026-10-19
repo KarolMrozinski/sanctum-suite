@@ -8,8 +8,24 @@ services:
     ports:
       - "127.0.0.1:8000:8000"
     environment:
-      SANCTUM_ENV: production
+      SANCTUM_ENVIRONMENT: production
       SANCTUM_API_KEY: ${SANCTUM_API_KEY:?Set SANCTUM_API_KEY in the deployment secret store}
+      SANCTUM_OPA_URL: ${SANCTUM_OPA_URL:?Set SANCTUM_OPA_URL to the trusted HTTPS OPA endpoint}
+      SANCTUM_OPA_BEARER_TOKEN_FILE: ${SANCTUM_OPA_BEARER_TOKEN_FILE:-}
+      SANCTUM_OPA_CA_CERT: ${SANCTUM_OPA_CA_CERT:-}
+      SANCTUM_TPM_VERIFIER_URL: ${SANCTUM_TPM_VERIFIER_URL:?Set SANCTUM_TPM_VERIFIER_URL to the trusted HTTPS Keylime verifier}
+      SANCTUM_TPM_AGENT_ID: ${SANCTUM_TPM_AGENT_ID:?Set SANCTUM_TPM_AGENT_ID to the registered Keylime agent UUID}
+      SANCTUM_TPM_CA_CERT_FILE: /run/secrets/keylime-verifier-ca.pem
+      SANCTUM_TPM_CLIENT_CERT_FILE: /run/secrets/keylime-client-cert.pem
+      SANCTUM_TPM_CLIENT_KEY_FILE: /run/secrets/keylime-client-key.pem
+      SANCTUM_TPM_MAX_ATTESTATION_AGE_SECONDS: ${SANCTUM_TPM_MAX_ATTESTATION_AGE_SECONDS:-120}
+      SANCTUM_TEE_VERIFIER_URL: ${SANCTUM_TEE_VERIFIER_URL:?Set SANCTUM_TEE_VERIFIER_URL to the trusted HTTPS Trustee claims gateway}
+      SANCTUM_TEE_WORKLOAD_ID: ${SANCTUM_TEE_WORKLOAD_ID:?Set SANCTUM_TEE_WORKLOAD_ID to the approved workload identifier}
+      SANCTUM_TEE_CA_CERT_FILE: /run/secrets/trustee-verifier-ca.pem
+      SANCTUM_TEE_CLIENT_CERT_FILE: /run/secrets/trustee-client-cert.pem
+      SANCTUM_TEE_CLIENT_KEY_FILE: /run/secrets/trustee-client-key.pem
+      SANCTUM_TEE_EXPECTED_CLAIMS_FILE: /run/secrets/tee-expected-claims.json
+      SANCTUM_TEE_MAX_ATTESTATION_AGE_SECONDS: ${SANCTUM_TEE_MAX_ATTESTATION_AGE_SECONDS:-120}
       SANCTUM_AUTHORIZED_TARGETS: ${SANCTUM_AUTHORIZED_TARGETS:-}
       SANCTUM_LICENSE_KEY: ${SANCTUM_LICENSE_KEY:-}
       SANCTUM_LICENSE_PUBLIC_KEY: ${SANCTUM_LICENSE_PUBLIC_KEY:-}
@@ -17,6 +33,14 @@ services:
       SANCTUM_BILLING_DB: /data/usage.sqlite3
     volumes:
       - sanctum_data:/data
+    secrets:
+      - keylime-verifier-ca
+      - keylime-client-cert
+      - keylime-client-key
+      - trustee-verifier-ca
+      - trustee-client-cert
+      - trustee-client-key
+      - tee-expected-claims
     deploy:
       resources:
         limits:
@@ -33,3 +57,19 @@ services:
 
 volumes:
   sanctum_data:
+
+secrets:
+  keylime-verifier-ca:
+    file: ${SANCTUM_TPM_VERIFIER_CA_SOURCE:?Set SANCTUM_TPM_VERIFIER_CA_SOURCE to the trusted CA bundle}
+  keylime-client-cert:
+    file: ${SANCTUM_TPM_CLIENT_CERT_SOURCE:?Set SANCTUM_TPM_CLIENT_CERT_SOURCE to the Keylime client certificate}
+  keylime-client-key:
+    file: ${SANCTUM_TPM_CLIENT_KEY_SOURCE:?Set SANCTUM_TPM_CLIENT_KEY_SOURCE to the protected Keylime client private key}
+  trustee-verifier-ca:
+    file: ${SANCTUM_TEE_VERIFIER_CA_SOURCE:?Set SANCTUM_TEE_VERIFIER_CA_SOURCE to the trusted Trustee gateway CA bundle}
+  trustee-client-cert:
+    file: ${SANCTUM_TEE_CLIENT_CERT_SOURCE:?Set SANCTUM_TEE_CLIENT_CERT_SOURCE to the Trustee gateway client certificate}
+  trustee-client-key:
+    file: ${SANCTUM_TEE_CLIENT_KEY_SOURCE:?Set SANCTUM_TEE_CLIENT_KEY_SOURCE to the protected Trustee gateway private key}
+  tee-expected-claims:
+    file: ${SANCTUM_TEE_EXPECTED_CLAIMS_SOURCE:?Set SANCTUM_TEE_EXPECTED_CLAIMS_SOURCE to the approved SNP/TDX claims allowlist}
