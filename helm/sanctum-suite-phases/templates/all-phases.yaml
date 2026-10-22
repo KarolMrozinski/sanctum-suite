@@ -1,0 +1,99 @@
+{{- if .Values.deployAllPhases }}
+{{- range $phaseName, $phase := .Values.phases }}
+{{- if $phase.enabled }}
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: {{ $phase.namespace }}
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: {{ $phase.serviceAccountName }}
+  namespace: {{ $phase.namespace }}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: sanctum-live-ready-config
+  namespace: {{ $phase.namespace }}
+data:
+  {{- range $key, $value := $phase.config }}
+  {{ $key }}: {{ $value | quote }}
+  {{- end }}
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: sanctum-live-ready-secrets
+  namespace: {{ $phase.namespace }}
+type: Opaque
+stringData:
+  {{- range $key, $value := $phase.secrets }}
+  {{ $key }}: {{ $value | quote }}
+  {{- end }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: sanctum-live-ready
+  namespace: {{ $phase.namespace }}
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: sanctum-live-ready
+  template:
+    metadata:
+      labels:
+        app: sanctum-live-ready
+    spec:
+      serviceAccountName: {{ $phase.serviceAccountName }}
+      containers:
+        - name: sanctum
+          image: {{ $phase.image.repository }}:{{ $phase.image.tag }}
+          imagePullPolicy: {{ $phase.image.pullPolicy }}
+          ports:
+            - containerPort: 8000
+          envFrom:
+            - configMapRef:
+                name: sanctum-live-ready-config
+            - secretRef:
+                name: sanctum-live-ready-secrets
+          readinessProbe:
+            httpGet:
+              path: {{ $phase.readinessProbe.path }}
+              port: {{ $phase.readinessProbe.port }}
+            initialDelaySeconds: {{ $phase.readinessProbe.initialDelaySeconds }}
+            periodSeconds: {{ $phase.readinessProbe.periodSeconds }}
+          livenessProbe:
+            httpGet:
+              path: {{ $phase.livenessProbe.path }}
+              port: {{ $phase.livenessProbe.port }}
+            initialDelaySeconds: {{ $phase.livenessProbe.initialDelaySeconds }}
+            periodSeconds: {{ $phase.livenessProbe.periodSeconds }}
+          resources:
+            requests:
+              cpu: {{ $phase.resources.requests.cpu | quote }}
+              memory: {{ $phase.resources.requests.memory | quote }}
+            limits:
+              cpu: {{ $phase.resources.limits.cpu | quote }}
+              memory: {{ $phase.resources.limits.memory | quote }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: sanctum-live-ready
+  namespace: {{ $phase.namespace }}
+spec:
+  selector:
+    app: sanctum-live-ready
+  ports:
+    - protocol: TCP
+      port: 80
+      targetPort: 8000
+  type: ClusterIP
+{{- end }}
+{{- end }}
+{{- end }}

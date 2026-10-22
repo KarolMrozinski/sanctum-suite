@@ -1,0 +1,48 @@
+apiVersion: argoproj.io/v1alpha1
+kind: ApplicationSet
+metadata:
+  name: sanctum-suite-phases
+  namespace: argocd
+spec:
+  goTemplate: true
+  goTemplateOptions: ["missingkey=error"]
+  generators:
+    - list:
+        elements:
+          - phase: phase1
+            namespace: sanctum-phase1
+          - phase: phase2
+            namespace: sanctum-phase2
+          - phase: phase3
+            namespace: sanctum-phase3
+          - phase: phase4
+            namespace: sanctum-phase4
+          - phase: phase5
+            namespace: sanctum-phase5
+          - phase: phase6
+            namespace: sanctum-phase6
+  template:
+    metadata:
+      name: '{{.phase}}'
+      namespace: argocd
+    spec:
+      project: sanctum
+      source:
+        repoURL: https://github.com/KarolMrozinski/sanctum-suite.git
+        targetRevision: HEAD
+        path: helm/sanctum-suite-phases
+        helm:
+          parameters:
+            - name: phaseName
+              value: '{{.phase}}'
+      destination:
+        server: https://kubernetes.default.svc
+        namespace: '{{.namespace}}'
+      syncPolicy:
+        automated:
+          prune: true
+          selfHeal: true
+        syncOptions:
+          - CreateNamespace=true
+          - PrunePropagationPolicy=foreground
+          - PruneLast=true

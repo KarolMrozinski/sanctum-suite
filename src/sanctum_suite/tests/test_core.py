@@ -143,11 +143,17 @@ def test_security_capability_registry_phase1_supports_live_ready_adapters():
 
     wave_map = registry.list_supported_by_wave()
     assert "phase_0" in wave_map
+    assert "phase_1" in wave_map
     assert "phase_4" in wave_map
+    assert "security-capability:gcp-platform" in wave_map["phase_1"]
+    assert "security-capability:observability" in wave_map["phase_1"]
+    assert "security-capability:terraform-policy" in wave_map["phase_1"]
+    assert "security-capability:kafka-event-bus" in wave_map["phase_1"]
     assert "security-capability:graph-ai" in wave_map["phase_4"]
     assert "security-capability:agentic-ai" in wave_map["phase_4"]
     assert "security-capability:key-distribution" in wave_map["phase_4"]
     assert "security-capability:neuromorphic-compute" in wave_map["phase_4"]
+    assert registry.get("security-capability:elastic-observability") is not None
 
     runtime_config = registry.get_runtime_requirements("security-capability:agentic-ai")
     assert runtime_config["auth"]["type"] == "bearer_token"
@@ -205,6 +211,115 @@ def test_security_capability_registry_phase1_supports_live_ready_adapters():
     assert "Google Cloud Platform (GCP)" in roadmap["phase_1"]["modules"]
     assert "BAM - Binary Analysis Metadata" in roadmap["phase_2"]["modules"]
     assert "GRASSMARLIN" in roadmap["phase_3"]["modules"]
+
+
+def test_security_capability_wave_catalog_api(monkeypatch):
+    api_key = "wave-test-key-" + "x" * 32
+    monkeypatch.setenv("SANCTUM_API_KEY", api_key)
+    client = TestClient(server.app)
+
+    res = client.get("/api/v1/security-capabilities/waves", headers={"X-API-Key": api_key})
+    assert res.status_code == 200
+    payload = res.json()
+    assert "phase_roadmap" in payload
+    assert "phase_1" in payload["supported_wave_catalog"]
+    assert "security-capability:gcp-platform" in payload["supported_wave_catalog"]["phase_1"]
+    assert "security-capability:observability" in payload["supported_wave_catalog"]["phase_1"]
+    assert "security-capability:terraform-policy" in payload["supported_wave_catalog"]["phase_1"]
+    assert "security-capability:kafka-event-bus" in payload["supported_wave_catalog"]["phase_1"]
+
+    wave_res = client.get("/api/v1/security-capabilities/waves/phase_1", headers={"X-API-Key": api_key})
+    assert wave_res.status_code == 200
+    wave_payload = wave_res.json()
+    assert any(item["capability_id"] == "security-capability:gcp-platform" for item in wave_payload["capabilities"])
+    gcp = next(item for item in wave_payload["capabilities"] if item["capability_id"] == "security-capability:gcp-platform")
+    assert "SANCTUM_GCP_PROJECT_ID" in gcp["runtime_requirements"]["env"]
+
+
+def test_security_capability_wave_status_api(monkeypatch):
+    api_key = "wave-status-key-" + "x" * 32
+    monkeypatch.setenv("SANCTUM_API_KEY", api_key)
+    for key, value in {
+        "SANCTUM_GCP_PROJECT_ID": "demo-project",
+        "SANCTUM_GCP_SERVICE_ACCOUNT_JSON": '{"project_id": "demo-project"}',
+        "SANCTUM_GCP_SERVICE_ACCOUNT": "svc-audit",
+        "SANCTUM_ELK_ENDPOINT": "https://elk.internal.example:9200",
+        "SANCTUM_ELK_API_KEY": "elk-key",
+        "SANCTUM_ELK_INDEX_PATTERN": "sanctum-*",
+        "SANCTUM_TERRAFORM_STATE_PATH": "/tmp/terraform.tfstate",
+        "SANCTUM_TERRAFORM_WORKSPACE": "prod",
+        "SANCTUM_TERRAFORM_TOKEN": "terraform-token",
+        "SANCTUM_KAFKA_BOOTSTRAP_SERVERS": "broker-1:9092,broker-2:9092",
+        "SANCTUM_KAFKA_TOPIC": "sanctum.events",
+        "SANCTUM_KAFKA_USERNAME": "kafka-user",
+        "SANCTUM_KAFKA_PASSWORD": "kafka-pass",
+    }.items():
+        monkeypatch.setenv(key, value)
+    client = TestClient(server.app)
+    res = client.get("/api/v1/security-capabilities/waves/phase_1/status", headers={"X-API-Key": api_key})
+    assert res.status_code == 200
+    payload = res.json()
+    assert payload["wave_name"] == "phase_1"
+    assert payload["overall_status"] == "READY"
+    assert "security-capability:gcp-platform" in payload["capabilities"]
+    assert payload["capabilities"]["security-capability:gcp-platform"]["status"] == "READY"
+
+
+def test_security_capability_phase3_wave_status_api(monkeypatch):
+    api_key = "phase3-ready-key-" + "x" * 32
+    monkeypatch.setenv("SANCTUM_API_KEY", api_key)
+    for key, value in {
+        "SANCTUM_HOST_INVENTORY_URL": "https://inventory.internal.example/api/hosts",
+        "SANCTUM_HOST_API_TOKEN": "host-token",
+        "SANCTUM_OS_FAMILY": "solaris",
+        "SANCTUM_VXWORKS_API_URL": "https://vxworks.internal.example/api",
+        "SANCTUM_VXWORKS_TOKEN": "vxworks-token",
+        "SANCTUM_GNN_MODEL_REGISTRY": "https://gnn-registry.internal.example/models",
+        "SANCTUM_MODEL_API_TOKEN": "model-token",
+        "SANCTUM_AGENT_RUNTIME": "https://agent-runtime.internal.example",
+        "SANCTUM_AGENT_TOKEN": "agent-token",
+        "SANCTUM_QKD_PEER_ID": "peer-alpha",
+        "SANCTUM_QKD_KME_URL": "https://qkd.internal.example/kme",
+        "SANCTUM_QKD_TOKEN": "qkd-token",
+        "SANCTUM_NEUROMORPHIC_ACCELERATOR": "loihi",
+        "SANCTUM_NEUROMORPHIC_TOKEN": "neuromorphic-token",
+    }.items():
+        monkeypatch.setenv(key, value)
+    client = TestClient(server.app)
+    res = client.get("/api/v1/security-capabilities/waves/phase_3/status", headers={"X-API-Key": api_key})
+    assert res.status_code == 200
+    payload = res.json()
+    assert payload["wave_name"] == "phase_3"
+    assert payload["overall_status"] == "READY"
+    assert "security-capability:os-baseline" in payload["capabilities"]
+    assert payload["capabilities"]["security-capability:os-baseline"]["status"] == "READY"
+
+
+def test_security_capability_phase5_runtime_requirements_include_ai_governance_and_data_fusion():
+    registry = SecurityCapabilityAdapterRegistry()
+    ai_gov = registry.get_runtime_requirements("security-capability:ai-governance")
+    fusion = registry.get_runtime_requirements("security-capability:graph-data-fusion")
+
+    assert "SANCTUM_SEC_PALM_MODEL_REGISTRY" in ai_gov["env"]
+    assert "SANCTUM_MODEL_GOVERNANCE_TOKEN" in ai_gov["env"]
+    assert "SANCTUM_PALANTIR_FOUNDRY_API_URL" in fusion["env"]
+    assert "SANCTUM_DATA_FUSION_TOKEN" in fusion["env"]
+    assert "security-capability:graph-data-fusion" in registry.supported_wave_catalog()["phase_5"]
+    assert "security-capability:ai-governance" in registry.supported_wave_catalog()["phase_5"]
+
+
+def test_security_capability_phase6_runtime_requirements_include_retention_and_compliance():
+    registry = SecurityCapabilityAdapterRegistry()
+    retention = registry.get_runtime_requirements("security-capability:retention-policy")
+    audit = registry.get_runtime_requirements("security-capability:operational-audit")
+    compliance = registry.get_runtime_requirements("security-capability:compliance-cutover")
+
+    assert "SANCTUM_RETENTION_POLICY_DB" in retention["env"]
+    assert "SANCTUM_AUDIT_LOG_STORE_URL" in audit["env"]
+    assert "SANCTUM_COMPLIANCE_FRAMEWORK" in compliance["env"]
+    assert "security-capability:retention-policy" in registry.supported_wave_catalog()["phase_6"]
+    assert "security-capability:operational-audit" in registry.supported_wave_catalog()["phase_6"]
+    assert "security-capability:compliance-cutover" in registry.supported_wave_catalog()["phase_6"]
 
 
 def test_security_capability_api_contract(monkeypatch):

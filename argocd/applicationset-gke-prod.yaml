@@ -1,0 +1,113 @@
+apiVersion: argoproj.io/v1alpha1
+kind: AppProject
+metadata:
+  name: sanctum-gcp-prod
+  namespace: argocd
+spec:
+  description: SANCTUM production rollout for GKE-based Phase 1 and later waves
+  sourceRepos:
+    - 'https://github.com/KarolMrozinski/sanctum-suite.git'
+  destinations:
+    - namespace: sanctum-phase1
+      server: https://<GKE_CLUSTER_ENDPOINT>:443
+    - namespace: sanctum-phase2
+      server: https://<GKE_CLUSTER_ENDPOINT>:443
+    - namespace: sanctum-phase3
+      server: https://<GKE_CLUSTER_ENDPOINT>:443
+    - namespace: sanctum-phase4
+      server: https://<GKE_CLUSTER_ENDPOINT>:443
+    - namespace: sanctum-phase5
+      server: https://<GKE_CLUSTER_ENDPOINT>:443
+    - namespace: sanctum-phase6
+      server: https://<GKE_CLUSTER_ENDPOINT>:443
+  clusterResourceWhitelist:
+    - group: ''
+      kind: Namespace
+    - group: 'rbac.authorization.k8s.io'
+      kind: ClusterRole
+    - group: 'rbac.authorization.k8s.io'
+      kind: ClusterRoleBinding
+  namespaceResourceWhitelist:
+    - group: ''
+      kind: ConfigMap
+    - group: ''
+      kind: Secret
+    - group: ''
+      kind: Service
+    - group: ''
+      kind: ServiceAccount
+    - group: 'apps'
+      kind: Deployment
+    - group: 'batch'
+      kind: Job
+    - group: 'networking.k8s.io'
+      kind: NetworkPolicy
+    - group: 'rbac.authorization.k8s.io'
+      kind: Role
+    - group: 'rbac.authorization.k8s.io'
+      kind: RoleBinding
+---
+apiVersion: argoproj.io/v1alpha1
+kind: ApplicationSet
+metadata:
+  name: sanctum-suite-gke-prod
+  namespace: argocd
+spec:
+  goTemplate: true
+  goTemplateOptions: ["missingkey=error"]
+  generators:
+    - list:
+        elements:
+          - phase: phase1
+            namespace: sanctum-phase1
+            cluster: gke-prod
+          - phase: phase2
+            namespace: sanctum-phase2
+            cluster: gke-prod
+          - phase: phase3
+            namespace: sanctum-phase3
+            cluster: gke-prod
+          - phase: phase4
+            namespace: sanctum-phase4
+            cluster: gke-prod
+          - phase: phase5
+            namespace: sanctum-phase5
+            cluster: gke-prod
+          - phase: phase6
+            namespace: sanctum-phase6
+            cluster: gke-prod
+  template:
+    metadata:
+      name: '{{.phase}}-{{.cluster}}'
+      namespace: argocd
+      labels:
+        app.kubernetes.io/part-of: sanctum-suite
+        app.kubernetes.io/cluster: gke-prod
+    spec:
+      project: sanctum-gcp-prod
+      source:
+        repoURL: https://github.com/KarolMrozinski/sanctum-suite.git
+        targetRevision: main
+        path: helm/sanctum-suite-phases
+        helm:
+          parameters:
+            - name: phaseName
+              value: '{{.phase}}'
+            - name: namespace
+              value: '{{.namespace}}'
+            - name: image.repository
+              value: gcr.io/sanctum-prod-482917/sanctum-suite
+            - name: image.tag
+              value: stable
+      destination:
+        server: https://<GKE_CLUSTER_ENDPOINT>:443
+        namespace: '{{.namespace}}'
+      syncPolicy:
+        automated:
+          prune: true
+          selfHeal: true
+        syncOptions:
+          - CreateNamespace=true
+          - PrunePropagationPolicy=foreground
+          - PruneLast=true
+          - RespectIgnoreDifferences=true

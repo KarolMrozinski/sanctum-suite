@@ -1,0 +1,64 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: sanctum-suite-phase1
+  namespace: argocd
+spec:
+  project: sanctum
+  source:
+    repoURL: https://github.com/KarolMrozinski/sanctum-suite.git
+    targetRevision: HEAD
+    path: helm/sanctum-suite-phase1
+    helm:
+      valueFiles:
+        - values.yaml
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: sanctum
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      - PrunePropagationPolicy=foreground
+      - PruneLast=true
+---
+apiVersion: argoproj.io/v1alpha1
+kind: AppProject
+metadata:
+  name: sanctum
+  namespace: argocd
+spec:
+  description: Production governance for SANCTUM-SUITE
+  sourceRepos:
+    - 'https://github.com/KarolMrozinski/sanctum-suite.git'
+  destinations:
+    - namespace: sanctum
+      server: https://kubernetes.default.svc
+  clusterResourceWhitelist:
+    - group: ''
+      kind: Namespace
+    - group: 'rbac.authorization.k8s.io'
+      kind: ClusterRole
+    - group: 'rbac.authorization.k8s.io'
+      kind: ClusterRoleBinding
+  namespaceResourceWhitelist:
+    - group: ''
+      kind: ConfigMap
+    - group: ''
+      kind: Secret
+    - group: ''
+      kind: Service
+    - group: ''
+      kind: ServiceAccount
+    - group: 'apps'
+      kind: Deployment
+    - group: 'networking.k8s.io'
+      kind: NetworkPolicy
+    - group: 'batch'
+      kind: Job
+    - group: 'rbac.authorization.k8s.io'
+      kind: Role
+    - group: 'rbac.authorization.k8s.io'
+      kind: RoleBinding

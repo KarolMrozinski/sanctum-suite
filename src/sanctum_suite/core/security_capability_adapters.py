@@ -235,11 +235,19 @@ class ElasticObservabilityAdapter(BaseSecurityCapabilityAdapter):
     description = "ELK/Elastic logging and correlation evidence adapter."
 
     def fetch_evidence(self, *, target: str, environment: str, **kwargs: Any) -> dict[str, Any]:
-        endpoint = os.environ.get("SANCTUM_ELASTICSEARCH_URL", "").strip()
+        endpoint = (
+            os.environ.get("SANCTUM_ELK_ENDPOINT", "").strip()
+            or os.environ.get("SANCTUM_ELASTICSEARCH_URL", "").strip()
+        )
+        api_key = (
+            os.environ.get("SANCTUM_ELK_API_KEY", "").strip()
+            or os.environ.get("SANCTUM_ELASTIC_API_KEY", "").strip()
+        )
+        index_pattern = os.environ.get("SANCTUM_ELK_INDEX_PATTERN", "security-*").strip() or "security-*"
         if not endpoint:
             return {
                 "provider": "elastic",
-                "log_index": "security-*",
+                "log_index": index_pattern,
                 "pipeline_config": f"{environment}-collector",
                 "dashboard_rules": 42,
                 "alerting_enabled": True,
@@ -248,7 +256,7 @@ class ElasticObservabilityAdapter(BaseSecurityCapabilityAdapter):
                 "source_type": self.source_type,
                 "status": "NOT_CONFIGURED",
                 "integration_mode": "adapter_contract",
-                "warning": "Set SANCTUM_ELASTICSEARCH_URL to activate live ELK integration.",
+                "warning": "Set SANCTUM_ELK_ENDPOINT (or SANCTUM_ELASTICSEARCH_URL) to activate live ELK integration.",
                 "sdk": "elasticsearch",
             }
 
@@ -269,13 +277,13 @@ class ElasticObservabilityAdapter(BaseSecurityCapabilityAdapter):
             }
 
         try:
-            client = Elasticsearch(endpoint)
+            client = Elasticsearch(endpoint, api_key=api_key) if api_key else Elasticsearch(endpoint)
             info = client.info()
-            indices = client.cat.indices(index="*", format="json")
+            indices = client.cat.indices(index=index_pattern, format="json")
             return {
                 "provider": "elastic",
                 "cluster_name": info.get("cluster_name", f"{environment}-cluster"),
-                "log_index": ",".join(item.get("index", "security-*") for item in indices[:5]) or "security-*",
+                "log_index": ",".join(item.get("index", index_pattern) for item in indices[:5]) or index_pattern,
                 "pipeline_config": f"{environment}-collector",
                 "dashboard_rules": len(indices) or 42,
                 "alerting_enabled": True,
@@ -1423,6 +1431,111 @@ class PalantirFoundryAdapter(BaseSecurityCapabilityAdapter):
         }
 
 
+class RetentionPolicyAdapter(BaseSecurityCapabilityAdapter):
+    capability_id = "security-capability:retention-policy"
+    source_type = "retention_policy"
+    name = "retention-policy-adapter"
+    description = "Retention policy adapter for archival windows, WORM controls, and deletion policy enforcement."
+
+    def fetch_evidence(self, *, target: str, environment: str, **kwargs: Any) -> dict[str, Any]:
+        db_path = os.environ.get("SANCTUM_RETENTION_POLICY_DB", "").strip()
+        if not db_path:
+            return {
+                "provider": "retention-policy",
+                "retention_status": "not_configured",
+                "storage": "",
+                "target": target,
+                "environment": environment,
+                "source_type": self.source_type,
+                "status": "NOT_CONFIGURED",
+                "integration_mode": "adapter_contract",
+                "warning": "Set SANCTUM_RETENTION_POLICY_DB to enable the retention-policy adapter.",
+                "sdk": "retention-policy",
+            }
+        return {
+            "provider": "retention-policy",
+            "retention_status": "ready",
+            "storage": db_path,
+            "target": target,
+            "environment": environment,
+            "source_type": self.source_type,
+            "status": "READY",
+            "integration_mode": "live_sdk",
+            "sdk": "retention-policy",
+        }
+
+
+class OperationalAuditReviewAdapter(BaseSecurityCapabilityAdapter):
+    capability_id = "security-capability:operational-audit"
+    source_type = "audit_api"
+    name = "operational-audit-adapter"
+    description = "Operational audit review adapter for immutable evidence, access validation, and audit event review."
+
+    def fetch_evidence(self, *, target: str, environment: str, **kwargs: Any) -> dict[str, Any]:
+        api_url = os.environ.get("SANCTUM_AUDIT_LOG_STORE_URL", "").strip()
+        if not api_url:
+            return {
+                "provider": "operational-audit",
+                "audit_status": "not_configured",
+                "api_url": "",
+                "target": target,
+                "environment": environment,
+                "source_type": self.source_type,
+                "status": "NOT_CONFIGURED",
+                "integration_mode": "adapter_contract",
+                "warning": "Set SANCTUM_AUDIT_LOG_STORE_URL to enable audit review integration.",
+                "sdk": "operational-audit",
+            }
+        return {
+            "provider": "operational-audit",
+            "audit_status": "ready",
+            "api_url": api_url,
+            "target": target,
+            "environment": environment,
+            "source_type": self.source_type,
+            "status": "READY",
+            "integration_mode": "live_sdk",
+            "sdk": "operational-audit",
+        }
+
+
+class ComplianceCutoverAdapter(BaseSecurityCapabilityAdapter):
+    capability_id = "security-capability:compliance-cutover"
+    source_type = "compliance_api"
+    name = "compliance-cutover-adapter"
+    description = "Compliance cutover adapter for regulatory handoff, policy validation, and final approval flow."
+
+    def fetch_evidence(self, *, target: str, environment: str, **kwargs: Any) -> dict[str, Any]:
+        framework = os.environ.get("SANCTUM_COMPLIANCE_FRAMEWORK", "").strip()
+        api_url = os.environ.get("SANCTUM_COMPLIANCE_API_URL", "").strip()
+        if not framework or not api_url:
+            return {
+                "provider": "compliance-cutover",
+                "cutover_status": "not_configured",
+                "framework": framework,
+                "api_url": api_url,
+                "target": target,
+                "environment": environment,
+                "source_type": self.source_type,
+                "status": "NOT_CONFIGURED",
+                "integration_mode": "adapter_contract",
+                "warning": "Set SANCTUM_COMPLIANCE_FRAMEWORK and SANCTUM_COMPLIANCE_API_URL to enable the final compliance cutover adapter.",
+                "sdk": "compliance-cutover",
+            }
+        return {
+            "provider": "compliance-cutover",
+            "cutover_status": "ready",
+            "framework": framework,
+            "api_url": api_url,
+            "target": target,
+            "environment": environment,
+            "source_type": self.source_type,
+            "status": "READY",
+            "integration_mode": "live_sdk",
+            "sdk": "compliance-cutover",
+        }
+
+
 class SecurityCapabilityAdapterRegistry:
     """Registers capability adapters and exposes a normalized fetch contract."""
 
@@ -1457,36 +1570,37 @@ class SecurityCapabilityAdapterRegistry:
         self.register(CommercialCloudAdapter())
         self.register(SecPalmModelGovernanceAdapter())
         self.register(PalantirFoundryAdapter())
+        self.register(RetentionPolicyAdapter())
+        self.register(OperationalAuditReviewAdapter())
+        self.register(ComplianceCutoverAdapter())
 
     @staticmethod
     def supported_wave_catalog() -> dict[str, list[str]]:
         return {
             "phase_0": [
+                "security-capability:registry-foundation",
+                "security-capability:common-event-schema",
+                "security-capability:health-check",
+                "security-capability:auth-gateway",
+            ],
+            "phase_1": [
                 "security-capability:gcp-platform",
                 "security-capability:observability",
                 "security-capability:terraform-policy",
-                "security-capability:linux-integrity",
                 "security-capability:kafka-event-bus",
             ],
-            "phase_1": [
-                "security-capability:binary-analysis",
+            "phase_2": [
                 "security-capability:binary-metadata",
                 "security-capability:runtime-attestation",
                 "security-capability:platform-certificate",
                 "security-capability:integrity-manifest",
             ],
-            "phase_2": [
+            "phase_3": [
                 "security-capability:network-cartography",
                 "security-capability:adversary-emulation",
                 "security-capability:workflow-automation",
                 "security-capability:os-baseline",
                 "security-capability:embedded-control-plane",
-            ],
-            "phase_3": [
-                "security-capability:threat-intel",
-                "security-capability:gcp-ecosystem",
-                "security-capability:graph-data-fusion",
-                "security-capability:ai-governance",
             ],
             "phase_4": [
                 "security-capability:graph-ai",
@@ -1502,6 +1616,11 @@ class SecurityCapabilityAdapterRegistry:
                 "security-capability:long-term-storage",
                 "security-capability:ai-governance",
                 "security-capability:graph-data-fusion",
+            ],
+            "phase_6": [
+                "security-capability:retention-policy",
+                "security-capability:operational-audit",
+                "security-capability:compliance-cutover",
             ],
         }
 
@@ -1521,6 +1640,30 @@ class SecurityCapabilityAdapterRegistry:
                 "auth": {"type": "mTLS", "header": "X-Client-Cert"},
                 "endpoint": "/api/v1/security-capabilities/security-capability:embedded-control-plane/evidence",
                 "payload": {"firmware_version": "string", "config_hash": "string", "network_policy": "dict"},
+            },
+            "security-capability:binary-metadata": {
+                "env": ["SANCTUM_BAM_METADATA_PATH", "SANCTUM_BAM_API_TOKEN"],
+                "auth": {"type": "bearer_token", "header": "Authorization"},
+                "endpoint": "/api/v1/security-capabilities/security-capability:binary-metadata/evidence",
+                "payload": {"binary_metadata": {}, "source": "string", "format": "string"},
+            },
+            "security-capability:runtime-attestation": {
+                "env": ["SANCTUM_HIRS_API_URL", "SANCTUM_HIRS_API_TOKEN"],
+                "auth": {"type": "bearer_token", "header": "Authorization"},
+                "endpoint": "/api/v1/security-capabilities/security-capability:runtime-attestation/evidence",
+                "payload": {"boot_measurements": [], "runtime_state": "trusted", "attestation_claims": []},
+            },
+            "security-capability:platform-certificate": {
+                "env": ["SANCTUM_PACCOR_CERT_SUBJECT", "SANCTUM_PACCOR_API_URL", "SANCTUM_PACCOR_TOKEN"],
+                "auth": {"type": "mTLS", "header": "X-Client-Cert"},
+                "endpoint": "/api/v1/security-capabilities/security-capability:platform-certificate/evidence",
+                "payload": {"certificate_status": "issued", "certificate_subject": "string", "trust_context": "dict"},
+            },
+            "security-capability:integrity-manifest": {
+                "env": ["SANCTUM_RIM_MANIFEST_PATH", "SANCTUM_RIM_API_URL", "SANCTUM_RIM_TOKEN"],
+                "auth": {"type": "bearer_token", "header": "Authorization"},
+                "endpoint": "/api/v1/security-capabilities/security-capability:integrity-manifest/evidence",
+                "payload": {"manifest_status": "verified", "manifest_digest": "string", "artifact_inventory": []},
             },
             "security-capability:graph-ai": {
                 "env": ["SANCTUM_GNN_MODEL_REGISTRY", "SANCTUM_MODEL_API_TOKEN"],
@@ -1547,16 +1690,63 @@ class SecurityCapabilityAdapterRegistry:
                 "payload": {"accelerator": "loihi|truenorth", "hardware_metadata": {}, "task_policy": "dict"},
             },
             "security-capability:gcp-platform": {
-                "env": ["SANCTUM_GCP_PROJECT_ID", "SANCTUM_GCP_SERVICE_ACCOUNT_JSON"],
+                "env": [
+                    "SANCTUM_GCP_PROJECT_ID",
+                    "SANCTUM_GCP_SERVICE_ACCOUNT_JSON",
+                    "SANCTUM_GCP_SERVICE_ACCOUNT",
+                ],
                 "auth": {"type": "service_account", "header": "Authorization"},
                 "endpoint": "/api/v1/security-capabilities/security-capability:gcp-platform/evidence",
                 "payload": {"project_id": "string", "service_accounts": [], "resource_inventory": 0},
             },
             "security-capability:observability": {
-                "env": ["SANCTUM_ELASTIC_URL", "SANCTUM_ELASTIC_API_KEY"],
+                "env": [
+                    "SANCTUM_ELK_ENDPOINT",
+                    "SANCTUM_ELK_API_KEY",
+                    "SANCTUM_ELK_INDEX_PATTERN",
+                    "SANCTUM_ELASTICSEARCH_URL",
+                    "SANCTUM_ELASTIC_API_KEY",
+                ],
+                "env_aliases": [
+                    ["SANCTUM_ELK_ENDPOINT", "SANCTUM_ELASTICSEARCH_URL"],
+                    ["SANCTUM_ELK_API_KEY", "SANCTUM_ELASTIC_API_KEY"],
+                ],
                 "auth": {"type": "api_key", "header": "Authorization"},
                 "endpoint": "/api/v1/security-capabilities/security-capability:observability/evidence",
-                "payload": {"cluster": "string", "indices": [], "log_level": "string"},
+                "payload": {"cluster": "string", "indices": [], "log_level": "string", "endpoint": "string"},
+            },
+            "security-capability:elastic-observability": {
+                "env": [
+                    "SANCTUM_ELK_ENDPOINT",
+                    "SANCTUM_ELK_API_KEY",
+                    "SANCTUM_ELK_INDEX_PATTERN",
+                    "SANCTUM_ELASTICSEARCH_URL",
+                    "SANCTUM_ELASTIC_API_KEY",
+                ],
+                "env_aliases": [
+                    ["SANCTUM_ELK_ENDPOINT", "SANCTUM_ELASTICSEARCH_URL"],
+                    ["SANCTUM_ELK_API_KEY", "SANCTUM_ELASTIC_API_KEY"],
+                ],
+                "auth": {"type": "api_key", "header": "Authorization"},
+                "endpoint": "/api/v1/security-capabilities/security-capability:elastic-observability/evidence",
+                "payload": {"cluster": "string", "indices": [], "log_level": "string", "endpoint": "string"},
+            },
+            "security-capability:terraform-policy": {
+                "env": ["SANCTUM_TERRAFORM_STATE_PATH", "SANCTUM_TERRAFORM_WORKSPACE", "SANCTUM_TERRAFORM_TOKEN"],
+                "auth": {"type": "bearer_token", "header": "Authorization"},
+                "endpoint": "/api/v1/security-capabilities/security-capability:terraform-policy/evidence",
+                "payload": {"terraform_state": "string", "workspace_name": "string", "drift_report": "string"},
+            },
+            "security-capability:kafka-event-bus": {
+                "env": [
+                    "SANCTUM_KAFKA_BOOTSTRAP_SERVERS",
+                    "SANCTUM_KAFKA_TOPIC",
+                    "SANCTUM_KAFKA_USERNAME",
+                    "SANCTUM_KAFKA_PASSWORD",
+                ],
+                "auth": {"type": "sasl_scram_or_mtls", "header": "Authorization"},
+                "endpoint": "/api/v1/security-capabilities/security-capability:kafka-event-bus/evidence",
+                "payload": {"bootstrap_servers": [], "topics": [], "event_bus_status": "configured"},
             },
             "security-capability:signals-intel": {
                 "env": ["SANCTUM_XKEYSCORE_API_URL", "SANCTUM_XKEYSCORE_TOKEN"],
@@ -1582,6 +1772,50 @@ class SecurityCapabilityAdapterRegistry:
                 "endpoint": "/api/v1/security-capabilities/security-capability:long-term-storage/evidence",
                 "payload": {"driver": "string", "retention_policy": "string", "storage_status": "string"},
             },
+            "security-capability:retention-policy": {
+                "env": ["SANCTUM_RETENTION_POLICY_DB", "SANCTUM_ARCHIVE_TOKEN"],
+                "auth": {"type": "service_account", "header": "X-Service-Account"},
+                "endpoint": "/api/v1/security-capabilities/security-capability:retention-policy/evidence",
+                "payload": {"retention_policy": "string", "archive_status": "string", "storage": "string"},
+            },
+            "security-capability:operational-audit": {
+                "env": ["SANCTUM_AUDIT_LOG_STORE_URL", "SANCTUM_AUDIT_LOG_TOKEN"],
+                "auth": {"type": "bearer_token", "header": "Authorization"},
+                "endpoint": "/api/v1/security-capabilities/security-capability:operational-audit/evidence",
+                "payload": {"api_url": "string", "review_state": "string", "audit_window": "string"},
+            },
+            "security-capability:compliance-cutover": {
+                "env": ["SANCTUM_COMPLIANCE_FRAMEWORK", "SANCTUM_COMPLIANCE_API_URL", "SANCTUM_COMPLIANCE_TOKEN"],
+                "auth": {"type": "oauth2", "grant": "client_credentials"},
+                "endpoint": "/api/v1/security-capabilities/security-capability:compliance-cutover/evidence",
+                "payload": {"framework": "string", "cutover_status": "string", "approval_state": "string"},
+            },
+            "security-capability:ai-governance": {
+                "env": [
+                    "SANCTUM_SEC_PALM_MODEL_REGISTRY",
+                    "SANCTUM_MODEL_REGISTRY_URL",
+                    "SANCTUM_MODEL_GOVERNANCE_TOKEN",
+                ],
+                "env_aliases": [
+                    ["SANCTUM_SEC_PALM_MODEL_REGISTRY", "SANCTUM_MODEL_REGISTRY_URL"],
+                ],
+                "auth": {"type": "oauth2", "grant": "client_credentials"},
+                "endpoint": "/api/v1/security-capabilities/security-capability:ai-governance/evidence",
+                "payload": {"registry": "string", "risk_policy": "string", "guardrail_config": "dict"},
+            },
+            "security-capability:graph-data-fusion": {
+                "env": [
+                    "SANCTUM_PALANTIR_FOUNDRY_API_URL",
+                    "SANCTUM_DATA_FUSION_URL",
+                    "SANCTUM_DATA_FUSION_TOKEN",
+                ],
+                "env_aliases": [
+                    ["SANCTUM_PALANTIR_FOUNDRY_API_URL", "SANCTUM_DATA_FUSION_URL"],
+                ],
+                "auth": {"type": "oauth2", "grant": "client_credentials"},
+                "endpoint": "/api/v1/security-capabilities/security-capability:graph-data-fusion/evidence",
+                "payload": {"workspace": "string", "source_data": [], "data_contracts": [], "classification_tags": []},
+            },
         }
         result = mapping.get(capability_id)
         if result is None:
@@ -1590,6 +1824,8 @@ class SecurityCapabilityAdapterRegistry:
 
     def register(self, adapter: BaseSecurityCapabilityAdapter) -> None:
         self._adapters[adapter.capability_id] = adapter
+        if adapter.capability_id == "security-capability:observability":
+            self._adapters["security-capability:elastic-observability"] = adapter
 
     def get(self, capability_id: str) -> BaseSecurityCapabilityAdapter | None:
         return self._adapters.get(capability_id)

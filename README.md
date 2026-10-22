@@ -82,7 +82,15 @@ This repository is designed as a reviewable, architecture-oriented platform. It 
 
 ## Implementation waves
 
-The current implementation follows a live-ready phased model rather than a blanket claim of production connectivity. The immediate wave is the second operational layer: BAM, HIRS, paccor, RIM-Tool, ELK, and Terraform. This group is treated as a real integration train with explicit API, authentication, and evidence contracts, while remaining fail-closed until environment credentials and runtime access are present.
+The current implementation follows a live-ready phased model rather than a blanket claim of production connectivity. The first operational activation sequence is: GCP, ELK, Terraform, and Kafka. Only after the environment supplies real project IDs, endpoint URLs, API keys, RBAC, and health validation do these adapters move from `NOT_CONFIGURED` to `READY`.
+
+Operational readiness is now evaluated through the wave-status API, which checks the required env vars and auth model for each phase before reporting `READY`.
+
+- `GET /api/v1/security-capabilities/waves`
+- `GET /api/v1/security-capabilities/waves/{wave_name}`
+- `GET /api/v1/security-capabilities/waves/{wave_name}/status`
+
+The second operational wave is: BAM, HIRS, paccor, and RIM-Tool. It follows the same fail-closed pattern: real API access and signed policy context are required before the capability is treated as live.
 
 The next expansion continues in the same pattern:
 
@@ -93,6 +101,17 @@ The next expansion continues in the same pattern:
 - Long-tail evidence and archival: DNA Data Storage, retention policy, audit review
 
 This sequencing preserves the distinction between adapter-only shells and live-ready operational contracts while ensuring every listed capability is represented in the registry and the live-ready model. The architecture remains grounded in real sources, auth boundaries, and normalized event handling rather than treating unconfigured systems as already connected.
+
+## Wave 1 implementation package
+
+The first live-ready operational wave focuses on the realistic, high-value control plane for platform telemetry and evidence flow:
+
+- Google Cloud Platform (GCP)
+- Elasticsearch / Logstash / Kibana (ELK)
+- HashiCorp Terraform
+- Kafka event bus
+
+See: [docs/PHASE_1_LIVE_READY_WAVE.md](docs/PHASE_1_LIVE_READY_WAVE.md)
 
 ## Wave 2 implementation package
 
@@ -137,6 +156,23 @@ The final intelligence and governance wave completes the live-ready rollout for 
 - Palantir Gotham / Foundry / graph data fusion
 
 See: [docs/PHASE_5_LIVE_READY_WAVE.md](docs/PHASE_5_LIVE_READY_WAVE.md)
+
+## Operational deployment assets
+
+The repository now includes concrete deployment artifacts for real Kubernetes rollouts, organized under the dedicated deployment folder:
+
+- Deployment instruction index: [deployment/README.md](deployment/README.md)
+- Azure AKS deployment checklist: [deployment/azure-aks/deployment-checklist.md](deployment/azure-aks/deployment-checklist.md)
+- GCP GKE deployment checklist: [deployment/gcp-gke/deployment-checklist.md](deployment/gcp-gke/deployment-checklist.md)
+- Secret manager guidance for Vault / GCP Secret Manager / Azure Key Vault: [deployment/secret-managers/README.md](deployment/secret-managers/README.md)
+- Phase 1 rollout checklist: [deployment/phase1/phase1-rollout-checklist.md](deployment/phase1/phase1-rollout-checklist.md)
+- Example Phase 1 environment file for GCP: [.env.phase1.gcp.example](.env.phase1.gcp.example)
+- Example Phase 1 environment file for Azure AKS: [.env.phase1.aks.example](.env.phase1.aks.example)
+- GitOps ApplicationSet for a production GKE cluster: [argocd/applicationset-gke-prod.yaml](argocd/applicationset-gke-prod.yaml)
+- GitOps ApplicationSet for a production AKS cluster: [argocd/applicationset-aks-prod.yaml](argocd/applicationset-aks-prod.yaml)
+- Full Azure AKS Phase 1 deployment manifest: [k8s/phase1-live-ready-aks.yaml](k8s/phase1-live-ready-aks.yaml)
+- Phase-by-phase deployment plan with real namespace and service account names: [docs/DEPLOY_PHASE_BY_PHASE.md](docs/DEPLOY_PHASE_BY_PHASE.md)
+- Step-by-step Azure AKS cluster commands: [docs/CLUSTER_COMMANDS_PHASE1_AKS.md](docs/CLUSTER_COMMANDS_PHASE1_AKS.md)
 
 ## License
 

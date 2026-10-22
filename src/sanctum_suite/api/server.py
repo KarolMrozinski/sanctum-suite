@@ -1540,6 +1540,36 @@ def _build_event_from_adapter(
     return event
 
 
+def _phase_1_runtime_status() -> Dict[str, Any]:
+    """Evaluate whether the first operational wave has the required runtime configuration."""
+    registry = SecurityCapabilityAdapterRegistry()
+    wave_caps = registry.list_supported_by_wave().get("phase_1", [])
+    status_by_capability: Dict[str, Any] = {}
+    for capability_id in wave_caps:
+        try:
+            requirements = registry.get_runtime_requirements(capability_id)
+        except KeyError:
+            continue
+        env_names = requirements.get("env", [])
+        present = {name: bool(os.environ.get(name, "").strip()) for name in env_names}
+        required = [name for name, is_set in present.items() if not is_set]
+        status_by_capability[capability_id] = {
+            "status": "READY" if not required else "NOT_CONFIGURED",
+            "required_env": env_names,
+            "present_env": present,
+            "missing_env": required,
+            "auth": requirements.get("auth", {}),
+        }
+    ready_count = sum(1 for entry in status_by_capability.values() if entry["status"] == "READY")
+    return {
+        "wave": "phase_1",
+        "overall_status": "READY" if ready_count == len(status_by_capability) and status_by_capability else "NOT_CONFIGURED",
+        "ready_count": ready_count,
+        "total_count": len(status_by_capability),
+        "capabilities": status_by_capability,
+    }
+
+
 @app.get("/api/v1/security-capabilities", dependencies=[Security(verify_api_key)])
 async def list_security_capabilities(
     target: str = Query(default="enterprise-environment", description="Target environment label"),
@@ -1568,6 +1598,135 @@ async def list_security_capabilities(
         "items": mapped,
         "stored_records": [record.model_dump(mode="json") for record in filtered_records],
     }
+
+
+@app.get("/api/v1/security-capabilities/waves", dependencies=[Security(verify_api_key)])
+async def list_security_capability_waves() -> Dict[str, Any]:
+    """Expose the staged live-ready wave catalog with runtime requirements and env guards."""
+    registry = SecurityCapabilityAdapterRegistry()
+    catalog = PlatformTechnologyCatalog()
+    wave_catalog = registry.list_supported_by_wave()
+    runtime_requirements: Dict[str, Dict[str, Any]] = {}
+    for capability_ids in wave_catalog.values():
+        for capability_id in capability_ids:
+            try:
+                runtime_requirements[capability_id] = registry.get_runtime_requirements(capability_id)
+            except KeyError:
+                continue
+    first_wave = wave_catalog.get("phase_1", [])
+    required_env = sorted({
+        env_name
+        for requirements in runtime_requirements.values()
+        for env_name in requirements.get("env", [])
+        if env_name
+    })
+    return {
+        "phase_roadmap": catalog.phase_roadmap(),
+        "supported_wave_catalog": wave_catalog,
+        "capability_runtime_requirements": runtime_requirements,
+        "first_operational_wave": {
+            "phase": "phase_1",
+            "capabilities": first_wave,
+            "required_env": [
+                env_name for env_name in required_env if env_name in {
+                    env_name for capability_id in first_wave for env_name in runtime_requirements.get(capability_id, {}).get("env", [])
+                }
+            ],
+        },
+    }
+
+
+@app.get("/api/v1/security-capabilities/waves/{wave_name}", dependencies=[Security(verify_api_key)])
+async def get_security_capability_wave(wave_name: str) -> Dict[str, Any]:
+    """Get the full module inventory and runtime metadata for one implementation wave."""
+    registry = SecurityCapabilityAdapterRegistry()
+    catalog = PlatformTechnologyCatalog()
+    wave_catalog = registry.list_supported_by_wave()
+    if wave_name not in wave_catalog:
+        raise HTTPException(status_code=404, detail="Wave not found")
+
+    capabilities = []
+    for capability_id in wave_catalog[wave_name]:
+        runtime_requirements = {}
+        try:
+            runtime_requirements = registry.get_runtime_requirements(capability_id)
+        except KeyError:
+            runtime_requirements = {}
+        capabilities.append({
+            "capability_id": capability_id,
+            "adapter_available": registry.get(capability_id) is not None,
+            "runtime_requirements": runtime_requirements,
+        })
+
+    return {
+        "wave_name": wave_name,
+        "phase": catalog.phase_roadmap().get(wave_name, {}),
+        "capabilities": capabilities,
+    }
+
+
+def _wave_runtime_status(wave_name: str) -> Dict[str, Any]:
+    """Compute the readiness status for an implementation wave from env and auth requirements."""
+    registry = SecurityCapabilityAdapterRegistry()
+    wave_catalog = registry.list_supported_by_wave()
+    if wave_name not in wave_catalog:
+        raise HTTPException(status_code=404, detail="Wave not found")
+
+    statuses: Dict[str, Any] = {}
+    for capability_id in wave_catalog[wave_name]:
+        try:
+            requirements = registry.get_runtime_requirements(capability_id)
+        except KeyError:
+            continue
+        env_names = requirements.get("env", [])
+        alias_groups = requirements.get("env_aliases", [])
+        present = {name: bool(os.environ.get(name, "").strip()) for name in env_names}
+        satisfied_aliases = {
+            name
+            for group in alias_groups
+            if any(present.get(candidate, False) for candidate in group)
+            for name in group
+        }
+        missing = []
+        seen = set()
+        for name in env_names:
+            if name in satisfied_aliases:
+                continue
+            if not present.get(name, False):
+                if name not in seen:
+                    missing.append(name)
+                    seen.add(name)
+        for group in alias_groups:
+            if any(present.get(name, False) for name in group):
+                continue
+            for name in group:
+                if name not in seen:
+                    missing.append(name)
+                    seen.add(name)
+        statuses[capability_id] = {
+            "status": "READY" if not missing else "NOT_CONFIGURED",
+            "adapter_available": registry.get(capability_id) is not None,
+            "required_env": env_names,
+            "present_env": present,
+            "missing_env": missing,
+            "auth": requirements.get("auth", {}),
+            "endpoint": requirements.get("endpoint"),
+        }
+
+    ready_count = sum(1 for entry in statuses.values() if entry["status"] == "READY")
+    return {
+        "wave_name": wave_name,
+        "overall_status": "READY" if ready_count == len(statuses) and statuses else "NOT_CONFIGURED",
+        "ready_count": ready_count,
+        "total_count": len(statuses),
+        "capabilities": statuses,
+    }
+
+
+@app.get("/api/v1/security-capabilities/waves/{wave_name}/status", dependencies=[Security(verify_api_key)])
+async def get_security_capability_wave_status(wave_name: str) -> Dict[str, Any]:
+    """Return a practical readiness assessment for the selected live-ready wave."""
+    return _wave_runtime_status(wave_name)
 
 
 @app.get("/api/v1/security-capabilities/{capability_id}", dependencies=[Security(verify_api_key)])

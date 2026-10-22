@@ -1,0 +1,18 @@
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: sanctum-phase1-default-deny
+  namespace: sanctum-phase1
+spec:
+  podSelector:
+    matchLabels:
+      app: sanctum-suite-phase1
+  policyTypes:
+    - Egress
+  egress:
+    - to:
+        - ipBlock:
+            cidr: 10.0.0.0/8
+    - to:
+        - ipBlock:
+            cidr: 172.16.0.0/12

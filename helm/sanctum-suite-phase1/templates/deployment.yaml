@@ -1,0 +1,61 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: sanctum-live-ready
+  namespace: {{ .Values.namespace.name }}
+spec:
+  replicas: {{ .Values.replicaCount }}
+  selector:
+    matchLabels:
+      app: sanctum-live-ready
+  template:
+    metadata:
+      labels:
+        app: sanctum-live-ready
+    spec:
+      serviceAccountName: {{ .Values.serviceAccount.name }}
+      containers:
+        - name: sanctum
+          image: {{ .Values.image.repository }}:{{ .Values.image.tag }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          ports:
+            - containerPort: 8000
+          envFrom:
+            - configMapRef:
+                name: sanctum-live-ready-config
+            - secretRef:
+                name: sanctum-live-ready-secrets
+          env:
+            - name: SANCTUM_ELK_CA_CERT
+              value: /etc/sanctum/certs/elk-ca.pem
+            - name: SANCTUM_TERRAFORM_CA_CERT
+              value: /etc/sanctum/certs/terraform-ca.pem
+            - name: SANCTUM_KAFKA_SSL_CA_LOCATION
+              value: /etc/sanctum/certs/kafka-ca.pem
+          volumeMounts:
+            - name: certs
+              mountPath: /etc/sanctum/certs
+              readOnly: true
+          readinessProbe:
+            httpGet:
+              path: {{ .Values.readinessProbe.path }}
+              port: {{ .Values.readinessProbe.port }}
+            initialDelaySeconds: {{ .Values.readinessProbe.initialDelaySeconds }}
+            periodSeconds: {{ .Values.readinessProbe.periodSeconds }}
+          livenessProbe:
+            httpGet:
+              path: {{ .Values.livenessProbe.path }}
+              port: {{ .Values.livenessProbe.port }}
+            initialDelaySeconds: {{ .Values.livenessProbe.initialDelaySeconds }}
+            periodSeconds: {{ .Values.livenessProbe.periodSeconds }}
+          resources:
+            requests:
+              cpu: {{ .Values.resources.requests.cpu | quote }}
+              memory: {{ .Values.resources.requests.memory | quote }}
+            limits:
+              cpu: {{ .Values.resources.limits.cpu | quote }}
+              memory: {{ .Values.resources.limits.memory | quote }}
+      volumes:
+        - name: certs
+          secret:
+            secretName: sanctum-live-ready-certs
