@@ -373,4 +373,33 @@ def _decode_jwk_integer(value: Any) -> bytes:
     return decoded
 
 
+
+class KeycloakOIDCProvider:
+    """Compatibility adapter exposing integration-friendly OIDC and OAuth2 metadata."""
+
+    def __init__(self, *, issuer: str | None = None, audience: str | None = None) -> None:
+        configured = oidc_configuration()
+        self.issuer = issuer or (configured[0] if configured else "https://identity.example.test")
+        self.audience = audience or (configured[1] if configured else "sanctum-api")
+        self.verifier = OIDCTokenVerifier()
+
+    def supported_protocols(self) -> set[str]:
+        return {"openid_connect", "oauth2", "saml2"}
+
+    @staticmethod
+    def validate_claims(claims: dict[str, Any], *, audience: str) -> dict[str, Any]:
+        issuer = claims.get("iss")
+        if not isinstance(issuer, str):
+            raise OIDCAuthenticationError("issuer is missing")
+        if not claims.get("sub"):
+            raise OIDCAuthenticationError("subject is missing")
+        token_audience = claims.get("aud")
+        if token_audience != audience and not (
+            isinstance(token_audience, list) and audience in token_audience
+        ):
+            raise OIDCAuthenticationError("audience mismatch")
+        return claims
+
+
+KeycloakIdentityProvider = KeycloakOIDCProvider
 oidc_token_verifier = OIDCTokenVerifier()

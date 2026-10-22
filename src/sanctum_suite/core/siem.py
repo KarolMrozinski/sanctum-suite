@@ -28,6 +28,21 @@ class SIEMIntegrationExporter:
         if self.webhook_url:
             self._validate_webhook_url(self.webhook_url)
 
+    def format_rfc5424_event(
+        self,
+        message: str,
+        *,
+        hostname: str = "sanctum-suite",
+        app_name: str = "sanctum-suite",
+        procid: str = "main",
+        msgid: str = "AUDIT",
+        severity: int = 6,
+        facility: int = 16,
+    ) -> str:
+        priority = (facility << 3) | severity
+        timestamp = __import__("datetime").datetime.now(__import__("datetime").timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+        return f"<{priority}>1 {timestamp} {hostname} {app_name} {procid} {msgid} - {message}"
+
     def format_cef_event(self, audit_id: str, target: str, score: float, risk: str) -> str:
         if not math.isfinite(score) or not 0 <= score <= 100:
             raise ValueError("score must be a finite value between 0 and 100")
@@ -48,6 +63,12 @@ class SIEMIntegrationExporter:
             )
         )
         return f"CEF:0|{escaped_header}|{extension}"
+
+    def format_cef(self, audit_id: str, target: str, score: float, risk: str) -> str:
+        return self.format_cef_event(audit_id, target, score, risk)
+
+    def format_rfc5424(self, message: str, **kwargs: Any) -> str:
+        return self.format_rfc5424_event(message, **kwargs)
 
     @staticmethod
     def _validate_webhook_url(webhook_url: str) -> None:
@@ -70,3 +91,7 @@ class SIEMIntegrationExporter:
     @staticmethod
     def serialize_event(payload: dict[str, Any]) -> str:
         return json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
+
+
+CorporateTelemetryExporter = SIEMIntegrationExporter
+SyslogRFC5424Exporter = SIEMIntegrationExporter

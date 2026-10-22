@@ -251,3 +251,26 @@ class ZeroTrustKMSVault:
                 f"Vault Transit {operation} response has an invalid shape"
             )
         return data
+
+
+class ExternalKMSAdapter:
+    """Compatibility wrapper for external key-management integrations."""
+
+    def __init__(self, *, require_production: bool = False) -> None:
+        self._vault = ZeroTrustKMSVault(require_production=require_production)
+
+    def encrypt(self, plaintext: str) -> dict[str, str]:
+        return self._vault.encrypt_payload(plaintext)
+
+    def decrypt(self, envelope: dict[str, str]) -> str:
+        return self._vault.decrypt_payload(envelope)
+
+    def verify_production_access(self) -> None:
+        self._vault.verify_production_access()
+
+    @property
+    def backend(self) -> str:
+        return self._vault.backend
+
+
+VaultTransitAdapter = ExternalKMSAdapter

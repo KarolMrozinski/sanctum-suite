@@ -84,6 +84,12 @@ The notebook and project documentation are intended for review and analysis of a
 - CLI, REST API, and dashboard interfaces
 - Trust attestation and enforcement controls
 - Privacy-focused and experimental security research components
+- Corporate telemetry export in Syslog RFC 5424 and CEF formats
+- External auditor evidence bundle generation and incident case packaging
+- External KMS abstraction with Vault Transit and PKI secret handling
+- Kubernetes admission and webhook integration for control-plane automation
+- Identity federation via Keycloak/OIDC and OAuth2/SAML support
+- Kafka + Debezium streaming pipeline integration for event correlation
 
 ## Documentation
 
