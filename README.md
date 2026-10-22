@@ -174,6 +174,8 @@ Obrazy SANCTUM-SUITE i dashboardu są publikowane w GitHub Container Registry (G
 ```powershell
 # Pobranie i uruchomienie stacku z GHCR
 Copy-Item .env.example .env
+docker login ghcr.io
+$env:GITHUB_REPOSITORY_OWNER = "<nazwa-uzytkownika-lub-organizacji>"
 docker compose pull
 docker compose up -d
 ```
@@ -185,7 +187,7 @@ sanctum-dashboard:
   image: ghcr.io/${GITHUB_REPOSITORY_OWNER}/sanctum-dashboard:latest
 ```
 
-Wersja stacku core i dashboardu jest przygotowana do wdrożenia w środowisku z ograniczonym dostępem do internetu, z gotowym runbookiem dla air-gap i offline deployment. Konfigurację API, TLS, sekretów i dashboardu opisuje [przewodnik instalacji](./docs/INSTALLATION.md).
+Dla pełnego stacku obraz core również jest publikowany do GHCR i może być użyty w środowiskach z ograniczonym dostępem do internetu. Pakiet zawiera też dokumentację air-gap/offline deployment oraz runbook wdrożeniowy. Konfigurację API, TLS, sekretów i dashboardu opisuje [przewodnik instalacji](./docs/INSTALLATION.md).
 
 ## 🎯 Aktywne testy
 
