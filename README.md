@@ -61,12 +61,6 @@ The repository exposes an explicit REST surface for future data binding and evid
 
 The system is intentionally fail-closed: without explicit configuration or credentials, it remains in a safe review-only mode rather than pretending to be connected to live operational sources.
 
-## Glossary
-
-### US-984XN / PRISM
-
-`US-984XN` is the official SIGAD designation associated with the PRISM signals intelligence program. In this repository, the capability is represented as a live mission-control adapter, `security-capability:mission-integration`, and is configured for active runtime evidence exchange with operator-managed mission context, attestation validation, and telemetry correlation. When the upstream mission system is connected, the integration is intended to operate as a real live data path rather than a review-only placeholder.
-
 ## Documentation
 
 - Deep technical notebook: [notebooks/sanctum_deep_dive.ipynb](notebooks/sanctum_deep_dive.ipynb)
