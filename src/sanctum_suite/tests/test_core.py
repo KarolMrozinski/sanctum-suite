@@ -74,6 +74,7 @@ from sanctum_suite.core.tempest_auditor import TempestSdip27EmissionsAuditor
 from sanctum_suite.core.threat_intel import SovereignThreatIntelAggregator
 from sanctum_suite.core.zero_trust_mesh import ZeroTrustMeshProtocolEngine
 from sanctum_suite.core.self_healing import SelfHealingBinaryEngine
+from sanctum_suite.core.chaos_resilience import ChaosResilienceEngine
 from sanctum_suite.core.vram_guard import VramEnclaveGuardEngine
 from sanctum_suite.core.cloud_infrastructure import CloudInfrastructureManager
 from sanctum_suite.core.was_security import WASModule
@@ -851,6 +852,19 @@ def test_self_healing_binary_engine():
     res = engine.evaluate_and_patch_memory_anomaly("test-pid")
     assert res["status"] == "NOT_IMPLEMENTED"
     assert res["process_modified"] is False
+
+
+def test_chaos_resilience_engine():
+    engine = ChaosResilienceEngine()
+    res = engine.execute_chaos_suite("api-gateway", ["latency_spike", "network_partition"])
+    assert res["status"] == "PLAN_ONLY"
+    assert res["execution_performed"] is False
+    assert "latency_spike" in res["recommended_scenarios"]
+    assert "network_partition" in res["recommended_scenarios"]
+
+    sim = engine.simulate_fault("cpu_pressure", "llm-service")
+    assert sim["status"] == "SIMULATION_PLANNED"
+    assert sim["execution_performed"] is False
 
 
 def test_vram_enclave_guard_engine():

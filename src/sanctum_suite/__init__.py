@@ -1,5 +1,6 @@
 """SANCTUM-SUITE package exports."""
 
+from sanctum_suite.core.chaos_resilience import ChaosResilienceEngine
 from sanctum_suite.modules import (
     AuditEvidenceBundle,
     CEFEventExporter,
@@ -17,6 +18,7 @@ from sanctum_suite.modules import (
 )
 
 __all__ = [
+    "ChaosResilienceEngine",
     "CorporateTelemetryExporter",
     "CEFEventExporter",
     "AuditEvidenceBundle",
