@@ -432,7 +432,7 @@ class MissionControlIntegrationAdapter(BaseSecurityCapabilityAdapter):
     capability_id = "security-capability:mission-integration"
     source_type = "mission_api"
     name = "mission-control-integration-adapter"
-    description = "Mission and control system integration adapter for operator scope, telemetry context, and attestations."
+    description = "Mission and control system integration adapter for US-984XN/PRISM-style SIGINT operator scope, telemetry context, and attestations."
 
     def fetch_evidence(self, *, target: str, environment: str, **kwargs: Any) -> dict[str, Any]:
         api_url = os.environ.get("SANCTUM_MISSION_API_URL", "").strip()

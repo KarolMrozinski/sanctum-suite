@@ -36,7 +36,7 @@ The project maintains a structured catalog of technology surfaces that may later
 - OS and runtime integrity: HP-UX, Oracle Solaris, OpenVMS, SELinux, VxWorks
 - Signals, intelligence, and monitoring: GRASSMARLIN, ELITEWOLF, WALKOFF, PRISM, XKeyscore, Boundless Informant
 - Cloud and infrastructure: C2S, JWCC, Mandiant Advantage, Mandiant Automated Defense, Google Cloud Platform (GCP)
-- Mission and control systems: US-984XN
+- Mission and control systems: US-984XN (official SIGAD designation for the PRISM signals intelligence program)
 - Software and data platforms: C/C++, Go, Assembly, Apache Accumulo, Apache Hadoop, Spark, Kafka, ELK Stack, Terraform
 - AI and emerging hardware: Sec-PaLM, Palantir Gotham / Foundry, QKD, Intel Loihi, IBM TrueNorth, GNN, Agentic AI, DNA Data Storage
 
@@ -74,6 +74,12 @@ The repository exposes an explicit REST surface for future data binding and evid
 - `POST /api/v1/security-capabilities/{capability_id}/sync`
 
 The system is intentionally fail-closed: without explicit configuration or credentials, it remains in a safe review-only mode rather than pretending to be connected to live operational sources.
+
+## Glossary
+
+### US-984XN / PRISM
+
+`US-984XN` is the official SIGAD designation associated with the PRISM signals intelligence program. In this repository, it is treated as a reference technology surface for mission and control integration review and evidence modeling, not as a live-connected operational deployment. The capability is represented as `security-capability:mission-integration` and is intentionally constrained to operator-managed, evidence-first review.
 
 ## Documentation
 

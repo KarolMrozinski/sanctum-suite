@@ -174,7 +174,7 @@ class PlatformTechnologyCatalog:
                     capability_id="security-capability:policy-bound-intel",
                     expected_inputs=["intel_feed", "legal_context", "collection_scope"],
                     real_data_binding="intel_feed",
-                    notes="Policy-bound, legal-review context only; no operational collection is claimed.",
+                    notes="Reference to the PRISM SIGINT program; US-984XN is the official SIGAD designation. Policy-bound, legal-review context only; no operational collection is claimed.",
                 ),
                 self._tool_record(
                     name="XKeyscore",
@@ -345,7 +345,7 @@ class PlatformTechnologyCatalog:
                     capability_id="security-capability:mission-integration",
                     expected_inputs=["mission_status", "operator_scope", "system_attestations", "telemetry_context"],
                     real_data_binding="mission_api",
-                    notes="Relevant for mission-state monitoring, operator authorization boundaries, platform attestation, and telemetry correlation.",
+                    notes="Official SIGAD designation for the PRISM signals intelligence program; relevant for mission-state monitoring, operator authorization boundaries, platform attestation, and telemetry correlation.",
                 ),
             ],
         }
