@@ -1,247 +1,85 @@
-<div align="center">
+﻿# SANCTUM-SUITE
 
-# SANCTUM-SUITE
+## Trust-aware security engineering for controlled environments
 
-### Trust-aware security engineering for controlled environments
+SANCTUM-SUITE is a modular security engineering framework for organizations that need explicit evidence, attestation, and operator-controlled trust review. It combines security workflows, auditability, and policy-aware integration patterns in a single reviewable architecture.
 
-**Verify · Attest · Audit**
+The project is designed for controlled, auditable environments where the primary need is not broad automation, but clear decision support: what is being verified, what evidence exists, and what remains untrusted or unconfigured.
 
-CLI, API, telemetry workflows, and governance tooling for supply-chain verification, operational assurance, and policy-driven security review.
+## Mission
 
-<p>
-  <img src="https://img.shields.io/badge/Python-3.11%2B-3776ab?style=flat-square&logo=python&logoColor=white" alt="Python 3.11+">
-  <img src="https://img.shields.io/badge/Next.js-dashboard-111827?style=flat-square&logo=nextdotjs&logoColor=white" alt="Next.js dashboard">
-  <img src="https://img.shields.io/badge/status-beta-f59e0b?style=flat-square" alt="Beta status">
-  <img src="https://img.shields.io/badge/version-6.0.0-2563eb?style=flat-square" alt="Version 6.0.0">
-</p>
+- verify security-relevant artifacts and environment state
+- structure evidence in a normalized capability model
+- support operator-managed integration with real data sources
+- preserve a safe-by-default posture until configuration is explicit
+- support audit, governance, and review workflows without pretending live runtime connectivity
 
-</div>
+## Core domains
 
-## Overview
+- Supply-chain verification and attestation
+- Environment policy and integrity review
+- Telemetry and evidence correlation
+- Governance and operator-facing reporting
+- Capability mapping for technologies, platforms, and security controls
 
-SANCTUM-SUITE is a modular security engineering platform designed for environments where trust, evidence, and explicit authorization matter as much as tooling itself. It brings together security workflows, attestation patterns, telemetry correlation, policy enforcement, and reporting into a single operational framework.
+## Platform catalog
 
-The project is intended for controlled, auditable, and security-conscious deployments where operators need stronger visibility into what was checked, why it was allowed, and what evidence supports the decision.
+The project maintains a structured technology catalog for future evidence binding across relevant domains:
 
-## Why SANCTUM-SUITE?
+- Binary analysis and reversing: Ghidra, BAM, HIRS, paccor, RIM-Tool
+- OS and runtime integrity: HP-UX, Oracle Solaris, OpenVMS, SELinux, VxWorks
+- Monitoring and intelligence: GRASSMARLIN, ELITEWOLF, WALKOFF, PRISM, XKeyscore, Boundless Informant
+- Cloud and infrastructure: C2S, JWCC, Mandiant Advantage, Mandiant Automated Defense, Google Cloud Platform (GCP)
+- Software and data platforms: C/C++, Go, Assembly, Apache Accumulo, Hadoop, Spark, Kafka, ELK Stack, Terraform
+- AI and emerging hardware: Sec-PaLM, Palantir Gotham / Foundry, QKD, Loihi, TrueNorth, GNN, Agentic AI, DNA Data Storage
 
-Modern security programs often fail not because the right tools are missing, but because the environment lacks clear evidence, policy boundaries, and verifiable trust context. SANCTUM-SUITE addresses that gap by combining:
+This catalog is intentionally evidence-first: technologies are modeled as capability surfaces, not as guaranteed live integrations.
 
-- policy-aware audit workflows
-- attestation and trust verification hooks
-- telemetry ingestion and event correlation
-- supply-chain and artifact verification flows
-- structured reporting for operators and auditors
-- optional CLI, API, and dashboard interfaces
+## Capability model
 
-## Core capabilities
+SANCTUM-SUITE maps technologies to normalized security capabilities such as:
 
-- 🔐 Supply chain verification: Sigstore/Cosign-style attestations, policy checks, SBOM-oriented reporting
-- 🧾 Executive reporting: structured JSON and Markdown outputs for technical and governance audiences
-- 🛡️ Trust and attestation: TPM/Measured Boot awareness, policy enforcement, and attestation gates
-- 📦 Air-gap readiness: local execution patterns, evidence handling, and offline-first operational design
-- 🔭 Telemetry and auditability: Parquet/Arrow ingestion, event correlation, incident traceability
-- 🧪 Chaos engineering and resilience testing: controlled fault injection plans, blast-radius analysis, and recovery validation
-- 🧱 Platform technology catalog: Ghidra, BAM, HIRS, paccor, RIM, GRASSMARLIN, ELITEWOLF, SELinux, VxWorks, cloud platforms, AI stacks, and emerging hardware integration review
-- 🧪 AI safety and privacy experiments: prompt-risk evaluation, secure flow patterns, controlled research tooling
+- `security-capability:binary-analysis`
+- `security-capability:runtime-attestation`
+- `security-capability:linux-integrity`
+- `security-capability:gcp-platform`
+- `security-capability:terraform-policy`
+- `security-capability:observability`
 
-## Platform catalog and operator-managed integration model
+Each capability is designed to carry:
 
-SANCTUM-SUITE includes a structured platform inventory for future integration with real operational data. The catalog is intentionally explicit and evidence-driven: each technology is documented as an operator-managed capability surface, not as a live deployment claim.
+- stable identifier
+- source type
+- expected evidence format
+- integration mode (`PLAN_ONLY`, `CONFIGURED`, `LIVE`)
+- operator-controlled status and trust context
 
-### Binary analysis and reversing
+## API contract
 
-- Ghidra
-- BAM - Binary Analysis Metadata
-- HIRS - Host Integrity at Runtime and Start-up
-- paccor - Platform Attribute Certificate Creator
-- RIM-Tool
+The project exposes an explicit REST surface for future data binding and evidence handling:
 
-### OS and runtime integrity
+- `GET /api/v1/security-capabilities`
+- `GET /api/v1/security-capabilities/{capability_id}`
+- `POST /api/v1/security-capabilities`
+- `GET /api/v1/security-capabilities/{capability_id}/evidence`
+- `POST /api/v1/security-capabilities/{capability_id}/evidence`
+- `POST /api/v1/security-capabilities/{capability_id}/sync`
 
-- HP-UX
-- Oracle Solaris
-- OpenVMS
-- SELinux
-- VxWorks
-
-### Intelligence and specialized monitoring
-
-- GRASSMARLIN
-- ELITEWOLF
-- Simon and Speck
-- WALKOFF
-- PRISM
-- XKeyscore
-- Boundless Informant
-
-### Commercial and government cloud integration
-
-- C2S
-- JWCC - Joint Warfighting Cloud Capability
-- Mandiant Advantage
-- Mandiant Automated Defense
-- Google Cloud Ecosystem
-- Google Cloud Platform (GCP)
-
-### Software, data and infrastructure stack
-
-- C and C++
-- Go (Golang)
-- Assembly (Assembler)
-- Apache Accumulo
-- Apache Hadoop
-- Spark
-- Kafka
-- Elasticsearch / Logstash / Kibana (ELK Stack)
-- HashiCorp Terraform
-
-### AI, quantum, and emerging hardware
-
-- Sec-PaLM
-- Palantir Gotham / Foundry
-- QKD - Quantum Key Distribution
-- Intel Loihi
-- IBM TrueNorth
-- GNN - Graph Neural Networks
-- Autonomous Agents AI (Agentic AI)
-- DNA Data Storage
-
-This model is designed to be extended with real telemetry and evidence sources in future deployments, while retaining a clear separation between planned assessment scope and live operational data.
-
-## API contract for real-data binding
-
-SANCTUM-SUITE keeps the integration model explicit and evidence-first. The core rule is simple: a technology may be cataloged and mapped to a capability without claiming live runtime connectivity.
-
-### Key capability mapping
-
-| Security capability | Technology | Example source type |
-|---|---|---|
-| `security-capability:binary-analysis` | Ghidra | `artifact_store` |
-| `security-capability:linux-integrity` | SELinux | `host_policy_api` |
-| `security-capability:gcp-platform` | GCP | `gcp_api` |
-| `security-capability:terraform-policy` | Terraform | `iac_api` |
-| `security-capability:observability` | ELK Stack | `logging_api` |
-| `security-capability:runtime-attestation` | HIRS | `attestation_api` |
-
-### Minimal payload
-
-```json
-{
-  "target": "edge-domain",
-  "environment": "gcp",
-  "capability_id": "security-capability:gcp-platform",
-  "technology": "Google Cloud Platform (GCP)",
-  "source_type": "gcp_api",
-  "evidence": {
-    "project_id": "prod-core-01",
-    "service_accounts": ["svc-audit", "svc-terraform"],
-    "resource_inventory": 154,
-    "iam_model": "organization-level"
-  },
-  "status": "PLAN_ONLY"
-}
-```
-
-This keeps the contract secure, reviewable, and ready for real binding later, without pretending that the environment is already connected.
-
-## REST API: security capabilities
-
-The project exposes a concrete REST surface for capability discovery and evidence handling.
-
-### Essential endpoints
-
-- `GET /api/v1/security-capabilities` — list available capability mappings
-- `GET /api/v1/security-capabilities/{capability_id}` — fetch one normalized capability record
-- `POST /api/v1/security-capabilities` — register or create a capability evidence record
-- `GET /api/v1/security-capabilities/{capability_id}/evidence` — retrieve evidence history
-- `POST /api/v1/security-capabilities/{capability_id}/evidence` — submit evidence payload
-- `POST /api/v1/security-capabilities/{capability_id}/sync` — invoke the provider adapter sync contract
-
-### Important implementation notes
-
-- The adapter layer is in [src/sanctum_suite/core/security_capability_adapters.py](src/sanctum_suite/core/security_capability_adapters.py)
-- The safe-by-default provider examples are in [src/sanctum_suite/core/security_capability_sdk_examples.py](./src/sanctum_suite/core/security_capability_sdk_examples.py)
-- The OpenAPI contract is available in [docs/openapi/security_capabilities_openapi.yaml](./docs/openapi/security_capabilities_openapi.yaml), [docs/openapi/security_capabilities_openapi.json](./docs/openapi/security_capabilities_openapi.json), and [docs/openapi/openapi.json](./docs/openapi/openapi.json)
-
-For the detailed payloads, adapter examples, and deep technical walk-through, see the notebook: [notebooks/sanctum_deep_dive.ipynb](./notebooks/sanctum_deep_dive.ipynb).
-
-## View-only access notice
-
-
-## View-only access notice
-
-This repository is provided under a limited source-available, view-only license. It may be inspected and reviewed for educational, evaluation, and code-review purposes only.
-
-The following activities are not authorized under the license:
-
-- execution or runtime use of the software
-- compilation or build steps
-- deployment to any environment
-- modification, redistribution, or integration into operational systems
-- commercial or defense-related use
-
-The notebook and project documentation are intended for review and analysis of architecture, policy design, and security intent, not for operational use.
-
-## Project structure
-
-```text
-.
-├── src/                  # Core Python package and security logic
-├── notebooks/            # Deep-dive technical and architectural notes
-├── docs/                 # Installation and operational guidance
-├── policies/             # OPA policy definitions
-├── sanctum-dashboard/    # Optional Next.js dashboard
-├── scripts/              # Helper tooling and automation scripts
-├── README.md             # Project overview
-├── DEPLOYMENT.md         # Deployment runbook
-├── SECURITY.md           # Security guidance and controls
-├── LICENSE               # Source-available licensing terms
-├── pyproject.toml        # Packaging and dependency metadata
-├── action.yml            # GitHub Action metadata
-└── .github/              # CI and repository automation
-```
-
-## Main modules
-
-- Active audit and policy-driven verification
-- Incident response and access-audit workflows
-- Chaos engineering and resilience testing for controlled fault injection and recovery validation
-- Platform technology catalog for binary analysis, OS integrity, cloud, AI, and emerging hardware stack review
-- AI safety and prompt-analysis experiments
-- CLI, REST API, and dashboard interfaces
-- Trust attestation and enforcement controls
-- Privacy-focused and experimental security research components
-- Corporate telemetry export in Syslog RFC 5424 and CEF formats
-- External auditor evidence bundle generation and incident case packaging
-- External KMS abstraction with Vault Transit and PKI secret handling
-- Kubernetes admission and webhook integration for control-plane automation
-- Identity federation via Keycloak/OIDC and OAuth2/SAML support
-- Kafka + Debezium streaming pipeline integration for event correlation
+The implementation is intentionally safe by default and fail-closed when required configuration or credentials are missing.
 
 ## Documentation
 
-- [Deep dive notebook](./notebooks/sanctum_deep_dive.ipynb)
-- [Deployment guide](./DEPLOYMENT.md)
-- [Enterprise integrations operations guide](./docs/ENTERPRISE_INTEGRATIONS.md)
-- [Enterprise integrations ops brief](./docs/OPS_BRIEF_ENTERPRISE_INTEGRATIONS.md)
-- [Security policy](./SECURITY.md)
-- [License](./LICENSE)
+- Deep technical notebook: `notebooks/sanctum_deep_dive.ipynb`
+- OpenAPI YAML: `docs/openapi/security_capabilities_openapi.yaml`
+- OpenAPI JSON: `docs/openapi/security_capabilities_openapi.json`
+- FastAPI export: `docs/openapi/openapi.json`
+- Adapter contracts: `src/sanctum_suite/core/security_capability_adapters.py`
+- Safe SDK examples: `src/sanctum_suite/core/security_capability_sdk_examples.py`
 
-## Project status
+## Operational stance
 
-> SANCTUM-SUITE is currently in beta. Some modules may be experimental, partially integrated, or intended for controlled evaluation environments rather than broad production deployment.
+This repository is maintained as a reviewable, architecture-oriented platform. It is not presented as a live, production-connected deployment. The default posture is explicit operator configuration and evidence-based review before any real-world data feed is considered trusted.
 
-This repository is designed for secure evaluation, governed operations, and research-oriented security workflows. It does not replace formal certification, external attestation, or independent validation for production environments.
+## View-only notice
 
-## Recommended reading
-
-- Start with this README for the high-level overview
-- Read the [deep-dive notebook](./notebooks/sanctum_deep_dive.ipynb) for architecture and rationale
-- Review [DEPLOYMENT.md](./DEPLOYMENT.md) for operational setup and environment guidance
-- Review [SECURITY.md](./SECURITY.md) for project safeguards and security posture
-
-## License
-
-SANCTUM-SUITE is distributed under a limited source-available license. Please review the full terms in [LICENSE](./LICENSE) before using, deploying, or adapting the project.
-
+This repository is provided for review, evaluation, and architecture inspection only. It is not authorized for execution, deployment, redistribution, or operational use without separate approval.
