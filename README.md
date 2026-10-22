@@ -24,7 +24,7 @@ The project is designed for controlled, high-assurance environments where govern
   </tr>
   <tr>
     <td><a href="#documentation"><strong>Documentation</strong></a><br/>Detailed notebook, OpenAPI contracts, and adapter examples for future integration.</td>
-    <td><a href="#operational-stance"><strong>Operational stance</strong></a><br/>Explicit evidence-based review and operator-controlled trust boundaries before live integration.</td>
+    <td><a href="#product-overview"><strong>Product overview</strong></a><br/>Explicit evidence-based review and operator-controlled trust boundaries before live integration.</td>
   </tr>
 </table>
 
@@ -76,103 +76,11 @@ The system is intentionally fail-closed: without explicit configuration or crede
 - Adapter contracts: [src/sanctum_suite/core/security_capability_adapters.py](src/sanctum_suite/core/security_capability_adapters.py)
 - Safe SDK examples: [src/sanctum_suite/core/security_capability_sdk_examples.py](src/sanctum_suite/core/security_capability_sdk_examples.py)
 
-## Operational stance
+## Product overview
 
-This repository is designed as a reviewable, architecture-oriented platform. It is not presented as a live production-connected deployment. The default posture is explicit operator configuration and evidence-based review before any real-world source is treated as trusted.
+SANCTUM-SUITE is a reviewable security capability framework for mapping technology stacks, trust boundaries, and evidence-backed security functions into a normalized architecture model. It is designed to help organizations reason about what is operationally verified, what is only planned, and what remains unconfigured before live integration is considered.
 
-## Implementation waves
-
-The current implementation follows a live-ready phased model rather than a blanket claim of production connectivity. The first operational activation sequence is: GCP, ELK, Terraform, and Kafka. Only after the environment supplies real project IDs, endpoint URLs, API keys, RBAC, and health validation do these adapters move from `NOT_CONFIGURED` to `READY`.
-
-Operational readiness is now evaluated through the wave-status API, which checks the required env vars and auth model for each phase before reporting `READY`.
-
-- `GET /api/v1/security-capabilities/waves`
-- `GET /api/v1/security-capabilities/waves/{wave_name}`
-- `GET /api/v1/security-capabilities/waves/{wave_name}/status`
-
-The second operational wave is: BAM, HIRS, paccor, and RIM-Tool. It follows the same fail-closed pattern: real API access and signed policy context are required before the capability is treated as live.
-
-The next expansion continues in the same pattern:
-
-- Legacy host baselines: HP-UX, Oracle Solaris, OpenVMS
-- Embedded control-plane: VxWorks
-- AI/graph and autonomous orchestration: GNN, Agentic AI, Sec-PaLM, Palantir Gotham / Foundry
-- Key-distribution and hardware assurance: QKD, Intel Loihi, IBM TrueNorth
-- Long-tail evidence and archival: DNA Data Storage, retention policy, audit review
-
-This sequencing preserves the distinction between adapter-only shells and live-ready operational contracts while ensuring every listed capability is represented in the registry and the live-ready model. The architecture remains grounded in real sources, auth boundaries, and normalized event handling rather than treating unconfigured systems as already connected.
-
-## Wave 1 implementation package
-
-The first live-ready operational wave focuses on the realistic, high-value control plane for platform telemetry and evidence flow:
-
-- Google Cloud Platform (GCP)
-- Elasticsearch / Logstash / Kibana (ELK)
-- HashiCorp Terraform
-- Kafka event bus
-
-See: [docs/PHASE_1_LIVE_READY_WAVE.md](docs/PHASE_1_LIVE_READY_WAVE.md)
-
-## Wave 2 implementation package
-
-The current repository also includes a concrete operational backlog for the next complete wave, with explicit capability IDs, env vars, auth model, payloads, and health-check endpoints for the legacy, embedded, AI, quantum, and neuromorphic groups.
-
-See: [docs/PHASE_2_LIVE_READY_WAVE.md](docs/PHASE_2_LIVE_READY_WAVE.md)
-
-## Wave 3 implementation package
-
-The next complete deployment wave adds the remaining host, embedded, AI, and hardware assurance modules in the same live-ready pattern:
-
-- legacy host baselines
-- embedded control-plane (VxWorks)
-- graph / GNN analytics
-- agentic AI
-- QKD key distribution
-- neuromorphic compute
-
-See: [docs/PHASE_3_LIVE_READY_WAVE.md](docs/PHASE_3_LIVE_READY_WAVE.md)
-
-## Wave 4 implementation package
-
-The subsequent live-ready wave extends the model to mission, signals, long-tail retention, and governance intelligence:
-
-- signals intelligence (XKeyscore)
-- collection intelligence (Boundless Informant)
-- mission integration (US-984XN / PRISM)
-- long-term archival storage
-- AI governance and graph fusion
-
-See: [docs/PHASE_4_LIVE_READY_WAVE.md](docs/PHASE_4_LIVE_READY_WAVE.md)
-
-## Wave 5 implementation package
-
-The final intelligence and governance wave completes the live-ready rollout for mission, collection, archive retention, AI governance, and data fusion:
-
-- XKeyscore / signals intelligence
-- Boundless Informant / collection intelligence
-- US-984XN / PRISM mission integration
-- DNA Data Storage / long-term retention
-- Sec-PaLM / AI governance
-- Palantir Gotham / Foundry / graph data fusion
-
-See: [docs/PHASE_5_LIVE_READY_WAVE.md](docs/PHASE_5_LIVE_READY_WAVE.md)
-
-## Operational deployment assets
-
-The repository now includes concrete deployment artifacts for real Kubernetes rollouts, organized under the dedicated deployment folder:
-
-- Deployment instruction index: [deployment/README.md](deployment/README.md)
-- Azure AKS deployment checklist: [deployment/azure-aks/deployment-checklist.md](deployment/azure-aks/deployment-checklist.md)
-- GCP GKE deployment checklist: [deployment/gcp-gke/deployment-checklist.md](deployment/gcp-gke/deployment-checklist.md)
-- Secret manager guidance for Vault / GCP Secret Manager / Azure Key Vault: [deployment/secret-managers/README.md](deployment/secret-managers/README.md)
-- Phase 1 rollout checklist: [deployment/phase1/phase1-rollout-checklist.md](deployment/phase1/phase1-rollout-checklist.md)
-- Example Phase 1 environment file for GCP: [.env.phase1.gcp.example](.env.phase1.gcp.example)
-- Example Phase 1 environment file for Azure AKS: [.env.phase1.aks.example](.env.phase1.aks.example)
-- GitOps ApplicationSet for a production GKE cluster: [argocd/applicationset-gke-prod.yaml](argocd/applicationset-gke-prod.yaml)
-- GitOps ApplicationSet for a production AKS cluster: [argocd/applicationset-aks-prod.yaml](argocd/applicationset-aks-prod.yaml)
-- Full Azure AKS Phase 1 deployment manifest: [k8s/phase1-live-ready-aks.yaml](k8s/phase1-live-ready-aks.yaml)
-- Phase-by-phase deployment plan with real namespace and service account names: [docs/DEPLOY_PHASE_BY_PHASE.md](docs/DEPLOY_PHASE_BY_PHASE.md)
-- Step-by-step Azure AKS cluster commands: [docs/CLUSTER_COMMANDS_PHASE1_AKS.md](docs/CLUSTER_COMMANDS_PHASE1_AKS.md)
+The platform is intentionally conservative: capability adapters do not claim real operational status without explicit runtime context, credentials, policy approval, and evidence. This keeps the model grounded in actual deployment reality rather than marketing claims or broad tool inventories.
 
 ## License
 
