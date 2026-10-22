@@ -167,7 +167,25 @@ npm run build
 npm run start
 ```
 
-Konfigurację API, TLS, sekretów i dashboardu opisuje [przewodnik instalacji](./docs/INSTALLATION.md).
+### Kontenery z GHCR (wersja szybka)
+
+Obrazy SANCTUM-SUITE i dashboardu są publikowane w GitHub Container Registry (GHCR). Możesz je uruchamiać bez lokalnego builda:
+
+```powershell
+# Pobranie i uruchomienie stacku z GHCR
+Copy-Item .env.example .env
+docker compose pull
+docker compose up -d
+```
+
+Domyślnie `docker-compose.yml` pobiera dashboard z GHCR:
+
+```yaml
+sanctum-dashboard:
+  image: ghcr.io/${GITHUB_REPOSITORY_OWNER}/sanctum-dashboard:latest
+```
+
+Wersja stacku core i dashboardu jest przygotowana do wdrożenia w środowisku z ograniczonym dostępem do internetu, z gotowym runbookiem dla air-gap i offline deployment. Konfigurację API, TLS, sekretów i dashboardu opisuje [przewodnik instalacji](./docs/INSTALLATION.md).
 
 ## 🎯 Aktywne testy
 
