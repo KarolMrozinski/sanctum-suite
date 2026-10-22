@@ -109,6 +109,110 @@ SANCTUM-SUITE includes a structured platform inventory for future integration wi
 
 This model is designed to be extended with real telemetry and evidence sources in future deployments, while retaining a clear separation between planned assessment scope and live operational data.
 
+## API contract for real-data binding
+
+The platform catalog is designed to be connected to real evidence stores without claiming live execution or deployment. The recommended contract is a security-capability record that links a technology to a validated data source and expected evidence payload.
+
+### Capability mapping
+
+| Security capability | Technology | Source type | Example evidence |
+|---|---|---|---|
+| `security-capability:binary-analysis` | Ghidra | `artifact_store` | SHA-256, file type, symbol metadata |
+| `security-capability:runtime-attestation` | HIRS | `attestation_api` | boot measurements, runtime state |
+| `security-capability:linux-integrity` | SELinux | `host_policy_api` | SELinux state, AVC logs, policy summary |
+| `security-capability:gcp-platform` | GCP | `gcp_api` | project inventory, IAM model, services |
+| `security-capability:terraform-policy` | Terraform | `iac_api` | drift report, module versions, state |
+| `security-capability:observability` | ELK Stack | `logging_api` | log indices, traces, alert configurations |
+| `security-capability:agentic-ai` | Agentic AI | `agent_runtime` | tool permissions, execution logs |
+
+### Recommended payload schema
+
+```json
+{
+  "target": "production-internal",
+  "environment": "gcp",
+  "capability_id": "security-capability:gcp-platform",
+  "source_type": "gcp_api",
+  "evidence": {
+    "timestamp": "2026-10-22T12:00:00Z",
+    "provider": "google-cloud",
+    "artifact_id": "project-prod-core",
+    "values": {
+      "project_id": "prod-core-01",
+      "service_accounts": ["svc-audit", "svc-terraform"],
+      "resource_inventory": 154,
+      "iam_model": "organization-level"
+    }
+  },
+  "status": "PLAN_ONLY"
+}
+```
+
+### Example: concrete environment payload
+
+```json
+{
+  "target": "edge-domain",
+  "environment": "aws-gcp-hybrid",
+  "capability_map": {
+    "Ghidra": "security-capability:binary-analysis",
+    "SELinux": "security-capability:linux-integrity",
+    "Google Cloud Platform (GCP)": "security-capability:gcp-platform",
+    "HashiCorp Terraform": "security-capability:terraform-policy",
+    "Elasticsearch / Logstash / Kibana (ELK Stack)": "security-capability:observability"
+  },
+  "results": [
+    {
+      "technology": "Ghidra",
+      "status": "PLAN_ONLY",
+      "source_type": "artifact_store",
+      "artifact_id": "firmware-image-2026-10-22",
+      "evidence": {
+        "sha256": "4ae8d6...",
+        "artifact_type": "firmware",
+        "symbol_context": "not_yet_loaded"
+      }
+    },
+    {
+      "technology": "Google Cloud Platform (GCP)",
+      "status": "PLAN_ONLY",
+      "source_type": "gcp_api",
+      "artifact_id": "project-prod-core",
+      "evidence": {
+        "project_id": "prod-core-01",
+        "service_accounts": ["svc-audit", "svc-terraform"],
+        "resource_inventory": 154,
+        "iam_model": "organization-level"
+      }
+    },
+    {
+      "technology": "HashiCorp Terraform",
+      "status": "PLAN_ONLY",
+      "source_type": "iac_api",
+      "artifact_id": "terraform-state-prod",
+      "evidence": {
+        "terraform_state": "state-prod-01",
+        "module_versions": ["v1.8.3"],
+        "drift_report": "pending"
+      }
+    },
+    {
+      "technology": "Elasticsearch / Logstash / Kibana (ELK Stack)",
+      "status": "PLAN_ONLY",
+      "source_type": "logging_api",
+      "artifact_id": "elk-prod-logs",
+      "evidence": {
+        "log_index": "security-*",
+        "pipeline_config": "prod-collector",
+        "dashboard_rules": 42
+      }
+    }
+  ]
+}
+```
+
+This contract keeps the model auditable and extensible: the project can bind new technologies to live sources without pretending that the integration is already active or production-verified.
+
 ## View-only access notice
 
 This repository is provided under a limited source-available, view-only license. It may be inspected and reviewed for educational, evaluation, and code-review purposes only.

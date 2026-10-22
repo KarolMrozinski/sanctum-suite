@@ -878,6 +878,9 @@ def test_platform_technology_catalog():
     assert "GCP" in res["technology_inventory"]
     assert "QKD" in res["technology_inventory"]
     assert "Autonomous Agents AI (Agentic AI)" in res["technology_inventory"]
+    assert any(item["technology"] == "Ghidra" for item in res["security_capability_mapping"])
+    assert any(item["capability_id"] == "security-capability:gcp-platform" for item in res["security_capability_mapping"])
+    assert res["api_contract"]["required_payload"]["source_type"] == "artifact_store|asset_inventory|cloud_inventory|data_platform_api|gcp_api|logging_api|model_registry|attestation_api"
 
 
 def test_vram_enclave_guard_engine():
