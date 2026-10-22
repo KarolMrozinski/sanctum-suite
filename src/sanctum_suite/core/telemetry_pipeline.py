@@ -31,6 +31,11 @@ _FIELDS = (
     "detection_rule_id",
     "ingested_at",
 )
+_EVENT_SELECT_SQL = (
+    "SELECT event_id, source_id, event_type, observed_at, reported_severity, "
+    "detection_scenario_id, detection_rule_id, ingested_at "
+    "FROM normalized_telemetry_events"
+)
 _IMMUTABLE_FIELDS = ("event_id", "source_id", "observed_at", "ingested_at")
 _OPTIONAL_LABEL_FIELDS = ("detection_scenario_id", "detection_rule_id")
 class TelemetryPipelineError(ValueError):
@@ -77,17 +82,15 @@ def _read_events(
                 raise TelemetryPipelineError(
                     "Database does not contain the normalized telemetry event schema"
                 )
-            selected = ", ".join(_FIELDS)
             if source_id is None:
                 cursor = connection.execute(
-                    f"SELECT {selected} FROM normalized_telemetry_events "
-                    "ORDER BY observed_at DESC, event_id LIMIT ?",
+                    _EVENT_SELECT_SQL + " ORDER BY observed_at DESC, event_id LIMIT ?",
                     (limit + 1,),
                 )
             else:
                 cursor = connection.execute(
-                    f"SELECT {selected} FROM normalized_telemetry_events "
-                    "WHERE source_id = ? ORDER BY observed_at DESC, event_id LIMIT ?",
+                    _EVENT_SELECT_SQL
+                    + " WHERE source_id = ? ORDER BY observed_at DESC, event_id LIMIT ?",
                     (source_id, limit + 1),
                 )
             for row in cursor:

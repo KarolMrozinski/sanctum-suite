@@ -27,3 +27,4 @@ tools/zk-audit/circuits/*.ptau
 .env.*
 !.env.example
 opa.exe
+.keys/
