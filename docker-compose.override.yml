@@ -1,0 +1,78 @@
+# Optional override for enterprise integration deployment.
+# Usage:
+#   docker compose --profile enterprise up -d
+#   docker compose -f docker-compose.yml -f docker-compose.override.yml --profile enterprise up -d
+#
+# This file keeps environment defaults explicit for staging and production while leaving the
+# base stack intact. Update values via a real secret store before deployment.
+
+services:
+  sanctum-core:
+    environment:
+      SANCTUM_ENVIRONMENT: ${SANCTUM_ENVIRONMENT:-production}
+      SANCTUM_API_KEY: ${SANCTUM_API_KEY:-change-me}
+      SANCTUM_SIEM_WEBHOOK_URL: ${SANCTUM_SIEM_WEBHOOK_URL:-https://siem.internal.example/events}
+      SANCTUM_SIEM_WEBHOOK_TOKEN: ${SANCTUM_SIEM_WEBHOOK_TOKEN:-replace-with-bearer-token}
+      SANCTUM_SYSLOG_HOST: ${SANCTUM_SYSLOG_HOST:-syslog.internal.example}
+      SANCTUM_SYSLOG_PORT: ${SANCTUM_SYSLOG_PORT:-514}
+      SANCTUM_SYSLOG_PROTOCOL: ${SANCTUM_SYSLOG_PROTOCOL:-tcp}
+      SANCTUM_KUBERNETES_WEBHOOK_SECRET: ${SANCTUM_KUBERNETES_WEBHOOK_SECRET:-replace-with-shared-secret}
+      SANCTUM_KUBERNETES_WEBHOOK_ALLOWED_GATES: ${SANCTUM_KUBERNETES_WEBHOOK_ALLOWED_GATES:-admission.sanctum.local}
+      SANCTUM_KMS_BACKEND: ${SANCTUM_KMS_BACKEND:-vault-transit}
+      SANCTUM_VAULT_ADDR: ${SANCTUM_VAULT_ADDR:-https://vault.internal.example:8200}
+      SANCTUM_VAULT_TOKEN: ${SANCTUM_VAULT_TOKEN:-}
+      SANCTUM_VAULT_TOKEN_FILE: ${SANCTUM_VAULT_TOKEN_FILE:-/run/secrets/vault-token}
+      SANCTUM_VAULT_TRANSIT_MOUNT: ${SANCTUM_VAULT_TRANSIT_MOUNT:-transit}
+      SANCTUM_VAULT_TRANSIT_KEY: ${SANCTUM_VAULT_TRANSIT_KEY:-sanctum-payload}
+      SANCTUM_VAULT_NAMESPACE: ${SANCTUM_VAULT_NAMESPACE:-security/sanctum}
+      SANCTUM_VAULT_CA_CERT: ${SANCTUM_VAULT_CA_CERT:-/etc/sanctum/pki/vault-ca.pem}
+      SANCTUM_OIDC_ISSUER: ${SANCTUM_OIDC_ISSUER:-https://keycloak.internal.example/realms/sanctum}
+      SANCTUM_OIDC_AUDIENCE: ${SANCTUM_OIDC_AUDIENCE:-sanctum-api}
+      SANCTUM_OIDC_CA_CERT: ${SANCTUM_OIDC_CA_CERT:-/etc/sanctum/pki/keycloak-ca.pem}
+      SANCTUM_SAML_METADATA_URL: ${SANCTUM_SAML_METADATA_URL:-https://keycloak.internal.example/realms/sanctum/protocol/saml/descriptor}
+      SANCTUM_KAFKA_BOOTSTRAP_SERVERS: ${SANCTUM_KAFKA_BOOTSTRAP_SERVERS:-kafka:9092}
+      SANCTUM_DEBEZIUM_CONNECT_URL: ${SANCTUM_DEBEZIUM_CONNECT_URL:-http://debezium-connect:8083}
+      SANCTUM_DEBEZIUM_DB_HOST: ${SANCTUM_DEBEZIUM_DB_HOST:-postgres}
+      SANCTUM_DEBEZIUM_DB_NAME: ${SANCTUM_DEBEZIUM_DB_NAME:-sanctum}
+      SANCTUM_DEBEZIUM_TOPIC_PREFIX: ${SANCTUM_DEBEZIUM_TOPIC_PREFIX:-sanctum}
+
+  vault:
+    profiles: ["enterprise"]
+    environment:
+      VAULT_DEV_ROOT_TOKEN_ID: ${VAULT_DEV_ROOT_TOKEN_ID:-root}
+      VAULT_DEV_LISTEN_ADDRESS: 0.0.0.0:8200
+
+  keycloak:
+    profiles: ["enterprise"]
+    environment:
+      KEYCLOAK_ADMIN: ${SANCTUM_KEYCLOAK_ADMIN:-admin}
+      KEYCLOAK_ADMIN_PASSWORD: ${SANCTUM_KEYCLOAK_ADMIN_PASSWORD:-change-me}
+      KC_HTTP_PORT: 8080
+      KC_HOSTNAME_STRICT: "false"
+      KC_HEALTH_ENABLED: "true"
+
+  postgres:
+    profiles: ["enterprise"]
+    environment:
+      POSTGRES_DB: ${SANCTUM_DEBEZIUM_DB_NAME:-sanctum}
+      POSTGRES_USER: sanctum
+      POSTGRES_PASSWORD: sanctum
+
+  kafka:
+    profiles: ["enterprise"]
+    environment:
+      KAFKA_CFG_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_CFG_LISTENERS: PLAINTEXT://:9092
+      KAFKA_CFG_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092
+      KAFKA_CFG_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT
+      ALLOW_PLAINTEXT_LISTENER: "yes"
+
+  debezium-connect:
+    profiles: ["enterprise"]
+    environment:
+      BOOTSTRAP_SERVERS: ${SANCTUM_KAFKA_BOOTSTRAP_SERVERS:-kafka:9092}
+      GROUP_ID: sanctum-connect
+      CONFIG_STORAGE_TOPIC: sanctum_connect_configs
+      OFFSET_STORAGE_TOPIC: sanctum_connect_offsets
+      STATUS_STORAGE_TOPIC: sanctum_connect_statuses
+      CONNECT_REST_ADVERTISED_HOST_NAME: debezium-connect

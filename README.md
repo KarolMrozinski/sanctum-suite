@@ -95,6 +95,8 @@ The notebook and project documentation are intended for review and analysis of a
 
 - [Deep dive notebook](./notebooks/sanctum_deep_dive.ipynb)
 - [Deployment guide](./DEPLOYMENT.md)
+- [Enterprise integrations operations guide](./docs/ENTERPRISE_INTEGRATIONS.md)
+- [Enterprise integrations ops brief](./docs/OPS_BRIEF_ENTERPRISE_INTEGRATIONS.md)
 - [Security policy](./SECURITY.md)
 - [License](./LICENSE)
 
