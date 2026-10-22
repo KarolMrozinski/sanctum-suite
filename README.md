@@ -56,7 +56,7 @@ Najświeższe wydanie dodaje szerszy zestaw funkcji operacyjnych i dokumentacyjn
 
 ## 🗺️ Spis treści
 
-[O projekcie](#-o-projekcie) · [Co nowego w 6.0.0](#-co-nowego-w-600) · [Status i ograniczenia](#-status-i-ograniczenia) · [Moduły](#-moduły) · [Szybki start](#-szybki-start) · [Aktywne testy](#-aktywne-testy) · [Architektura](#-architektura) · [Telemetria i audyt](#-telemetria-i-audyt) · [Dokumentacja](#-dokumentacja) · [Licencja](#-licencja)
+[O projekcie](#-o-projekcie) · [Co nowego w 6.0.0](#-co-nowego-w-600) · [Status i ograniczenia](#-status-i-ograniczenia) · [Moduły](#-moduły) · [Szybki start](#-szybki-start) · [Kontenery GHCR](#-kontenery-ghcr) · [Aktywne testy](#-aktywne-testy) · [Architektura](#-architektura) · [Telemetria i audyt](#-telemetria-i-audyt) · [Dokumentacja](#-dokumentacja) · [Licencja](#-licencja)
 
 ## 📌 O projekcie
 
@@ -187,7 +187,36 @@ sanctum-dashboard:
   image: ghcr.io/${GITHUB_REPOSITORY_OWNER}/sanctum-dashboard:latest
 ```
 
-Dla pełnego stacku obraz core również jest publikowany do GHCR i może być użyty w środowiskach z ograniczonym dostępem do internetu. Pakiet zawiera też dokumentację air-gap/offline deployment oraz runbook wdrożeniowy. Konfigurację API, TLS, sekretów i dashboardu opisuje [przewodnik instalacji](./docs/INSTALLATION.md).
+Dla pełnego stacku obraz core również jest publikowany do GHCR i może być użyty w środowiskach z ograniczonym dostępem do internetu. Pakiet zawiera też dokumentację air-gap/offline deployment oraz runbook wdrożeniowy. Przykładowe tagowanie i publikacja obrazu do własnego GHCR:
+
+```powershell
+# Przykład dla własnego GHCR
+# 1) zbudowanie obrazu
+# docker build -t ghcr.io/<owner>/sanctum-suite:latest .
+# 2) logowanie do ghcr.io
+# docker login ghcr.io
+# 3) publikacja obrazu
+# docker push ghcr.io/<owner>/sanctum-suite:latest
+```
+
+### Tagowanie wydań i wersji GHCR
+
+W praktyce zaleca się utrzymywać co najmniej dwa typy tagów dla publikacji:
+
+- `latest` — najnowsza stabilna wersja;
+- `X.Y.Z` — dokładnie odpowiadający numerowi wydania, np. `6.0.0`;
+- opcjonalnie `stable` lub `beta` dla konkretnych linii wydania.
+
+Przykład:
+
+```powershell
+# tagowanie wersji release
+# docker tag ghcr.io/<owner>/sanctum-suite:latest ghcr.io/<owner>/sanctum-suite:6.0.0
+# publikacja konkretnej wersji
+# docker push ghcr.io/<owner>/sanctum-suite:6.0.0
+```
+
+W środowiskach offline lub air-gap można wtedy pobrać wyłącznie zatwierdzoną wersję artefaktu, bez konieczności pobierania najnowszego tagu. Konfigurację API, TLS, sekretów i dashboardu opisuje [przewodnik instalacji](./docs/INSTALLATION.md).
 
 ## 🎯 Aktywne testy
 
