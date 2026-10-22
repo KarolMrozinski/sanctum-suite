@@ -1,497 +1,104 @@
-<div align="center">
+﻿<div align="center">
 
 # SANCTUM-SUITE
 
-### Modułowy zestaw narzędzi do inżynierii bezpieczeństwa
+### Modular security engineering toolkit
 
-**Verify · Attest · Audit — zaufanie do łańcucha dostaw, danych i decyzji.**
+**Verify · Attest · Audit**
 
-CLI, API i dashboard dla audytów autoryzowanych, analizy zdarzeń, weryfikacji supply chain oraz eksperymentów z privacy-enhancing technologies i AI safety.
+CLI, API, dashboard and audit workflows for supply-chain verification, operational telemetry, trusted attestation, and AI safety experiments.
 
-<p>
-  <a href="https://github.com/KarolMrozinski/sanctum-suite/actions/workflows/ci.yml"><img src="https://img.shields.io/badge/CI-workflow%20configured-2088FF?style=for-the-badge&logo=githubactions&logoColor=white" alt="CI workflow configured"></a>
-  <a href="https://github.com/KarolMrozinski/sanctum-suite/actions/workflows/security.yml"><img src="https://img.shields.io/badge/Security-workflow%20configured-2088FF?style=for-the-badge&logo=github&logoColor=white" alt="Security workflow configured"></a>
-  <img src="https://img.shields.io/badge/wersja-6.0.0-2563eb?style=for-the-badge" alt="Wersja 6.0.0">
-  <img src="https://img.shields.io/badge/status-beta-f59e0b?style=for-the-badge" alt="Status beta">
-</p>
 <p>
   <img src="https://img.shields.io/badge/Python-3.11%2B-3776ab?style=flat-square&logo=python&logoColor=white" alt="Python 3.11+">
   <img src="https://img.shields.io/badge/Next.js-dashboard-111827?style=flat-square&logo=nextdotjs&logoColor=white" alt="Next.js">
-  <img src="https://img.shields.io/badge/Air--Gap-ready-0f766e?style=flat-square" alt="Air-Gap">
-  <img src="https://img.shields.io/badge/licencja-source--available-64748b?style=flat-square" alt="Licencja source-available">
+  <img src="https://img.shields.io/badge/status-beta-f59e0b?style=flat-square" alt="Status beta">
+  <img src="https://img.shields.io/badge/version-6.0.0-2563eb?style=flat-square" alt="Version 6.0.0">
 </p>
-
-[**Szybki start**](#-szybki-start) ·
-[**Moduły**](#-moduły) ·
-[**Runbook Air-Gap**](./DEPLOYMENT.md) ·
-[**Dokumentacja**](#-dokumentacja) ·
-[**Bezpieczeństwo**](./SECURITY.md)
 
 </div>
 
----
-
-## ✨ Najważniejsze cechy
-
-| | |
-|---|---|
-| 🔐 **Supply chain** | Cosign/Sigstore, in-toto, raporty Trivy/Grype, SBOM CycloneDX |
-| 🧾 **Executive report** | Jeden raport JSON + Markdown dla audytorów |
-| 🛡️ **Trust & attestation** | TPM/Measured Boot (Keylime), SEV-SNP / TDX / SGX, polityki OPA |
-| 📦 **Air-Gap** | Podman, MinIO Object Lock, weryfikacja offline |
-| 🔭 **Telemetria** | Parquet/Arrow, sandbox Wasmtime, OpenTelemetry |
-| 🧪 **Privacy-enhancing tech** | FHE, HSM/PKCS#11, Apache AGE, SMPC, ZK, private ledger |
-
-## 🆕 Co nowego w 6.0.0
-
-Najświeższe wydanie dodaje szerszy zestaw funkcji operacyjnych i dokumentacyjnych:
-
-- nowy entrypoint `sanctum` oraz rozszerzony zestaw komend CLI do orkiestracji auditów, analityki, dashboardu i skanowania portów;
-- osobny marketing site i operacyjny workbench z routami: About, Features, Documentation, Pricing, Privacy oraz Workbench;
-- formularz lead inquiry z walidacją i przekierowaniem do webhooka po stronie serwera;
-- publikację obrazów kontenerowych do GitHub Container Registry (GHCR) dla stacku SANCTUM-SUITE i dashboardu, wraz z gotowym `docker-compose.yml` opartym o obrazy z GHCR;
-- pełną dokumentację instalacji, wdrożenia, bezpieczeństwa i monetizacji oraz runbook AWS;
-- odseparowany build dashboardu w kontenerze oraz dokumentację runbooka dla środowisk air-gap;
-- stabilizację terminala i kompatybilności CLI na Windowsie, poprawę bezpieczeństwa konfiguracji oraz rygorystyczne żądanie jawnej autoryzacji przed aktywnym audytem.
-
-## 🗺️ Spis treści
-
-[O projekcie](#-o-projekcie) · [Co nowego w 6.0.0](#-co-nowego-w-600) · [Status i ograniczenia](#-status-i-ograniczenia) · [Moduły](#-moduły) · [Szybki start](#-szybki-start) · [Kontenery GHCR](#-kontenery-ghcr) · [Aktywne testy](#-aktywne-testy) · [Architektura](#-architektura) · [Telemetria i audyt](#-telemetria-i-audyt) · [Dokumentacja](#-dokumentacja) · [Licencja](#-licencja)
-
-## 📌 O projekcie
-
-SANCTUM-SUITE to rozwijany zestaw modułów przeznaczonych do pracy w kontrolowanych, zatwierdzonych środowiskach. Łączy narzędzia CLI, REST API i WebSocket, funkcje analityczne oraz opcjonalny dashboard Next.js.
-
-## ⚠️ Status i ograniczenia
-
-> [!WARNING]
-> Projekt ma status **beta**. Obecność funkcji w repozytorium **nie oznacza**, że została niezależnie zweryfikowana, jest gotowa do wdrożenia produkcyjnego ani że zapewnia zgodność z określonym standardem.
-
-<details>
-<summary><b>Kluczowe zastrzeżenia (kliknij, aby rozwinąć)</b></summary>
-
-<br>
-
-- **Moduły eksperymentalne** — część funkcji jest zależna od platformy lub stanowi wyłącznie punkt integracji. Brak integracji jest raportowany jako brak oceny, a nie jako wynik pozytywny.
-- **TPM / Measured Boot** — aplikacja nie komunikuje się bezpośrednio z TPM ani samodzielnie nie weryfikuje quote. Produkcyjny gate odczytuje status atestacji z zewnętrznego verifiera Keylime.
-- **Confidential Computing (SEV-SNP / TDX / SGX)** — gate ufa operator-managed claims gateway (Trustee albo osobny verifier DCAP dla SGX) i wymaga zatwierdzonych pomiarów workloadu. Repozytorium nie dostarcza verifiera ani sprzętowej enklawy.
-- **Brak wbudowanych integracji** — skanowania kontenerów/SBOM w aplikacji, analizy firmware i pamięci, telemetrii EDR/XDR, inspekcji GPU ani magazynowania danych niejawnych. CI skanuje obraz kontenera i tworzy jego SBOM; pipeline wydania przygotowuje SBOM CycloneDX (pakiet Python, dashboard, obraz) i podpisane attestations. Nie oznacza to skanowania wdrożonych systemów ani certyfikacji.
-- **Funkcje symulowane** — kampanie red-team, C2/covert-channel, spoofing satelitarny, biometria, hot-patching i dead-man switch nie wykonują opisanych działań.
-- **Dashboard** — nie otrzymuje obecnie rzeczywistej telemetrii przez WebSocket. Dane można po jawnej konfiguracji źródła importować przez zabezpieczone API i przeglądać w Workbench.
-- **Brak certyfikacji** — build, testy i dokumentacja nie stanowią certyfikacji bezpieczeństwa, zgodności ani gwarancji skuteczności.
-
-### Zarządzanie kluczami, tożsamość i audyt dostępu
-
-- `ZeroTrustKMSVault` działa lokalnie z kluczem efemerycznym wyłącznie w trybie developerskim albo przez jawnie skonfigurowany HashiCorp Vault Transit. Tryb produkcyjny i air-gapped wymaga Vault Transit; Vault Transit szyfruje tylko dane jawnie przekazane do helpera (nie baz SQLite, logów ani kopii zapasowych). Zobacz [Vault Transit](./docs/INSTALLATION.md#vault-transit-key-management).
-- **OIDC** wymaga jawnej konfiguracji issuer, audience, mapowania claimów i zabezpieczonego katalogu tenantów; nie zawiera interaktywnego logowania ani odświeżania tokenów. Profil produkcyjny/air-gapped wymaga OIDC, Vault Transit i MinIO Object Lock, a współdzielone klucze API są w nim odrzucane. Legacy API i analytics endpoints nie są dostępne dla tożsamości OIDC, ponieważ raportowanie nie jest tenant-scoped. Zobacz [OIDC i dane tenantów](./docs/INSTALLATION.md#oidc-users-roles-and-tenant-scoped-data).
-- Lokalny SQLite access audit nie jest immutable ani tamper-proof. MinIO Object Lock może przechowywać minimalne, pseudonimizowane metadane żądań w trybie fail-closed przez 7 lat. Zobacz [MinIO WORM](./docs/INSTALLATION.md#minio-immutable-access-audit).
-- Żaden z tych mechanizmów nie certyfikuje środowiska ani nie dopuszcza do przetwarzania informacji niejawnych.
-
-</details>
-
-## 🧩 Moduły
-
-### Audyt, analiza i AI safety
-
-| Moduł | Opis |
-|---|---|
-| **Aktywne audyty** | Jawnie autoryzowane testy HTTPS/TCP z kontrolą dozwolonych celów (patrz [Aktywne testy](#aktywne-testy)). |
-| **Incident response** | Lokalna korelacja zdarzeń, trwałe sprawy SQLite, przypisania, statusy, notatki i odnośniki do dowodów, symulowane rekomendacje reakcji, audyt dostępu, opcjonalna retencja, fikcyjne scenariusze demo. Brak domyślnie aktywnych integracji dostawców i automatycznych reakcji. |
-| **AI safety** | Analiza promptów i eksperymenty z zabezpieczeniami modeli. |
-| **Interfejsy** | CLI w Pythonie, REST API, WebSocket oraz dashboard Next.js. |
-| **Kontrole i entitlementy** | Mapowanie kontroli, weryfikacja podpisanych uprawnień; skonfigurowane API może egzekwować polityki OPA i blokować operacje przy nieaktualnej atestacji TPM/Measured Boot z Keylime. |
-
-### Weryfikacja i raportowanie
-
-| Moduł | Polecenie | Opis |
-|---|---|---|
-| **Security readiness** | `sanctum security-readiness` | Raport JSON z jawnie podanych deklaracji eBPF / Rust / SPIFFE-SPIRE / PQC i inwentarza kryptografii (w tym PQXDH jako protokół wymagający osobnego przeglądu). Nie bada działającego kernela, projektu Rust, wdrożenia SPIRE ani faktycznego użycia kryptografii. |
-| **Supply chain** | `sanctum supply-chain-verify` | Weryfikacja Cosign/Sigstore in-toto attestation dla lokalnego artefaktu względem wskazanej tożsamości/issuera oraz podsumowanie raportów Trivy i Grype. Nie uruchamia skanerów i nie uznaje raportów za kryptograficznie uwierzytelnione. |
-| **Executive report** | `sanctum generate-executive-report` | Scala raporty gotowości, łańcucha dostaw i testów OPA do JSON i Markdown. Nie zastępuje eksperckiego przeglądu ani oceny zgodności. Kroki pracy offline: [DEPLOYMENT.md](./DEPLOYMENT.md). |
-| **Telemetry archive** | `sanctum telemetry-archive` | Opcjonalny eksport znormalizowanych zdarzeń do Parquet (Arrow), transformacja w sandboxie Wasmtime i ograniczone ślady OTel do jawnie skonfigurowanego Collectora. [Dokumentacja](./docs/TELEMETRY_PIPELINE.md). |
-
-### Blockchain i zgodność (eksperymentalne)
-
-| Moduł | Opis |
-|---|---|
-| **Dane on-chain** | Jawnie konfigurowane, read-only klienty Bitcoin Core i Ethereum JSON-RPC: wspólny model bloków i transakcji, graf sprawy, zdarzenia `Transfer`, ograniczone ślady `callTracer`. Case-scoped Crypto OSINT korzysta wyłącznie z importowanych, niezweryfikowanych raportów; snapshoty bloków są domyślnie wyłączone. Brak deklaracji zgodności AML/MiCA. [Dokumentacja](./docs/ONCHAIN_ANALYSIS.md). |
-| **Checklist AML/MiCA** | Checklist sprawy i append-only rejestr referencji dowodów dla przeglądu MiCA, AMLR, TFR i polskiej ustawy AML (CASP w UE). Nie ocenia zgodności — wszystkie sprawy zachowują status `NOT_ASSESSED`. [Dokumentacja](./docs/AML_MICA_CASE_REVIEW.md). |
-| **Dowód ZK** | Obwód Groth16 dowodzi, że prywatnie zakodowane oceny dostawcy nie przekraczają progu `medium`, bez ich publikowania. Dowód nie uwierzytelnia dostawcy ani raportu i nie jest połączony z przypadkiem; wymagany jest niezależny ceremony setup. [Dokumentacja](./docs/ZK_AUDIT_PROOFS.md). |
-
-### Cloud infrastructure and web application security
-
-| Moduł | Funkcja | Opis |
-|---|---|---|
-| **Cloud infrastructure management** | `CloudInfrastructureManager` | Planowanie środków ochrony dla AWS i Microsoft Azure z oceną podstawowych kontroli, segmentacji sieci i polityk bezpieczeństwa dostępu. Moduł pozostaje w trybie planowania i nie wykonuje połączeń do chmury bez jawnej konfiguracji operatora. |
-| **WAS / WAF planning** | `WASModule` | Ocena aplikacji internetowej z polityką WAF, filtracją żądań i modelem defense in depth obejmującym warstwy tożsamości, sieci, aplikacji, danych i monitoringu. |
-| **Defense in depth** | `DefenseInDepthPolicy` | Struktura kontroli warstwowych dla usług internetowych i infrastruktury tych usług, z naciskiem na redukcję ryzyka z wykorzystaniem wielu barier i nadzoru. |
-| **Sigstore / Cosign attestation** | `SigstoreCosignSecurityManager` | Planowanie polityki podpisywania artefaktów, attestation in-toto i weryfikacji tożsamości podpisującego bez wykonywania zewnętrznych połączeń do Sigstore/Rekor. |
-| **Falco runtime security** | `FalcoSecurityModule` | Model kontroli runtime dla detekcji nieautoryzowanych połączeń, zapisów do wrażliwych ścieżek i wykonania procesów w kontenerach. |
-| **SBOM / CycloneDX / SPDX** | `SbomFormatManager` | Ocena formatu dokumentu SBOM i rekomendacja dla CycloneDX lub SPDX, z integracją do audytu łańcucha dostaw i raportowania bezpieczeństwa. |
-
-### Supply chain & runtime controls
-
-| Obszar | Moduł / funkcja | Opis użytkownika końcowego |
-|---|---|---|
-| **Sigstore / Cosign** | `SigstoreCosignSecurityManager` | Definiuje plan polityki podpisania artefaktów, weryfikacji certyfikatu, attestation in-toto oraz kontroli tożsamości podpisującego. Moduł jest w trybie `PLAN_ONLY` i ma pełnić rolę strażnika pipeline release: nie podpisuje ani nie publikuje artefaktów, ale wymaga sprawdzenia certyfikatu, digest artefaktu i poprawności attestation przed dopuszczeniem do produkcji. |
-| **Release verification gates** | `assess_release_verification_pipeline()` | Ustala warunki „plan-only with verification gates” dla procesu wydania. Obejmuje podpis Cosign, walidację bundle attestation, zgodność SBOM z artefaktem, mapowanie do CVE i akceptację przez właściciela compliance. To nie jest automatyczna promocja; to checklist kontrolny dla pipeline. |
-| **Falco runtime** | `FalcoSecurityModule` | Dla konkretnych workloadów i namespace'ów definiuje reguły runtime dla podów web/API, baz danych, modeli LLM i ogólnych workloadów. W praktyce służy do wskazania, co powinno być objęte alertowaniem i czego nie wolno robić w czasie działania kontenera. |
-| **Kubernetes / workload profiles** | `assess_runtime_security()` | Reguły są dopasowane do profilu: web tier, database tier, LLM/inference tier oraz generic tier. Dzięki temu projekt może od razu wskazać, np. że model LLM nie powinien robić `pip install`, `curl / proxy` do zewnętrznych hostów, a web API nie powinien odczytywać kluczy ani pisać do `/etc/passwd`. |
-| **SBOM / CycloneDX / SPDX** | `SbomFormatManager` | Rozpoznaje i rekomenduje właściwy format składnika software bill of materials. CycloneDX jest preferowane dla CVE, VEX i korelacji z podatnościami; SPDX lepiej działa przy śladzie licencji, pochodzenia komponentów i audycie compliance. |
-| **CVE / compliance mapping** | `assess_sbom_format()` + `cve_mapping` | Mapuje wybrany format SBOM do podatności i polityk compliance: CVE, SLSA, OWASP, SSDF, DORA, NIS2 i ISO. W modelu plan-only nie następuje automatyczne podmianianie paracji – jest to rekomendacja do narzędzi release i review board. |
-
-#### Przykładowe reguły Falco dla workloadów K8s
-
-- `unexpected_outbound_connection` — wykrywa nieautoryzowany egress z poda. Dla workloadów web/API oznacza np. wysyłkę danych do nieznanego hosta, tunelowanie lub exfiltrację.
-- `sensitive_file_write` — ostrzega przy zapisie do `/etc/passwd`, kluczy SSH, certyfikatów, secret stores lub plików `.env`.
-- `container_runtime_exec` — sygnalizuje wykonanie `bash`, `sh`, `curl`, `wget`, `apt`, `pip`, `npm` z wnętrza runtime, co jest klasycznym sygnałem aktywności post-exploit.
-- `model_artifact_exfiltration` — dla LLM/inference: alarm przy kopiowaniu artefaktów modelu, tokenów, odczycie plików weights/model cache z nieautoryzowanych ścieżek lub próbach wysyłki do zewnętrznych hostów.
-- `db_credential_access` — dla baz danych: odczyt plików credentials, TLS key, backupów, `.env` i nieautoryzowanych ścieżek konfiguracyjnych.
-
-Wszystkie te reguły są celowo utrzymywane jako plan-only: są zdefiniowane do wdrożenia w przejrzystym pipeline, ale nie zamieniają się w aktywne harmonogramy wykonania bez review i akceptacji operatora.
-
-#### Rekomendacje CycloneDX vs SPDX w raportach compliance
-
-- `CycloneDX` jest lepsze dla raportów z podatnościami i automatycznego powiązania z CVE, VEX i analizą ryzyka w czasie release.
-- `SPDX` jest lepsze dla śladu pochodzenia komponentów, licencji i dowodów compliance, szczególnie przy audytach, zgodności i odpowiedzialności prawnej.
-- W praktyce rekomendacja SANCTUM-SUITE jest następująca: używaj `CycloneDX` jako podstawowego formatu dla release pipeline i dashboardów ryzyka, a `SPDX` jako format dodatkowy lub dla obszarów prawno-licencyjnych / compliance evidence.
-- W obu przypadkach wymagany jest check: `SBOM ↔ artefakt ↔ commit SHA ↔ vulnerability feed ↔ policy review` przed promocją do produkcji.
-
-#### Real release pipeline integration (plan-only with verification gates)
-
-Projekt wspiera modelem „plan-only with verification gates”, czyli bez wykonywania live akcji w chmurze czy w pipeline, ale z pełną listą punktów kontrolnych dla producenta i review board:
-
-1. podpis artefaktu przez Cosign/Sigstore,
-2. weryfikacja identity / issuer / subject digest,
-3. sprawdzenie in-toto attestation i Rekor provenance,
-4. generacja SBOM w prawidłowym formacie,
-5. porównanie komponentów z feedem CVE i zgodność z polityką ryzyka,
-6. zatwierdzenie compliance / security owner,
-7. dopiero wtedy pozwolenie na promocję do środowiska produkcyjnego.
-
-To podejście nie zastępuje finalnej decyzji operatora; pozwala jednak wprowadzić jasne, audytowalne standardy dla bezpiecznego wydania i kontroli łańcucha dostaw.
-
-#### Przykładowy YAML Falco do wdrożenia w kontrolowanym pipeline
-
-```yaml
-- rule: Unexpected outbound connection detected
-  condition: >
-    evt.type=connect and evt.dir=< and fd.type=ipv4 and
-    not proc.exe in ("/usr/local/bin/nginx", "/usr/local/bin/python")
-  output: >
-    Outbound connection from pod in namespace %container.namespace% to %fd.ip%
-    by %proc.name% (user=%user.name%)
-  priority: WARNING
-  tags: [network, egress, potential-exfiltration]
-
-- rule: Sensitive file write detected
-  condition: >
-    openat(2) and evt.is_open_write=true and filename in
-    (/etc/passwd, /etc/shadow, /etc/ssh/*, /var/run/secrets/*, /run/secrets/*, /root/.ssh/*)
-  output: >
-    Sensitive file write attempt from %proc.name% in %container.namespace%/%container.name%
-  priority: CRITICAL
-  tags: [filesystem, credential-access, secret-exposure]
-
-- rule: LLM model artifact exfiltration
-  condition: >
-    openat(2) and (fd.name contains ".bin" or fd.name contains ".gguf"
-    or fd.name contains ".onnx" or fd.name contains "model") and evt.is_open_read=true
-  output: >
-    Possible model artifact access or exfiltration in %container.namespace%/%container.name%
-    using %proc.name%
-  priority: CRITICAL
-  tags: [llm, model, exfiltration]
-```
-
-Powyższe reguły są przykładowe i plan-only: mają służyć jako fundament dla finalnej polityki runtime, ale wymagają scalenia z rzeczywistym workload profile, owned exceptions i zatwierdzonego procesu korekcji.
-
-#### Perspektywa użytkownika: dla end user / DevOps / auditora
-
-##### Dla użytkownika końcowego
-
-- Projekt przedstawia bezpieczną architekturę i plan kontrolny, nie wykonuje automatycznie operacji w chmurze, w klastrze Kubernetes czy na produkcyjnych serwerach.
-- Główną wartością jest jasny model oceny ryzyka: identyfikacja, integracja, attestation, SBOM, CVE / compliance mapping i wymagane weryfikacje przed promocją.
-- W praktyce użytkownik końcowy otrzymuje zrozumiały, audytowalny plan kontroli zamiast „czarnej” automatyzacji.
-- Wartość największa pojawia się przy wdrażaniu do środowiska produkcyjnego, gdzie decyzje i właściciele ryzyka są jawnie przypisani.
-
-##### Dla DevOps
-
-- Reguły Falco są traktowane jako polityka runtime do dopasowania do konkretnych workloadów, namespace'ów i usług.
-- Proces release jest zorganizowany jako: podpis artefaktu → weryfikacja tożsamości → attestation → SBOM → CVE review → approval gate.
-- W pipeline powinny zostać dodane przejścia warunkowe: `sign`, `verify`, `sbom-check`, `vuln-check`, `release-approval`, `deploy-allowed`.
-- Dla środowisk produkcyjnych rekomendowane jest łączenie tych kontrol z CI/CD, OPA, Vault, artifact registry i SIEM/SOAR zgodnie z polityką przedsiębiorstwa.
-
-##### Dla auditora
-
-- Model jest audytowalny, bo każdy etap ma jasno wskazany cel, obiekt kontroli i warunek akceptacji.
-- Weryfikacja obejmuje podpis, attestation, provenance, mapowanie do CVE i listę zależności w SBOM.
-- Repozytorium nie podejmuje automatycznie działań w środowisku docelowym; to pozwala zachować ślad odpowiedzialności i ujawnia, gdzie operator musi zająć decyzję.
-- Dla audytu rekomendowane są dokumenty: `SECURITY-REVIEW.md`, `SUPPLY_CHAIN_POLICY.md`, `docs/release_policy_checklist.json` oraz raporty SBOM z korelacją do feedów CVE.
-
-#### Polska polityka compliance: rekomendacja dla NIS2 / CRA / ISO 27001 / SOC 2
-
-Podstawowy model SANCTUM-SUITE wspiera kontrolę zgodności z następującymi obszarami:
-
-- NIS2: wdrożenie wymagań operacyjnych i bezpieczeństwa łańcucha dostaw, ochrony infrastruktury krytycznej, monitorowania i raportowania incydentów.
-- CRA (Cyber Resilience Act): kontrola cyklu życia produktu, bezpieczeństwa komponentów, atestacji i dokumentacji bezpieczeństwa dla produktów cyfrowych.
-- ISO 27001: jasne zasady zarządzania bezpieczeństwem informacji, dostępem, odpowiedzialnością, incydentami i dokumentacją.
-- SOC 2: kontrola bezpieczeństwa systemów, audytowalności, integralności procesu i odpowiedniego podziału obowiązków.
-
-W praktyce kontrola powinna obejmować:
-
-- politykę zarządzania tożsamością i dostępem,
-- dokumentację procesu wydania i podziału obowiązków,
-- przejścia wpisujące weryfikację CoSiGn/Sigstore oraz SBOM,
-- zdefiniowane wyjątki, właścicieli i terminy ich usunięcia,
-- alertowanie i ślad dla działań runtime / środowisk operacyjnych.
-
-### Privacy-enhancing technologies (eksperymentalne)
-
-| Moduł | Polecenie | Opis |
-|---|---|---|
-| **Prywatny agregat grafu (FHE / HSM / AGE)** | `sanctum fhe-*`, `sanctum privacy-graph-*` | Backend Apache AGE przechowuje graf sprawy i szyfrogramy ocen BFV (Microsoft SEAL). Klucz prywatny pozostaje po stronie klienta, a osobny klucz RSA w HSM/PKCS#11 podpisuje manifest. FHE umożliwia wyłącznie sumowanie liczb całkowitych; graf i identyfikatory w AGE pozostają jawne. [Dokumentacja](./docs/PRIVATE_GRAPH_FHE.md). |
-| **Akceleratory FHE / QKD / approval-only remediation** | `sanctum security-capabilities`, `sanctum fhe-accelerator-status`, `sanctum self-healing-*` | Raportuje wyłącznie obecność bindingów/runtime tools; SEAL nadal liczy na CPU, bez zaimplementowanego GPU/FPGA offloadu. QKD udostępnia kontrakt adaptera, nie sprzęt ani symulację. Remediation zapisuje audytowane propozycje wymagające niezależnej akceptacji; nigdy samodzielnie nie wdraża OPA ani nie rotuje kluczy. [Granice integracji](./docs/SPECIALIZED_SECURITY.md#fhe-accelerator-qkd-and-self-healing-integration-boundaries). |
-| **Prywatne poświadczenia audytu (DP / DID / VC)** | `POST /api/v1/privacy/credentials` | Podpisuje Ed25519 VC-JWT z histogramem kategorii zaszumionym dyskretnym mechanizmem Laplace'a; budżet epsilon jest kumulowany per stabilny dataset ID. Prototyp z DID `did:key`; wymaga trwałego magazynu budżetu i jawnie skonfigurowanego klucza. Nie jest post-quantum, wielotenantowy ani produkcyjnie certyfikowany. [Dokumentacja](./docs/PRIVACY_CREDENTIALS.md). |
-| **Private ledger** | `sanctum ledger-anchor`, `sanctum ledger-verify` | Weryfikuje podpisany checkpoint i świeżą atestację SNP lub SGX, po czym zapisuje wyłącznie digest SHA-256 w lokalnym ledgerze demo (SQLite) albo przez operator-managed gateway Hyperledger Fabric. Repozytorium nie zawiera Fabric chaincode ani verifiera Intel DCAP. [Dokumentacja](./docs/PRIVATE_LEDGER.md). |
-| **SMPC** | `sanctum smpc-aggregate-demo` | Trzy lokalne procesy MPyC wspólnie obliczają sumę ograniczonych liczb i bit progu, ujawniając wyłącznie agregat. Prototyp lokalny w modelu semi-honest — bez ochrony przed aktywnie złośliwymi uczestnikami i bez izolacji organizacyjnej. Wymaga extra `smpc`. [Dokumentacja](./docs/SMPC.md). |
-
-## 🚀 Szybki start
-
-> [!IMPORTANT]
-> **Uwaga licencyjna:** przed instalacją, uruchomieniem, modyfikacją lub wdrożeniem uzyskaj wymaganą pisemną zgodę właściciela praw. Licencja pozwala na wgląd w kod w celach oceny, edukacyjnych lub code review; nie przyznaje ogólnego prawa do jego wykonywania ani użycia komercyjnego.
-
-### Wymagania
-
-- Python 3.11 lub nowszy
-- Node.js i npm — tylko dla dashboardu
-- Pisemna zgoda na użycie programu oraz osobna autoryzacja każdego testowanego celu
-
-### Instalacja pakietu Python
-
-```powershell
-py -3.11 -m venv .venv
-.\.venv\Scripts\Activate.ps1
-python -m pip install --upgrade pip
-python -m pip install -e .
-```
-
-Opcjonalne extras: `telemetry`, `privacy-graph`, `smpc`, np. `python -m pip install -e ".[smpc]"`.
-
-Weryfikacja instalacji:
-
-```powershell
+## Why SANCTUM-SUITE?
+
+SANCTUM-SUITE is designed for controlled, auditable environments where trust must be verified before operational decisions are made. It combines:
+
+- security audit workflows
+- attestation and trust verification
+- telemetry and incident correlation
+- OPA-based policy checks
+- supply chain and SBOM reporting
+- optional dashboard and API interfaces
+
+## Core capabilities
+
+- 🔐 Supply chain verification: Cosign/Sigstore, in-toto, SBOM and reporting flows
+- 🧾 Executive reporting: structured JSON + Markdown outputs for auditors and operators
+- 🛡️ Trust and attestation: TPM/Measured Boot, KMS and policy verification hooks
+- 📦 Air-gap readiness: local execution patterns, immutable storage concepts, offline verification
+- 🔭 Telemetry and auditing: Parquet/Arrow ingestion, event correlation, evidence tracking
+- 🧪 AI safety and privacy experiments: prompt analysis, private data flows, secure compute patterns
+
+## Quick start
+
+```bash
+python -m venv .venv
+. .venv/bin/activate  # Windows: .venv\Scripts\activate
+pip install -e .
 sanctum --help
-python -m pytest -q
 ```
 
-### Dashboard (opcjonalnie)
+Optional dashboard:
 
-```powershell
-Set-Location .\sanctum-dashboard
-npm ci
-Copy-Item .env.example .env.local
-npm run build
-npm run start
+```bash
+cd sanctum-dashboard
+npm install
+npm run dev
 ```
 
-### Kontenery z GHCR (wersja szybka)
+## Main modules
 
-Obrazy SANCTUM-SUITE i dashboardu są publikowane w GitHub Container Registry (GHCR). Możesz je uruchamiać bez lokalnego builda:
+- Active audits and policy-driven verification
+- Incident response and access audit workflows
+- AI safety experiments and prompt analysis
+- API, CLI and dashboard interfaces
+- Trust attestation and policy enforcement
+- Privacy-enhancing and experimental security research modules
 
-```powershell
-# Pobranie i uruchomienie stacku z GHCR
-Copy-Item .env.example .env
-docker login ghcr.io
-$env:GITHUB_REPOSITORY_OWNER = "<nazwa-uzytkownika-lub-organizacji>"
-docker compose pull
-docker compose up -d
+## Documentation
+
+- [Deep dive notebook](./notebooks/sanctum_deep_dive.ipynb)
+- [Deployment guide](./DEPLOYMENT.md)
+- [Security policy](./SECURITY.md)
+- [License](./LICENSE)
+
+## Project status
+
+> SANCTUM-SUITE is currently in beta. Features may be experimental, partially integrated, or designed for controlled environments rather than production deployment.
+
+This repository is intended for secure evaluation, research workflows, and governed environments. It does not replace formal certification or independent validation for production systems.
+
+## Repository structure
+
+```text
+.
+├── src/                  # Python package and core logic
+├── notebooks/            # Deep-dive research and architecture notes
+├── docs/                 # installation and operational documentation
+├── policies/             # OPA security policies
+├── sanctum-dashboard/    # optional Next.js dashboard
+├── scripts/              # helpers and tooling
+├── README.md             # project overview
+├── DEPLOYMENT.md         # deployment runbook
+├── SECURITY.md           # security guidance
+├── LICENSE               # source-available license
+├── pyproject.toml        # Python package metadata
+└── action.yml            # GitHub Action metadata
 ```
 
-Domyślnie `docker-compose.yml` pobiera dashboard z GHCR:
+## Recommended reading
 
-```yaml
-sanctum-dashboard:
-  image: ghcr.io/${GITHUB_REPOSITORY_OWNER}/sanctum-dashboard:latest
-```
+- Start here: this README
+- For deeper technical context: [notebooks/sanctum_deep_dive.ipynb](./notebooks/sanctum_deep_dive.ipynb)
+- For deployment and environment setup: [DEPLOYMENT.md](./DEPLOYMENT.md)
+- For security principles: [SECURITY.md](./SECURITY.md)
 
-Dla pełnego stacku obraz core również jest publikowany do GHCR i może być użyty w środowiskach z ograniczonym dostępem do internetu. Pakiet zawiera też dokumentację air-gap/offline deployment oraz runbook wdrożeniowy. Przykładowe tagowanie i publikacja obrazu do własnego GHCR:
-
-```powershell
-# Przykład dla własnego GHCR
-# 1) zbudowanie obrazu
-# docker build -t ghcr.io/<owner>/sanctum-suite:latest .
-# 2) logowanie do ghcr.io
-# docker login ghcr.io
-# 3) publikacja obrazu
-# docker push ghcr.io/<owner>/sanctum-suite:latest
-```
-
-### Tagowanie wydań i wersji GHCR
-
-W praktyce zaleca się utrzymywać co najmniej dwa typy tagów dla publikacji:
-
-- `latest` — najnowsza stabilna wersja;
-- `X.Y.Z` — dokładnie odpowiadający numerowi wydania, np. `6.0.0`;
-- opcjonalnie `stable` lub `beta` dla konkretnych linii wydania.
-
-Przykład:
-
-```powershell
-# tagowanie wersji release
-# docker tag ghcr.io/<owner>/sanctum-suite:latest ghcr.io/<owner>/sanctum-suite:6.0.0
-# publikacja konkretnej wersji
-# docker push ghcr.io/<owner>/sanctum-suite:6.0.0
-```
-
-W środowiskach offline lub air-gap można wtedy pobrać wyłącznie zatwierdzoną wersję artefaktu, bez konieczności pobierania najnowszego tagu. Konfigurację API, TLS, sekretów i dashboardu opisuje [przewodnik instalacji](./docs/INSTALLATION.md).
-
-## 🎯 Aktywne testy
-
-> [!CAUTION]
-> Nie uruchamiaj testów wobec systemów spoza zatwierdzonego zakresu.
-
-Aktywne audyty i skanowanie portów są blokowane, dopóki operator nie skonfiguruje wszystkich wymaganych elementów:
-
-1. dokładnej listy celów w `SANCTUM_AUTHORIZED_TARGETS` (bez wildcardów),
-2. identyfikatora pisemnej zgody przekazywanego przy uruchomieniu,
-3. ważnego, podpisanego entitlementu oraz klucza publicznego do jego weryfikacji.
-
-```powershell
-sanctum run-audit --target zatwierdzony.example --authorization-reference "identyfikator-zgody"
-```
-
-Wartość `--authorization-reference` służy do prowadzenia śladu audytowego i sama w sobie nie potwierdza zgody. Nie uruchamiaj testów wobec systemów spoza zatwierdzonego zakresu. Szczegóły: [Entitlementy komercyjne](./docs/COMMERCIAL_ENTITLEMENTS.md).
-
-## 🏗️ Architektura
-
-Diagram przedstawia orientacyjny podział obszarów repozytorium, a nie gwarantowany przepływ danych ani wdrożony układ infrastruktury.
-
-```mermaid
-flowchart LR
-    subgraph IN["Wejście"]
-        T["Autoryzowane cele"]
-        TEL["Telemetria<br/>push / import"]
-        ART["Artefakty + raporty<br/>Cosign · Trivy · Grype"]
-    end
-    subgraph CORE["Rdzeń"]
-        A["Moduły audytowe"]
-        C["Korelacja i analityka"]
-        AI["AI safety"]
-        G["Bramki: OPA · TPM · TEE"]
-    end
-    subgraph OUT["Wyjście"]
-        R["Raporty JSON / Markdown"]
-        W["MinIO Object Lock<br/>audyt WORM"]
-        L["Private ledger"]
-        PQ["Parquet / OTel"]
-    end
-    T --> A --> C
-    TEL --> C
-    AI --> C
-    ART --> G
-    G --> R
-    C --> R
-    C --> W
-    C -. digest .-> L
-    C --> PQ
-    API["REST API / WebSocket"] --> D["Dashboard Next.js"]
-    C --> API
-```
-
-## 📡 Telemetria i audyt
-
-### Ingestia telemetrii
-
-Integracja jest **domyślnie wyłączona** i vendor-neutral. Operator konfiguruje po stronie serwera:
-
-- `SANCTUM_EVENT_SOURCE_KEYS` — mapa ID źródła → osobny sekret (min. 32 bajty),
-- `SANCTUM_EVENT_RETENTION_DAYS` — polityka retencji (1–36500 dni).
-
-Sekrety należy przechowywać w menedżerze sekretów, nigdy w dashboardzie ani repozytorium. Bez obu ustawień przyjmowanie danych jest zablokowane.
-
-| Ścieżka | Opis |
-|---|---|
-| **Push API** | `POST /api/v1/telemetry/ingest`, nagłówki `X-Sanctum-Source-ID` i `X-Sanctum-Source-Key`. |
-| **Import plików** | `POST /api/v1/telemetry/import`; JSON, JSONL i CEF, do 4 MB i 1000 zdarzeń na import. W Workbench można załadować plik i przeglądać zapisane zdarzenia. |
-| **Pull** | Zabezpieczony endpoint do ręcznego uruchamiania jawnie zarejestrowanych adapterów oraz wspólny kontrakt mapowania. Brak konektora konkretnego dostawcy, harmonogramu pobierania i domyślnych połączeń wychodzących. |
-
-Zdarzenia przechodzą walidację wspólnego schematu i trafiają do SQLite. Surowe payloady nie są zapisywane; identyfikatory źródłowe i tokeny korelacji są pseudonimizowane, a powtórzenia deduplikowane (produkcja: kluczowany HMAC z odrębnymi przestrzeniami nazw; dev: SHA-256). Etykiety zdarzeń i reguł muszą być ustrukturyzowane, bez tekstu swobodnego. Korelacja grupuje wyłącznie dokładne dopasowania tokenów w skonfigurowanym oknie czasu — nie jest detekcją ani oceną zagrożenia. Tokeny pseudonimowe nie są anonimowe; przed wysłaniem danych ogranicz je do niezbędnego zakresu i stosuj zatwierdzoną politykę pseudonimizacji.
-
-Podłączenie tej ścieżki nie uruchamia automatycznych reakcji ani nie zasila strumienia WebSocket. Szczegóły: [przewodnik instalacji](./docs/INSTALLATION.md#preparing-external-telemetry-ingestion).
-
-### Weryfikowalny audyt WORM
-
-W trybie produkcyjnym API zapisuje minimalne zdarzenia audytowe do wersjonowanego MinIO Object Lock.
-
-- `sanctum audit-checkpoint` — eksport wersji obiektów i checkpoint podpisany hybrydowo RSA-PSS + ML-DSA-65.
-- `sanctum audit-verify` — niezależna weryfikacja checkpointu, archiwum, obu podpisów i ciągłości łańcucha na osobnym hoście.
-- `sanctum pqc-kem-keygen`, `pqc-encrypt`, `pqc-decrypt` — hybrydowe szyfrowanie plików ML-KEM-768 + X25519 (HKDF, AES-256-GCM); wymaga `cryptography>=44`.
-- `sanctum ledger-consistency` — dowód spójności RFC 6962 między dwoma rozmiarami drzewa Merkle lokalnego ledgera.
-- `sanctum ledger-anchor`, `audit-zk-prove`, `audit-zk-verify` przyjmują `--checkpoint-pqc-public-key-file` z zaufanym kluczem ML-DSA-65.
-- `sanctum security-capabilities`, `fhe-accelerator-status` — raport dostępności akceleratorów FHE, QKD i lokalnego modelu TEE (domyślnie `NOT_CONFIGURED`).
-- `sanctum self-healing-propose|decide|list` — hash-powiązany dziennik propozycji remediacji z niezależną akceptacją; nie wdraża OPA ani nie rotuje kluczy.
-
-Nie zaimplementowano: offloadu FHE na GPU/FPGA, sprzętu/symulacji QKD, autonomicznej remediacji oraz rekurencyjnych dowodów ZK (Halo2/Nova) — ZK nadal używa Groth16/Circom.
-
-Checkpoint potwierdza konkretny spis wersji zaobserwowany podczas skanowania — nie jest globalnym licznikiem czasu rzeczywistego ani dowodem prawdziwości zdarzeń. Nowe checkpointy wymagają podczas weryfikacji osobno zaufanego klucza RSA i klucza ML-DSA-65 (`--pqc-public-key-file`); starsze checkpointy RSA pozostają weryfikowalne. Lokalny ledger udostępnia RFC 6962 Merkle tree heads i consistency proofs, ale administrator bazy może przepisać bazę, jeśli nie ma niezależnie zachowanego tree head. Limity eksportu: 100 000 wersji, 64 KiB na rekord, 256 MB danych. Procedura uprawnień: [przewodnik instalacji](./docs/INSTALLATION.md#minio-immutable-access-audit); ograniczenia ledgerów: [runbook ledger](./docs/PRIVATE_LEDGER.md).
-
-## 📚 Dokumentacja
-
-### Wdrożenie i wydania
-
-| Dokument | Opis |
-|---|---|
-| [Instalacja i wdrożenie](./docs/INSTALLATION.md) | Środowisko, API, dashboard, wymagania wdrożeniowe |
-| [Runbook DEPLOYMENT.md](./DEPLOYMENT.md) | Procedura Air-Gap: Podman, MinIO Object Lock, weryfikacja offline |
-| [Wdrożenie air-gapped/Podman](./docs/PODMAN_AIRGAP.md) | Konteneryzacja w środowisku odizolowanym |
-| [Pakiet offline](./docs/OFFLINE_RELEASE.md) | Dystrybucja bez dostępu do sieci |
-| [Bramki CI/CD](./docs/SECURE_CICD.md) | Kontrole w pipeline'ach |
-| [Lista kontrolna wydania](./docs/RELEASE_CHECKLIST.md) | Czynności przed wydaniem |
-| [Informacje o wydaniu 6.0.0](./docs/RELEASE_NOTES_v6.0.0.md) | Zmiany w bieżącej wersji |
-| [Changelog](./CHANGELOG.md) | Historia zmian |
-
-### Bezpieczeństwo i zaufanie
-
-| Dokument | Opis |
-|---|---|
-| [Katalog kontroli](./docs/CONTROL_CATALOG.md) | Mapowane kontrole |
-| [Polityki OPA](./docs/OPA_POLICY.md) | Egzekwowanie polityk |
-| [TPM / Measured Boot](./docs/TPM_MEASURED_BOOT.md) | Atestacja platformy |
-| [Confidential Computing](./docs/CONFIDENTIAL_COMPUTING.md) | SEV-SNP / TDX / SGX |
-| [Przepływy specjalistyczne](./docs/SPECIALIZED_SECURITY.md) | Moduły specjalistyczne, hybrydowe PQC, granice integracji FHE/QKD/self-healing |
-| [Laboratorium Parrot](./docs/PARROT_LAB.md) | Środowisko laboratoryjne |
-| [Polityka bezpieczeństwa](./SECURITY.md) | Zgłaszanie podatności |
-| [Security Review](./SECURITY-REVIEW.md) | Podsumowanie polityk cloud / runtime / supply-chain |
-| [Supply Chain Policy](./SUPPLY_CHAIN_POLICY.md) | Polityka łańcucha dostaw i kontroli wydania |
-| [Compliance Policy](./COMPLIANCE_POLICY.md) | Mapowanie do ISO 27001 / SOC 2 / NIS2 / CRA |
-| [Release Policy Checklist JSON](./docs/release_policy_checklist.json) | JSON do pipeline i autoryzacji release gate |
-
-### Moduły eksperymentalne
-
-| Dokument | Opis |
-|---|---|
-| [Pipeline telemetrii Wasm/Arrow/OTel](./docs/TELEMETRY_PIPELINE.md) | Archiwum Parquet i ślady OTel |
-| [Prywatny graf FHE/HSM/Apache AGE](./docs/PRIVATE_GRAPH_FHE.md) | Agregacja na szyfrogramach |
-| [Prywatny ledger](./docs/PRIVATE_LEDGER.md) | Zakotwiczenie atestowanego checkpointu, Merkle tree heads i consistency proofs |
-| [SMPC](./docs/SMPC.md) | Agregacja trzech stron (MPyC) |
-| [Prywatne poświadczenia (DP / DID / VC)](./docs/PRIVACY_CREDENTIALS.md) | Histogram z Differential Privacy, DID `did:key` i podpisany VC-JWT |
-| [Dowody ZK dla audytu](./docs/ZK_AUDIT_PROOFS.md) | Groth16 |
-| [Analiza on-chain](./docs/ONCHAIN_ANALYSIS.md) | Klienty read-only i graf sprawy |
-| [Checklist AML/MiCA](./docs/AML_MICA_CASE_REVIEW.md) | Przegląd spraw CASP |
-
-### Prawne i komercyjne
-
-| Dokument | Opis |
-|---|---|
-| [Entitlementy komercyjne](./docs/COMMERCIAL_ENTITLEMENTS.md) | Podpisane uprawnienia, zakres, limity |
-| [EULA / Export Control](./docs/EULA_EXPORT_CONTROL.md) | Projekt klauzul |
-| [Licencja](./LICENSE) | Warunki dostępu i użycia |
-
-## 🧭 Status wdrożeniowy
-
-Repozytorium zawiera materiały do instalacji i wydania, ale **nie jest to potwierdzenie gotowości produkcyjnej**. Przed wdrożeniem zweryfikuj zachowanie, uprawnienia i zależności każdego używanego modułu oraz przygotuj właściwe zabezpieczenia środowiska.
-
-Licencja nie zezwala na użycie komercyjne bez odrębnej pisemnej zgody. Autor nie udziela żadnych gwarancji, nie świadczy wsparcia technicznego ani usług wdrożeniowych oraz nie ponosi żadnej odpowiedzialności za próby uruchomienia, modyfikacji lub komercjalizacji oprogramowania. Użycie oprogramowania w środowiskach produkcyjnych, krytycznych lub militarnych jest surowo zabronione. 
-
-## 📄 SANCTUM-SUITE jest udostępniany na warunkach ograniczonej licencji source-available. Przed jakimkolwiek użyciem zapoznaj się z pełnym tekstem [LICENSE](./LICENSE) i uzyskaj pisemną zgodę, jeśli jest wymagana.
+If you want, I can prepare a more premium version of this README in a more enterprise, technical, or marketing style.
