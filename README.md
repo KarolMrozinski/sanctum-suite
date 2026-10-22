@@ -1,6 +1,4 @@
-﻿<div align="center">
-
-# SANCTUM-SUITE
+﻿# SANCTUM-SUITE
 
 <div align="center">
 
@@ -15,29 +13,24 @@
 
 </div>
 
-<div align="center">
+# SANCTUM-SUITE
 
-
-</div>
-
-## Why was created ?
+## Why SANCTUM-SUITE was created
 
 Modern security programs often fail not because the right tools are missing, but because the environment lacks grounded evidence, clear trust boundaries, and explicit operator intent. SANCTUM-SUITE was created to give organizations a structured way to define what is being verified, what evidence exists, and what remains untrusted or unconfigured before live integration is considered.
 
 ## Core pillars
 
-
 <table>
   <tr>
-    <td align="left"><a href="#platform-catalog"><strong>Platform catalog</strong></a><br/>Structured inventory of technologies and security domains.</td>
-    <td align="left"><a href="#security-capability-model"><strong>Security capability model</strong></a><br/>Normalized mapping from technologies to evidence-backed capabilities.</td>
+    <td><a href="#platform-catalog"><strong>Platform catalog</strong></a><br/>Structured inventory of technologies and security domains.</td>
+    <td><a href="#security-capability-model"><strong>Security capability model</strong></a><br/>Normalized mapping from technologies to evidence-backed capabilities.</td>
   </tr>
   <tr>
-    <td align="left"><a href="#api-contract"><strong>API contract</strong></a><br/>REST endpoints for capability discovery and evidence exchange.</td>
-    <td align="left"><a href="#documentation"><strong>Documentation</strong></a><br/>Deep technical notebook, OpenAPI schema, and adapter examples.</td>
+    <td><a href="#api-contract"><strong>API contract</strong></a><br/>REST endpoints for capability discovery and evidence exchange.</td>
+    <td><a href="#documentation"><strong>Documentation</strong></a><br/>Deep technical notebook, OpenAPI schema, and adapter examples.</td>
   </tr>
 </table>
-
 
 ## Platform catalog
 
