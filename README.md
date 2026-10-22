@@ -43,22 +43,19 @@ Modern security programs often fail not because the right tools are missing, but
 - 🔭 Telemetry and auditability: Parquet/Arrow ingestion, event correlation, incident traceability
 - 🧪 AI safety and privacy experiments: prompt-risk evaluation, secure flow patterns, controlled research tooling
 
-## Quick start
+## View-only access notice
 
-```bash
-python -m venv .venv
-. .venv/bin/activate
-pip install -e .
-sanctum --help
-```
+This repository is provided under a limited source-available, view-only license. It may be inspected and reviewed for educational, evaluation, and code-review purposes only.
 
-Optional dashboard:
+The following activities are not authorized under the license:
 
-```bash
-cd sanctum-dashboard
-npm install
-npm run dev
-```
+- execution or runtime use of the software
+- compilation or build steps
+- deployment to any environment
+- modification, redistribution, or integration into operational systems
+- commercial or defense-related use
+
+The notebook and project documentation are intended for review and analysis of architecture, policy design, and security intent, not for operational use.
 
 ## Project structure
 
