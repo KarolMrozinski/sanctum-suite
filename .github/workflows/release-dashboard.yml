@@ -1,0 +1,39 @@
+name: Publish Sanctum Dashboard to GHCR
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch: # Pozwala na ręczne uruchomienie z zakładki Actions na GitHubie
+
+jobs:
+  build-and-push-dashboard:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Log in to the Container registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract metadata (tags, labels) for Dashboard
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/${{ github.repository }}/sanctum-dashboard
+
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: ./sanctum-dashboard
+          file: ./sanctum-dashboard/Dockerfile
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
