@@ -360,6 +360,6 @@ Checkpoint potwierdza konkretny spis wersji zaobserwowany podczas skanowania —
 
 Repozytorium zawiera materiały do instalacji i wydania, ale **nie jest to potwierdzenie gotowości produkcyjnej**. Przed wdrożeniem zweryfikuj zachowanie, uprawnienia i zależności każdego używanego modułu oraz przygotuj właściwe zabezpieczenia środowiska.
 
-Licencja nie zezwala na użycie komercyjne bez odrębnej pisemnej zgody. W repozytorium nie ma gotowej integracji płatności, unieważniania entitlementów online, izolacji danych klientów ani wdrożonego SLA. Formularz kontaktowy wymaga skonfigurowania zatwierdzonego webhooka.
+Licencja nie zezwala na użycie komercyjne bez odrębnej pisemnej zgody. Autor nie udziela żadnych gwarancji, nie świadczy wsparcia technicznego ani usług wdrożeniowych oraz nie ponosi żadnej odpowiedzialności za próby uruchomienia, modyfikacji lub komercjalizacji oprogramowania. Użycie oprogramowania w środowiskach produkcyjnych, krytycznych lub militarnych jest surowo zabronione. 
 
 ## 📄 SANCTUM-SUITE jest udostępniany na warunkach ograniczonej licencji source-available. Przed jakimkolwiek użyciem zapoznaj się z pełnym tekstem [LICENSE](./LICENSE) i uzyskaj pisemną zgodę, jeśli jest wymagana.
