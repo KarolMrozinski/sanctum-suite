@@ -1,6 +1,12 @@
 import json
 from pathlib import Path
 
+import pytest
+
+pytest.importorskip("pyarrow")
+pytest.importorskip("wasmtime")
+pytest.importorskip("opentelemetry.sdk")
+
 import pyarrow.parquet as pq
 import wasmtime
 from opentelemetry.sdk.trace.export import SpanExportResult
