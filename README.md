@@ -101,4 +101,3 @@ This repository is intended for secure evaluation, research workflows, and gover
 - For deployment and environment setup: [DEPLOYMENT.md](./DEPLOYMENT.md)
 - For security principles: [SECURITY.md](./SECURITY.md)
 
-If you want, I can prepare a more premium version of this README in a more enterprise, technical, or marketing style.
