@@ -26,7 +26,6 @@ Modern security programs often fail not because the right tools are missing, but
 
 ## Core pillars
 
-<div align="left">
 
 <table>
   <tr>
@@ -39,7 +38,6 @@ Modern security programs often fail not because the right tools are missing, but
   </tr>
 </table>
 
-</div>
 
 ## Platform catalog
 
