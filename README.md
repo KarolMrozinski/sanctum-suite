@@ -1,30 +1,44 @@
 ﻿# SANCTUM-SUITE
 
-## Trust-aware security engineering for controlled environments
+<div align="center">
 
-SANCTUM-SUITE is a modular security engineering framework for organizations that need explicit evidence, attestation, and operator-controlled trust review. It combines security workflows, auditability, and policy-aware integration patterns in a single reviewable architecture.
+### Trust-aware security engineering for controlled environments
 
-The project is designed for controlled, auditable environments where the primary need is not broad automation, but clear decision support: what is being verified, what evidence exists, and what remains untrusted or unconfigured.
+<p>
+  <img src="https://img.shields.io/badge/Python-3.11%2B-3776ab?style=flat-square&logo=python&logoColor=white" alt="Python 3.11+" />
+  <img src="https://img.shields.io/badge/FastAPI-API-009688?style=flat-square&logo=fastapi&logoColor=white" alt="FastAPI" />
+  <img src="https://img.shields.io/badge/Status-beta-f59e0b?style=flat-square" alt="Beta" />
+  <img src="https://img.shields.io/badge/Docs-OpenAPI-2563eb?style=flat-square" alt="OpenAPI" />
+</p>
 
-## Mission
+</div>
 
-- verify security-relevant artifacts and environment state
-- structure evidence in a normalized capability model
-- support operator-managed integration with real data sources
-- preserve a safe-by-default posture until configuration is explicit
-- support audit, governance, and review workflows without pretending live runtime connectivity
+SANCTUM-SUITE is a modular security engineering framework for organizations that need explicit evidence, attestation, and operator-controlled trust review. It brings together capability mapping, policy-aware integration design, evidence handling, and governance workflows in a single reviewable architecture.
 
-## Core domains
+## Why it exists
 
-- Supply-chain verification and attestation
-- Environment policy and integrity review
-- Telemetry and evidence correlation
-- Governance and operator-facing reporting
-- Capability mapping for technologies, platforms, and security controls
+Modern security programs often fail not because the right tools are missing, but because the environment lacks grounded evidence, clear trust boundaries, and explicit operator intent. SANCTUM-SUITE addresses that gap by structuring the problem around capability review before live data integration.
+
+## Core pillars
+
+<div align="left">
+
+<table>
+  <tr>
+    <td><a href="#platform-catalog"><strong>Platform catalog</strong></a><br/>Structured inventory of technologies and security domains.</td>
+    <td><a href="#security-capability-model"><strong>Security capability model</strong></a><br/>Normalized mapping from technologies to evidence-backed capabilities.</td>
+  </tr>
+  <tr>
+    <td><a href="#api-contract"><strong>API contract</strong></a><br/>REST endpoints for capability discovery and evidence exchange.</td>
+    <td><a href="#documentation"><strong>Documentation</strong></a><br/>Deep technical notebook, OpenAPI schema, and adapter examples.</td>
+  </tr>
+</table>
+
+</div>
 
 ## Platform catalog
 
-The project maintains a structured technology catalog for future evidence binding across relevant domains:
+The project maintains a structured catalog of operator-managed technology surfaces that may later be bound to real evidence sources.
 
 - Binary analysis and reversing: Ghidra, BAM, HIRS, paccor, RIM-Tool
 - OS and runtime integrity: HP-UX, Oracle Solaris, OpenVMS, SELinux, VxWorks
@@ -35,7 +49,7 @@ The project maintains a structured technology catalog for future evidence bindin
 
 This catalog is intentionally evidence-first: technologies are modeled as capability surfaces, not as guaranteed live integrations.
 
-## Capability model
+## Security capability model
 
 SANCTUM-SUITE maps technologies to normalized security capabilities such as:
 
@@ -46,17 +60,17 @@ SANCTUM-SUITE maps technologies to normalized security capabilities such as:
 - `security-capability:terraform-policy`
 - `security-capability:observability`
 
-Each capability is designed to carry:
+Each capability includes:
 
 - stable identifier
 - source type
 - expected evidence format
-- integration mode (`PLAN_ONLY`, `CONFIGURED`, `LIVE`)
-- operator-controlled status and trust context
+- integration mode: `PLAN_ONLY`, `CONFIGURED`, `LIVE`
+- operator-controlled trust context
 
 ## API contract
 
-The project exposes an explicit REST surface for future data binding and evidence handling:
+The repository exposes an explicit REST surface for future data binding and evidence handling:
 
 - `GET /api/v1/security-capabilities`
 - `GET /api/v1/security-capabilities/{capability_id}`
@@ -65,20 +79,20 @@ The project exposes an explicit REST surface for future data binding and evidenc
 - `POST /api/v1/security-capabilities/{capability_id}/evidence`
 - `POST /api/v1/security-capabilities/{capability_id}/sync`
 
-The implementation is intentionally safe by default and fail-closed when required configuration or credentials are missing.
+The implementation is intentionally safe by default and fail-closed when configuration or credentials are missing.
 
 ## Documentation
 
-- Deep technical notebook: `notebooks/sanctum_deep_dive.ipynb`
-- OpenAPI YAML: `docs/openapi/security_capabilities_openapi.yaml`
-- OpenAPI JSON: `docs/openapi/security_capabilities_openapi.json`
-- FastAPI export: `docs/openapi/openapi.json`
-- Adapter contracts: `src/sanctum_suite/core/security_capability_adapters.py`
-- Safe SDK examples: `src/sanctum_suite/core/security_capability_sdk_examples.py`
+- Deep technical notebook: [notebooks/sanctum_deep_dive.ipynb](notebooks/sanctum_deep_dive.ipynb)
+- OpenAPI YAML: [docs/openapi/security_capabilities_openapi.yaml](docs/openapi/security_capabilities_openapi.yaml)
+- OpenAPI JSON: [docs/openapi/security_capabilities_openapi.json](docs/openapi/security_capabilities_openapi.json)
+- FastAPI export: [docs/openapi/openapi.json](docs/openapi/openapi.json)
+- Adapter contracts: [src/sanctum_suite/core/security_capability_adapters.py](src/sanctum_suite/core/security_capability_adapters.py)
+- Safe SDK examples: [src/sanctum_suite/core/security_capability_sdk_examples.py](src/sanctum_suite/core/security_capability_sdk_examples.py)
 
 ## Operational stance
 
-This repository is maintained as a reviewable, architecture-oriented platform. It is not presented as a live, production-connected deployment. The default posture is explicit operator configuration and evidence-based review before any real-world data feed is considered trusted.
+This repository is designed as a reviewable, architecture-oriented platform. It is not presented as a live, production-connected deployment. The default posture is explicit operator configuration and evidence-based review before any real-world data feed is treated as trusted.
 
 ## View-only notice
 
