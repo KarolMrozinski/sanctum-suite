@@ -1,4 +1,6 @@
-﻿# SANCTUM-SUITE
+﻿<div align="center">
+
+# SANCTUM-SUITE
 
 <div align="center">
 
@@ -13,9 +15,7 @@
 
 </div>
 
-# SANCTUM-SUITE
-
-## Why SANCTUM-SUITE was created
+## Why was created ?
 
 Modern security programs often fail not because the right tools are missing, but because the environment lacks grounded evidence, clear trust boundaries, and explicit operator intent. SANCTUM-SUITE was created to give organizations a structured way to define what is being verified, what evidence exists, and what remains untrusted or unconfigured before live integration is considered.
 
