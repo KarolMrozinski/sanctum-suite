@@ -45,6 +45,70 @@ Modern security programs often fail not because the right tools are missing, but
 - 🧱 Platform technology catalog: Ghidra, BAM, HIRS, paccor, RIM, GRASSMARLIN, ELITEWOLF, SELinux, VxWorks, cloud platforms, AI stacks, and emerging hardware integration review
 - 🧪 AI safety and privacy experiments: prompt-risk evaluation, secure flow patterns, controlled research tooling
 
+## Platform catalog and operator-managed integration model
+
+SANCTUM-SUITE includes a structured platform inventory for future integration with real operational data. The catalog is intentionally explicit and evidence-driven: each technology is documented as an operator-managed capability surface, not as a live deployment claim.
+
+### Binary analysis and reversing
+
+- Ghidra
+- BAM - Binary Analysis Metadata
+- HIRS - Host Integrity at Runtime and Start-up
+- paccor - Platform Attribute Certificate Creator
+- RIM-Tool
+
+### OS and runtime integrity
+
+- HP-UX
+- Oracle Solaris
+- OpenVMS
+- SELinux
+- VxWorks
+
+### Intelligence and specialized monitoring
+
+- GRASSMARLIN
+- ELITEWOLF
+- Simon and Speck
+- WALKOFF
+- PRISM
+- XKeyscore
+- Boundless Informant
+
+### Commercial and government cloud integration
+
+- C2S
+- JWCC - Joint Warfighting Cloud Capability
+- Mandiant Advantage
+- Mandiant Automated Defense
+- Google Cloud Ecosystem
+- Google Cloud Platform (GCP)
+
+### Software, data and infrastructure stack
+
+- C and C++
+- Go (Golang)
+- Assembly (Assembler)
+- Apache Accumulo
+- Apache Hadoop
+- Spark
+- Kafka
+- Elasticsearch / Logstash / Kibana (ELK Stack)
+- HashiCorp Terraform
+
+### AI, quantum, and emerging hardware
+
+- Sec-PaLM
+- Palantir Gotham / Foundry
+- QKD - Quantum Key Distribution
+- Intel Loihi
+- IBM TrueNorth
+- GNN - Graph Neural Networks
+- Autonomous Agents AI (Agentic AI)
+- DNA Data Storage
+
+This model is designed to be extended with real telemetry and evidence sources in future deployments, while retaining a clear separation between planned assessment scope and live operational data.
+
 ## View-only access notice
 
 This repository is provided under a limited source-available, view-only license. It may be inspected and reviewed for educational, evaluation, and code-review purposes only.
