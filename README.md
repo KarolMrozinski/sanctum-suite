@@ -30,12 +30,12 @@ Modern security programs often fail not because the right tools are missing, but
 
 <table>
   <tr>
-    <td><a href="#platform-catalog"><strong>Platform catalog</strong></a><br/>Structured inventory of technologies and security domains.</td>
-    <td><a href="#security-capability-model"><strong>Security capability model</strong></a><br/>Normalized mapping from technologies to evidence-backed capabilities.</td>
+    <td align="left"><a href="#platform-catalog"><strong>Platform catalog</strong></a><br/>Structured inventory of technologies and security domains.</td>
+    <td align="left"><a href="#security-capability-model"><strong>Security capability model</strong></a><br/>Normalized mapping from technologies to evidence-backed capabilities.</td>
   </tr>
   <tr>
-    <td><a href="#api-contract"><strong>API contract</strong></a><br/>REST endpoints for capability discovery and evidence exchange.</td>
-    <td><a href="#documentation"><strong>Documentation</strong></a><br/>Deep technical notebook, OpenAPI schema, and adapter examples.</td>
+    <td align="left"><a href="#api-contract"><strong>API contract</strong></a><br/>REST endpoints for capability discovery and evidence exchange.</td>
+    <td align="left"><a href="#documentation"><strong>Documentation</strong></a><br/>Deep technical notebook, OpenAPI schema, and adapter examples.</td>
   </tr>
 </table>
 
