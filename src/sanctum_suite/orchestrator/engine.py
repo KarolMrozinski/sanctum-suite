@@ -296,8 +296,10 @@ class SanctumUnifiedOrchestrator:
         sigstore_cosign = self.sigstore_cosign.assess_sigstore_cosign("sanctum-suite-release", "KarolMrozinski/sanctum-suite")
         falco_runtime = self.falco_security.assess_runtime_security("sanctum-suite", "prod")
         sbom_standard = self.sbom_format_manager.assess_sbom_format("CycloneDX")
+        release_verification = self.sbom_format_manager.assess_release_verification_pipeline("release")
         sbom_audit["sbom_format"] = sbom_standard["preferred_format"]
         sbom_audit["supported_sbom_formats"] = sbom_standard["supported_formats"]
+        sbom_audit["release_verification_pipeline"] = release_verification
 
         purple_sync = self.purple_team.coordinate_emulation_cycle("APT29 Credential Access", "Sigma-Rule-9941")
         tempest_audit = self.tempest_auditor.audit_enclave_emissions("Enclave-Alpha-Room")
@@ -386,6 +388,7 @@ class SanctumUnifiedOrchestrator:
                 "sigstore_cosign": sigstore_cosign,
                 "falco_runtime_security": falco_runtime,
                 "sbom_format": sbom_standard,
+                "release_verification_pipeline": release_verification,
             },
             "purple_sync": purple_sync,
             "tempest_audit": tempest_audit,

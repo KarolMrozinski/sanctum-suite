@@ -1,0 +1,130 @@
+{
+  "policy_name": "SANCTUM-SUITE Release Policy Checklist",
+  "policy_mode": "PLAN_ONLY_WITH_VERIFICATION_GATES",
+  "version": "2026.10.22",
+  "description": "Operational checklist intended for CI/CD policy enforcement, release review, and governance sign-off. The project remains plan-only and does not execute live cloud or runtime actions automatically.",
+  "required_approvals": [
+    "security_owner",
+    "compliance_owner",
+    "release_manager"
+  ],
+  "gates": [
+    {
+      "id": "artifact_signed",
+      "required": true,
+      "description": "Artifact is signed with a trusted identity and verified before release.",
+      "checks": [
+        "signature_present",
+        "certificate_valid",
+        "issuer_trusted",
+        "subject_matches_expected_identity",
+        "digest_matches_artifact"
+      ],
+      "status": "pending"
+    },
+    {
+      "id": "provenance_verified",
+      "required": true,
+      "description": "Provenance and attestation are reviewed and match the expected source revision.",
+      "checks": [
+        "source_revision_known",
+        "attestation_present",
+        "in_toto_valid",
+        "rekor_or_transparency_provenance_reviewed"
+      ],
+      "status": "pending"
+    },
+    {
+      "id": "sbom_generated",
+      "required": true,
+      "description": "SBOM is generated for the release artifact and retained as evidence.",
+      "checks": [
+        "cyclonedx_or_spdx_present",
+        "components_mapped",
+        "licenses_reconciled",
+        "sbom_archived"
+      ],
+      "status": "pending"
+    },
+    {
+      "id": "vuln_reviewed",
+      "required": true,
+      "description": "Component vulnerabilities are mapped to CVE feeds and reviewed against policy thresholds.",
+      "checks": [
+        "cve_correlated",
+        "critical_vulns_assessed",
+        "high_vulns_approved_or_remediated",
+        "compliance_policy_checked"
+      ],
+      "status": "pending"
+    },
+    {
+      "id": "runtime_controls_reviewed",
+      "required": true,
+      "description": "Runtime and workload controls are reviewed against the deployment profile.",
+      "checks": [
+        "falco_rule_profile_selected",
+        "workload_tier_mapped",
+        "sensitive_path_rules_defined",
+        "egress_controls_reviewed"
+      ],
+      "status": "pending"
+    },
+    {
+      "id": "release_approved",
+      "required": true,
+      "description": "Security, compliance, and release ownership approve the production promotion.",
+      "checks": [
+        "security_approval",
+        "compliance_approval",
+        "release_manager_signoff",
+        "exception_recorded_if_required"
+      ],
+      "status": "pending"
+    }
+  ],
+  "exceptions": {
+    "allowed": true,
+    "rules": [
+      "exception must be time-bound",
+      "exception must have an accountable owner",
+      "compensating control must be explicitly documented",
+      "risk must be reviewed before promotion"
+    ]
+  },
+  "workload_profiles": {
+    "api_web": [
+      "outbound_connection_anomaly",
+      "sensitive_file_write",
+      "shell_execution",
+      "credential_access_pattern"
+    ],
+    "database": [
+      "credential_access",
+      "unusual_network_binding",
+      "privilege_escalation",
+      "suspicious_child_process"
+    ],
+    "llm_inference": [
+      "model_artifact_access",
+      "package_manager_execution",
+      "suspicious_proxying",
+      "unexpected_data_exfiltration"
+    ],
+    "generic": [
+      "unexpected_exec",
+      "sensitive_path_write",
+      "privilege_change",
+      "runtime_tampering"
+    ]
+  },
+  "sbom_recommendation": {
+    "cyclonedx": "preferred for engineering automation, release correlation, and machine-readable dependency risk analysis",
+    "spdx": "preferred for compliance and legal reporting",
+    "hybrid_policy": "generate both formats when the release is intended for broad compliance and operational review"
+  },
+  "notes": [
+    "This checklist is a governance template; it does not replace operator validation or environment-specific controls.",
+    "The repository intentionally models cloud/runtime actions as plan-only and non-executing by design."
+  ]
+}

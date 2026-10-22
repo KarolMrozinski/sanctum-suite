@@ -129,6 +129,123 @@ SANCTUM-SUITE to rozwijany zestaw modułów przeznaczonych do pracy w kontrolowa
 | **Falco runtime security** | `FalcoSecurityModule` | Model kontroli runtime dla detekcji nieautoryzowanych połączeń, zapisów do wrażliwych ścieżek i wykonania procesów w kontenerach. |
 | **SBOM / CycloneDX / SPDX** | `SbomFormatManager` | Ocena formatu dokumentu SBOM i rekomendacja dla CycloneDX lub SPDX, z integracją do audytu łańcucha dostaw i raportowania bezpieczeństwa. |
 
+### Supply chain & runtime controls
+
+| Obszar | Moduł / funkcja | Opis użytkownika końcowego |
+|---|---|---|
+| **Sigstore / Cosign** | `SigstoreCosignSecurityManager` | Definiuje plan polityki podpisania artefaktów, weryfikacji certyfikatu, attestation in-toto oraz kontroli tożsamości podpisującego. Moduł jest w trybie `PLAN_ONLY` i ma pełnić rolę strażnika pipeline release: nie podpisuje ani nie publikuje artefaktów, ale wymaga sprawdzenia certyfikatu, digest artefaktu i poprawności attestation przed dopuszczeniem do produkcji. |
+| **Release verification gates** | `assess_release_verification_pipeline()` | Ustala warunki „plan-only with verification gates” dla procesu wydania. Obejmuje podpis Cosign, walidację bundle attestation, zgodność SBOM z artefaktem, mapowanie do CVE i akceptację przez właściciela compliance. To nie jest automatyczna promocja; to checklist kontrolny dla pipeline. |
+| **Falco runtime** | `FalcoSecurityModule` | Dla konkretnych workloadów i namespace'ów definiuje reguły runtime dla podów web/API, baz danych, modeli LLM i ogólnych workloadów. W praktyce służy do wskazania, co powinno być objęte alertowaniem i czego nie wolno robić w czasie działania kontenera. |
+| **Kubernetes / workload profiles** | `assess_runtime_security()` | Reguły są dopasowane do profilu: web tier, database tier, LLM/inference tier oraz generic tier. Dzięki temu projekt może od razu wskazać, np. że model LLM nie powinien robić `pip install`, `curl / proxy` do zewnętrznych hostów, a web API nie powinien odczytywać kluczy ani pisać do `/etc/passwd`. |
+| **SBOM / CycloneDX / SPDX** | `SbomFormatManager` | Rozpoznaje i rekomenduje właściwy format składnika software bill of materials. CycloneDX jest preferowane dla CVE, VEX i korelacji z podatnościami; SPDX lepiej działa przy śladzie licencji, pochodzenia komponentów i audycie compliance. |
+| **CVE / compliance mapping** | `assess_sbom_format()` + `cve_mapping` | Mapuje wybrany format SBOM do podatności i polityk compliance: CVE, SLSA, OWASP, SSDF, DORA, NIS2 i ISO. W modelu plan-only nie następuje automatyczne podmianianie paracji – jest to rekomendacja do narzędzi release i review board. |
+
+#### Przykładowe reguły Falco dla workloadów K8s
+
+- `unexpected_outbound_connection` — wykrywa nieautoryzowany egress z poda. Dla workloadów web/API oznacza np. wysyłkę danych do nieznanego hosta, tunelowanie lub exfiltrację.
+- `sensitive_file_write` — ostrzega przy zapisie do `/etc/passwd`, kluczy SSH, certyfikatów, secret stores lub plików `.env`.
+- `container_runtime_exec` — sygnalizuje wykonanie `bash`, `sh`, `curl`, `wget`, `apt`, `pip`, `npm` z wnętrza runtime, co jest klasycznym sygnałem aktywności post-exploit.
+- `model_artifact_exfiltration` — dla LLM/inference: alarm przy kopiowaniu artefaktów modelu, tokenów, odczycie plików weights/model cache z nieautoryzowanych ścieżek lub próbach wysyłki do zewnętrznych hostów.
+- `db_credential_access` — dla baz danych: odczyt plików credentials, TLS key, backupów, `.env` i nieautoryzowanych ścieżek konfiguracyjnych.
+
+Wszystkie te reguły są celowo utrzymywane jako plan-only: są zdefiniowane do wdrożenia w przejrzystym pipeline, ale nie zamieniają się w aktywne harmonogramy wykonania bez review i akceptacji operatora.
+
+#### Rekomendacje CycloneDX vs SPDX w raportach compliance
+
+- `CycloneDX` jest lepsze dla raportów z podatnościami i automatycznego powiązania z CVE, VEX i analizą ryzyka w czasie release.
+- `SPDX` jest lepsze dla śladu pochodzenia komponentów, licencji i dowodów compliance, szczególnie przy audytach, zgodności i odpowiedzialności prawnej.
+- W praktyce rekomendacja SANCTUM-SUITE jest następująca: używaj `CycloneDX` jako podstawowego formatu dla release pipeline i dashboardów ryzyka, a `SPDX` jako format dodatkowy lub dla obszarów prawno-licencyjnych / compliance evidence.
+- W obu przypadkach wymagany jest check: `SBOM ↔ artefakt ↔ commit SHA ↔ vulnerability feed ↔ policy review` przed promocją do produkcji.
+
+#### Real release pipeline integration (plan-only with verification gates)
+
+Projekt wspiera modelem „plan-only with verification gates”, czyli bez wykonywania live akcji w chmurze czy w pipeline, ale z pełną listą punktów kontrolnych dla producenta i review board:
+
+1. podpis artefaktu przez Cosign/Sigstore,
+2. weryfikacja identity / issuer / subject digest,
+3. sprawdzenie in-toto attestation i Rekor provenance,
+4. generacja SBOM w prawidłowym formacie,
+5. porównanie komponentów z feedem CVE i zgodność z polityką ryzyka,
+6. zatwierdzenie compliance / security owner,
+7. dopiero wtedy pozwolenie na promocję do środowiska produkcyjnego.
+
+To podejście nie zastępuje finalnej decyzji operatora; pozwala jednak wprowadzić jasne, audytowalne standardy dla bezpiecznego wydania i kontroli łańcucha dostaw.
+
+#### Przykładowy YAML Falco do wdrożenia w kontrolowanym pipeline
+
+```yaml
+- rule: Unexpected outbound connection detected
+  condition: >
+    evt.type=connect and evt.dir=< and fd.type=ipv4 and
+    not proc.exe in ("/usr/local/bin/nginx", "/usr/local/bin/python")
+  output: >
+    Outbound connection from pod in namespace %container.namespace% to %fd.ip%
+    by %proc.name% (user=%user.name%)
+  priority: WARNING
+  tags: [network, egress, potential-exfiltration]
+
+- rule: Sensitive file write detected
+  condition: >
+    openat(2) and evt.is_open_write=true and filename in
+    (/etc/passwd, /etc/shadow, /etc/ssh/*, /var/run/secrets/*, /run/secrets/*, /root/.ssh/*)
+  output: >
+    Sensitive file write attempt from %proc.name% in %container.namespace%/%container.name%
+  priority: CRITICAL
+  tags: [filesystem, credential-access, secret-exposure]
+
+- rule: LLM model artifact exfiltration
+  condition: >
+    openat(2) and (fd.name contains ".bin" or fd.name contains ".gguf"
+    or fd.name contains ".onnx" or fd.name contains "model") and evt.is_open_read=true
+  output: >
+    Possible model artifact access or exfiltration in %container.namespace%/%container.name%
+    using %proc.name%
+  priority: CRITICAL
+  tags: [llm, model, exfiltration]
+```
+
+Powyższe reguły są przykładowe i plan-only: mają służyć jako fundament dla finalnej polityki runtime, ale wymagają scalenia z rzeczywistym workload profile, owned exceptions i zatwierdzonego procesu korekcji.
+
+#### Perspektywa użytkownika: dla end user / DevOps / auditora
+
+##### Dla użytkownika końcowego
+
+- Projekt przedstawia bezpieczną architekturę i plan kontrolny, nie wykonuje automatycznie operacji w chmurze, w klastrze Kubernetes czy na produkcyjnych serwerach.
+- Główną wartością jest jasny model oceny ryzyka: identyfikacja, integracja, attestation, SBOM, CVE / compliance mapping i wymagane weryfikacje przed promocją.
+- W praktyce użytkownik końcowy otrzymuje zrozumiały, audytowalny plan kontroli zamiast „czarnej” automatyzacji.
+- Wartość największa pojawia się przy wdrażaniu do środowiska produkcyjnego, gdzie decyzje i właściciele ryzyka są jawnie przypisani.
+
+##### Dla DevOps
+
+- Reguły Falco są traktowane jako polityka runtime do dopasowania do konkretnych workloadów, namespace'ów i usług.
+- Proces release jest zorganizowany jako: podpis artefaktu → weryfikacja tożsamości → attestation → SBOM → CVE review → approval gate.
+- W pipeline powinny zostać dodane przejścia warunkowe: `sign`, `verify`, `sbom-check`, `vuln-check`, `release-approval`, `deploy-allowed`.
+- Dla środowisk produkcyjnych rekomendowane jest łączenie tych kontrol z CI/CD, OPA, Vault, artifact registry i SIEM/SOAR zgodnie z polityką przedsiębiorstwa.
+
+##### Dla auditora
+
+- Model jest audytowalny, bo każdy etap ma jasno wskazany cel, obiekt kontroli i warunek akceptacji.
+- Weryfikacja obejmuje podpis, attestation, provenance, mapowanie do CVE i listę zależności w SBOM.
+- Repozytorium nie podejmuje automatycznie działań w środowisku docelowym; to pozwala zachować ślad odpowiedzialności i ujawnia, gdzie operator musi zająć decyzję.
+- Dla audytu rekomendowane są dokumenty: `SECURITY-REVIEW.md`, `SUPPLY_CHAIN_POLICY.md`, `docs/release_policy_checklist.json` oraz raporty SBOM z korelacją do feedów CVE.
+
+#### Polska polityka compliance: rekomendacja dla NIS2 / CRA / ISO 27001 / SOC 2
+
+Podstawowy model SANCTUM-SUITE wspiera kontrolę zgodności z następującymi obszarami:
+
+- NIS2: wdrożenie wymagań operacyjnych i bezpieczeństwa łańcucha dostaw, ochrony infrastruktury krytycznej, monitorowania i raportowania incydentów.
+- CRA (Cyber Resilience Act): kontrola cyklu życia produktu, bezpieczeństwa komponentów, atestacji i dokumentacji bezpieczeństwa dla produktów cyfrowych.
+- ISO 27001: jasne zasady zarządzania bezpieczeństwem informacji, dostępem, odpowiedzialnością, incydentami i dokumentacją.
+- SOC 2: kontrola bezpieczeństwa systemów, audytowalności, integralności procesu i odpowiedniego podziału obowiązków.
+
+W praktyce kontrola powinna obejmować:
+
+- politykę zarządzania tożsamością i dostępem,
+- dokumentację procesu wydania i podziału obowiązków,
+- przejścia wpisujące weryfikację CoSiGn/Sigstore oraz SBOM,
+- zdefiniowane wyjątki, właścicieli i terminy ich usunięcia,
+- alertowanie i ślad dla działań runtime / środowisk operacyjnych.
+
 ### Privacy-enhancing technologies (eksperymentalne)
 
 | Moduł | Polecenie | Opis |
@@ -345,6 +462,10 @@ Checkpoint potwierdza konkretny spis wersji zaobserwowany podczas skanowania —
 | [Przepływy specjalistyczne](./docs/SPECIALIZED_SECURITY.md) | Moduły specjalistyczne, hybrydowe PQC, granice integracji FHE/QKD/self-healing |
 | [Laboratorium Parrot](./docs/PARROT_LAB.md) | Środowisko laboratoryjne |
 | [Polityka bezpieczeństwa](./SECURITY.md) | Zgłaszanie podatności |
+| [Security Review](./SECURITY-REVIEW.md) | Podsumowanie polityk cloud / runtime / supply-chain |
+| [Supply Chain Policy](./SUPPLY_CHAIN_POLICY.md) | Polityka łańcucha dostaw i kontroli wydania |
+| [Compliance Policy](./COMPLIANCE_POLICY.md) | Mapowanie do ISO 27001 / SOC 2 / NIS2 / CRA |
+| [Release Policy Checklist JSON](./docs/release_policy_checklist.json) | JSON do pipeline i autoryzacji release gate |
 
 ### Moduły eksperymentalne
 

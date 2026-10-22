@@ -666,16 +666,20 @@ def test_supply_chain_security_modules():
     sigstore = SigstoreCosignSecurityManager().assess_sigstore_cosign(
         "sanctum-suite-release", "KarolMrozinski/sanctum-suite"
     )
-    falco = FalcoSecurityModule().assess_runtime_security("sanctum-suite", "prod")
+    falco = FalcoSecurityModule().assess_runtime_security("llm-inference", "prod")
     sbom = SbomFormatManager().assess_sbom_format("CycloneDX")
+    release_gate = SbomFormatManager().assess_release_verification_pipeline("release")
 
     assert sigstore["status"] == "PLAN_ONLY"
     assert "Rekor" in sigstore["key_requirements"][2]
     assert falco["status"] == "PLAN_ONLY"
-    assert falco["runtime_rules"][0]["rule_id"] == "unexpected_outbound_connection"
+    assert falco["runtime_rules"][0]["rule_id"] == "model_artifact_exfiltration"
+    assert falco["verification_gate"]["mode"] == "PLAN_ONLY"
+    assert falco["yaml_example"]["generator"] == "FalcoRuleTemplateGenerator"
     assert sbom["status"] == "PLAN_ONLY"
     assert sbom["preferred_format"] == "CycloneDX"
     assert "SPDX" in sbom["supported_formats"]
+    assert release_gate["pipeline"]["mode"] == "PLAN_ONLY_WITH_VERIFICATION_GATES"
 
 
 def test_realtime_xdr_mesh_correlator():
