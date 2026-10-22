@@ -11,9 +11,9 @@
 
 ## Why SANCTUM-SUITE was created
 
-Modern security programs often fail not because the right tools are missing, but because the environment lacks grounded evidence, explicit trust boundaries, and clear operator intent. SANCTUM-SUITE was created to give organizations a structured way to define what is being verified, what evidence exists, and what remains untrusted or unconfigured before live integration is considered.
+Modern security programs often fail not because the right tools are missing, but because the environment lacks grounded evidence, explicit trust boundaries, and clear operator intent. SANCTUM-SUITE implements a structured capability registry for mapping technologies to normalized security functions, evidence contracts, and operational readiness states.
 
-The project is designed for controlled, high-assurance environments where governance, auditability, and evidence quality matter as much as tooling capability. It turns a security stack into a reviewable model of trust and evidence collection instead of a vague list of technologies.
+The project is intended for controlled, high-assurance environments where governance, auditability, and evidence quality matter as much as tooling capability. It models a security stack as a reviewable system of trust boundaries, runtime evidence, and operator-controlled state transitions instead of a flat inventory of tools.
 
 ## Core product pillars
 
@@ -59,7 +59,7 @@ Each capability includes:
 
 ## API contract
 
-The repository exposes an explicit REST surface for future data binding and evidence handling:
+The repository exposes an explicit REST surface for capability discovery, evidence ingestion, and adapter-driven synchronization:
 
 - `GET /api/v1/security-capabilities`
 - `GET /api/v1/security-capabilities/{capability_id}`
@@ -72,6 +72,7 @@ The system is intentionally fail-closed: without explicit configuration or crede
 
 ## Documentation
 
+- Deep technical notebook: [notebooks/sanctum_deep_dive.ipynb](notebooks/sanctum_deep_dive.ipynb)
 - Deployment guide: [deployment/README.md](deployment/README.md)
 - OpenAPI YAML: [docs/openapi/security_capabilities_openapi.yaml](docs/openapi/security_capabilities_openapi.yaml)
 - OpenAPI JSON: [docs/openapi/security_capabilities_openapi.json](docs/openapi/security_capabilities_openapi.json)
@@ -81,9 +82,9 @@ The system is intentionally fail-closed: without explicit configuration or crede
 
 ## Product overview
 
-SANCTUM-SUITE is a reviewable security capability framework for mapping technology stacks, trust boundaries, and evidence-backed security functions into a normalized architecture model. It is designed to help organizations reason about what is operationally verified, what is only planned, and what remains unconfigured before live integration is considered.
+SANCTUM-SUITE is a security capability framework for mapping technology stacks, trust boundaries, and evidence-backed security functions into a normalized architecture model. It is designed to help operators reason about what is operationally verified, what is only planned, and what remains unconfigured before live integration is considered.
 
-The platform is intentionally conservative: capability adapters do not claim real operational status without explicit runtime context, credentials, policy approval, and evidence. This keeps the model grounded in actual deployment reality rather than marketing claims or broad tool inventories.
+The platform is intentionally conservative: capability adapters do not claim real operational status without explicit runtime context, credentials, policy approval, and evidence. This keeps the model grounded in actual deployment reality and avoids conflating conceptual support with live integration.
 
 ## License
 
