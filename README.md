@@ -2,6 +2,8 @@
 
 # SANCTUM-SUITE
 
+</div>
+
 <div align="center">
 
 ### Trust-aware security engineering for controlled environments
