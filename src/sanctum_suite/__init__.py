@@ -1,6 +1,7 @@
 """SANCTUM-SUITE package exports."""
 
 from sanctum_suite.core.chaos_resilience import ChaosResilienceEngine
+from sanctum_suite.core.technology_stack_catalog import PlatformTechnologyCatalog
 from sanctum_suite.modules import (
     AuditEvidenceBundle,
     CEFEventExporter,
@@ -19,6 +20,7 @@ from sanctum_suite.modules import (
 
 __all__ = [
     "ChaosResilienceEngine",
+    "PlatformTechnologyCatalog",
     "CorporateTelemetryExporter",
     "CEFEventExporter",
     "AuditEvidenceBundle",

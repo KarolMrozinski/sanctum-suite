@@ -643,16 +643,18 @@ def fhe_accelerator_status_cmd() -> None:
 
 @app.command(name="security-capabilities")
 def security_capabilities_cmd() -> None:
-    """Report explicit configuration status for FHE, QKD, and local TEE inference."""
+    """Report explicit configuration status for FHE, QKD, local TEE inference, and platform technology stacks."""
     from sanctum_suite.core.privacy_graph import fhe_accelerator_capabilities
     from sanctum_suite.core.qkd import qkd_capabilities
     from sanctum_suite.core.self_healing_coordinator import tee_model_capabilities
+    from sanctum_suite.core.technology_stack_catalog import platform_technology_capabilities
 
     _print_json_report(
         {
             "fhe": fhe_accelerator_capabilities(),
             "qkd": qkd_capabilities(),
             "tee_local_model": tee_model_capabilities(),
+            "technology_stack": platform_technology_capabilities(),
             "self_healing": {
                 "mode": "OPERATOR_APPROVAL_REQUIRED",
                 "automatic_policy_deployment": False,

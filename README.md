@@ -42,6 +42,7 @@ Modern security programs often fail not because the right tools are missing, but
 - 📦 Air-gap readiness: local execution patterns, evidence handling, and offline-first operational design
 - 🔭 Telemetry and auditability: Parquet/Arrow ingestion, event correlation, incident traceability
 - 🧪 Chaos engineering and resilience testing: controlled fault injection plans, blast-radius analysis, and recovery validation
+- 🧱 Platform technology catalog: Ghidra, BAM, HIRS, paccor, RIM, GRASSMARLIN, ELITEWOLF, SELinux, VxWorks, cloud platforms, AI stacks, and emerging hardware integration review
 - 🧪 AI safety and privacy experiments: prompt-risk evaluation, secure flow patterns, controlled research tooling
 
 ## View-only access notice
@@ -82,6 +83,7 @@ The notebook and project documentation are intended for review and analysis of a
 - Active audit and policy-driven verification
 - Incident response and access-audit workflows
 - Chaos engineering and resilience testing for controlled fault injection and recovery validation
+- Platform technology catalog for binary analysis, OS integrity, cloud, AI, and emerging hardware stack review
 - AI safety and prompt-analysis experiments
 - CLI, REST API, and dashboard interfaces
 - Trust attestation and enforcement controls

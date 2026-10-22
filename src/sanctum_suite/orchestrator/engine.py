@@ -52,6 +52,7 @@ from sanctum_suite.core.threat_actors import SovereignThreatActorEngine
 from sanctum_suite.core.global_regulatory import GlobalRegulatoryEngine
 from sanctum_suite.core.lowlevel_resilience import LowLevelResilienceEngine
 from sanctum_suite.core.chaos_resilience import ChaosResilienceEngine
+from sanctum_suite.core.technology_stack_catalog import PlatformTechnologyCatalog
 from sanctum_suite.core.exploit_lab import ExploitLabEngine
 from sanctum_suite.core.cyber_plumber import CyberPlumberNetworkEngine
 from sanctum_suite.core.spider_graph import SpiderGraphOsintEngine
@@ -146,6 +147,7 @@ class SanctumUnifiedOrchestrator:
         self.global_regulatory = GlobalRegulatoryEngine()
         self.lowlevel_resilience = LowLevelResilienceEngine()
         self.chaos_resilience = ChaosResilienceEngine()
+        self.technology_catalog = PlatformTechnologyCatalog()
         self.exploit_lab = ExploitLabEngine()
         self.cyber_plumber = CyberPlumberNetworkEngine()
         self.spider_graph = SpiderGraphOsintEngine()
@@ -244,6 +246,7 @@ class SanctumUnifiedOrchestrator:
         parrot_scan = self.parrot_engine.run_recon_audit(target_domain)
         lowlevel_res = self.lowlevel_resilience.execute_low_level_audit(target_domain)
         chaos_res = self.chaos_resilience.execute_chaos_suite(target_domain, ["latency_spike", "dependency_failure", "network_partition"])
+        technology_stack = self.technology_catalog.assess_platform_stack(target_domain)
         kernel_exploit_audit = self.exploit_lab.inspect_kernel_mitigations()
         spider_graph_res = self.spider_graph.build_infrastructure_graph(target_domain)
         cilium_profile = self.cilium_profiler.generate_least_privilege_policy("llm-service")
@@ -350,6 +353,7 @@ class SanctumUnifiedOrchestrator:
             "parrot_scan": parrot_scan,
             "lowlevel_resilience": lowlevel_res,
             "chaos_resilience": chaos_res,
+            "technology_stack": technology_stack,
             "kernel_exploit_audit": kernel_exploit_audit,
             "cilium_profile": cilium_profile,
             "shadow_summary": shadow_res,

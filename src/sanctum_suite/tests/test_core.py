@@ -75,6 +75,7 @@ from sanctum_suite.core.threat_intel import SovereignThreatIntelAggregator
 from sanctum_suite.core.zero_trust_mesh import ZeroTrustMeshProtocolEngine
 from sanctum_suite.core.self_healing import SelfHealingBinaryEngine
 from sanctum_suite.core.chaos_resilience import ChaosResilienceEngine
+from sanctum_suite.core.technology_stack_catalog import PlatformTechnologyCatalog
 from sanctum_suite.core.vram_guard import VramEnclaveGuardEngine
 from sanctum_suite.core.cloud_infrastructure import CloudInfrastructureManager
 from sanctum_suite.core.was_security import WASModule
@@ -865,6 +866,18 @@ def test_chaos_resilience_engine():
     sim = engine.simulate_fault("cpu_pressure", "llm-service")
     assert sim["status"] == "SIMULATION_PLANNED"
     assert sim["execution_performed"] is False
+
+
+def test_platform_technology_catalog():
+    catalog = PlatformTechnologyCatalog()
+    res = catalog.assess_platform_stack("edge-domain")
+    assert res["status"] == "PLAN_ONLY"
+    assert res["execution_performed"] is False
+    assert "Ghidra" in res["technology_inventory"]
+    assert "SELinux" in res["technology_inventory"]
+    assert "GCP" in res["technology_inventory"]
+    assert "QKD" in res["technology_inventory"]
+    assert "Autonomous Agents AI (Agentic AI)" in res["technology_inventory"]
 
 
 def test_vram_enclave_guard_engine():
