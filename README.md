@@ -13,7 +13,7 @@
   </p>
 </div>
 
-## Why SANCTUM-SUITE was created
+## Why was created ?
 
 Modern security programs often fail not because the right tools are missing, but because the environment lacks grounded evidence, explicit trust boundaries, and clear operator intent. SANCTUM-SUITE implements a structured capability registry for mapping technologies to normalized security functions, evidence contracts, and operational readiness states.
 
