@@ -103,7 +103,11 @@ from sanctum_suite.core.tee_attestation import (
 from sanctum_suite.core.methodology_catalog import list_methodology_references
 from sanctum_suite.core.target_authorization import TargetAuthorizationError, require_authorized_target
 from sanctum_suite.core.technology_stack_catalog import PlatformTechnologyCatalog
-from sanctum_suite.core.security_capability_adapters import SecurityCapabilityAdapterRegistry
+from sanctum_suite.core.security_capability_adapters import (
+    COMMON_CAPABILITY_EVENT_SCHEMA,
+    SecurityCapabilityAdapterRegistry,
+    build_capability_event,
+)
 from sanctum_suite.core.billing import CommercialLicenseManager
 from sanctum_suite.core.privacy_credentials import (
     DifferentialPrivacyCredentialIssuer,
@@ -1240,6 +1244,18 @@ class SecurityCapabilityEvidenceRecord(BaseModel):
     observed_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 
+class SecurityCapabilityEventEnvelope(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    capability_id: str = Field(min_length=1, max_length=256)
+    target: str = Field(min_length=1, max_length=200)
+    environment: str = Field(min_length=1, max_length=200)
+    source_type: str = Field(min_length=1, max_length=128)
+    status: Literal["PLAN_ONLY", "READY", "NOT_CONFIGURED", "ERROR"] = "PLAN_ONLY"
+    evidence: Dict[str, Any] = Field(default_factory=dict)
+    producer: str = Field(default="sanctum-suite", max_length=128)
+
+
 class PrivacyCredentialObservation(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -1478,6 +1494,50 @@ async def root() -> Dict[str, str]:
 
 _security_capability_store: List[SecurityCapabilityRecord] = []
 _security_capability_evidence_store: Dict[str, List[SecurityCapabilityEvidenceRecord]] = {}
+_security_capability_event_store: List[Dict[str, Any]] = []
+
+
+def _publish_capability_event(event: Dict[str, Any]) -> Dict[str, Any]:
+    _security_capability_event_store.append(event)
+    adapter = security_capability_adapter_registry.get("security-capability:kafka-event-bus")
+    if adapter is not None and hasattr(adapter, "publish_event"):
+        result = adapter.publish_event(event=event)
+        return {
+            "status": result.get("status", "accepted"),
+            "queued": result.get("queued", True),
+            "event_id": event.get("event_id"),
+            "schema_version": event.get("schema_version", COMMON_CAPABILITY_EVENT_SCHEMA),
+            "topic": result.get("topic"),
+        }
+    return {
+        "status": "accepted",
+        "queued": True,
+        "event_id": event.get("event_id"),
+        "schema_version": event.get("schema_version", COMMON_CAPABILITY_EVENT_SCHEMA),
+        "topic": None,
+    }
+
+
+def _build_event_from_adapter(
+    *,
+    capability_id: str,
+    target: str,
+    environment: str,
+    source_type: str,
+    evidence: Dict[str, Any],
+    status: str,
+    producer: str = "sanctum-suite",
+) -> Dict[str, Any]:
+    event = build_capability_event(
+        capability_id=capability_id,
+        target=target,
+        environment=environment,
+        source_type=source_type,
+        evidence=evidence,
+        status=status,
+        producer=producer,
+    )
+    return event
 
 
 @app.get("/api/v1/security-capabilities", dependencies=[Security(verify_api_key)])
@@ -1553,9 +1613,20 @@ async def ingest_security_capability(payload: SecurityCapabilityEvidenceRequest)
         status=payload.status,
     )
     _security_capability_store.append(record)
+    event = _build_event_from_adapter(
+        capability_id=payload.capability_id,
+        target=payload.target,
+        environment=payload.environment,
+        source_type=payload.source_type,
+        evidence=payload.evidence,
+        status=payload.status,
+    )
+    publish = _publish_capability_event(event)
     return {
         "status": "accepted",
         "record": record.model_dump(mode="json"),
+        "event": event,
+        "publish": publish,
         "api_contract": PlatformTechnologyCatalog().assess_platform_stack(target=payload.target)["api_contract"],
     }
 
@@ -1628,9 +1699,20 @@ async def submit_security_capability_evidence(
         status=payload.status,
     )
     _security_capability_evidence_store.setdefault(capability_id, []).append(record)
+    event = _build_event_from_adapter(
+        capability_id=capability_id,
+        target=payload.target,
+        environment=payload.environment,
+        source_type=payload.source_type,
+        evidence=payload.evidence,
+        status=payload.status,
+    )
+    publish = _publish_capability_event(event)
     return {
         "status": "accepted",
         "record": record.model_dump(mode="json"),
+        "event": event,
+        "publish": publish,
     }
 
 
@@ -1672,6 +1754,15 @@ async def sync_security_capability(
         status=evidence.get("status", "PLAN_ONLY"),
     )
     _security_capability_evidence_store.setdefault(capability_id, []).append(record)
+    event = _build_event_from_adapter(
+        capability_id=capability_id,
+        target=target,
+        environment=environment,
+        source_type=adapter.source_type,
+        evidence=evidence,
+        status=evidence.get("status", "PLAN_ONLY"),
+    )
+    publish = _publish_capability_event(event)
     return {
         "status": "accepted",
         "capability_id": capability_id,
@@ -1679,7 +1770,88 @@ async def sync_security_capability(
         "environment": environment,
         "capability": match,
         "record": record.model_dump(mode="json"),
+        "event": event,
+        "publish": publish,
         "adapter": {"name": adapter.name, "source_type": adapter.source_type},
+    }
+
+
+@app.get("/api/v1/security-capabilities/{capability_id}/health", dependencies=[Security(verify_api_key)])
+async def healthcheck_security_capability(
+    capability_id: str,
+    target: str = Query(default="enterprise-environment", description="Target environment label"),
+    environment: str = Query(default="enterprise-environment", description="Environment name"),
+) -> Dict[str, Any]:
+    """Return adapter health details for a capability and emit a normalized event snapshot."""
+    adapter = security_capability_adapter_registry.get(capability_id)
+    if adapter is None:
+        raise HTTPException(status_code=404, detail="No adapter registered for capability")
+
+    health = adapter.health_check(target=target, environment=environment)
+    event = _build_event_from_adapter(
+        capability_id=capability_id,
+        target=target,
+        environment=environment,
+        source_type=adapter.source_type,
+        evidence=health.get("details", {}),
+        status=health.get("status", "PLAN_ONLY"),
+    )
+    publish = _publish_capability_event(event)
+    return {
+        "capability_id": capability_id,
+        "target": target,
+        "environment": environment,
+        "status": health.get("status", "PLAN_ONLY"),
+        "healthy": bool(health.get("healthy", False)),
+        "adapter": {"name": adapter.name, "source_type": adapter.source_type},
+        "health": health,
+        "event": event,
+        "publish": publish,
+        "event_schema": COMMON_CAPABILITY_EVENT_SCHEMA,
+    }
+
+
+@app.get("/api/v1/security-capabilities/events", dependencies=[Security(verify_api_key)])
+async def list_security_capability_events(
+    capability_id: str | None = Query(default=None, description="Optional capability filter"),
+    limit: int = Query(default=20, ge=1, le=200, description="Maximum events to return"),
+) -> Dict[str, Any]:
+    """Return the normalized capability event stream emitted by the registry and API layer."""
+    events = list(_security_capability_event_store)
+    if capability_id is not None:
+        events = [event for event in events if event.get("capability_id") == capability_id]
+    events = events[-limit:]
+    return {
+        "count": len(events),
+        "events": events,
+        "event_schema": COMMON_CAPABILITY_EVENT_SCHEMA,
+    }
+
+
+@app.post("/api/v1/security-capabilities/{capability_id}/events", dependencies=[Security(verify_api_key)])
+async def publish_security_capability_event(
+    capability_id: str,
+    payload: SecurityCapabilityEventEnvelope,
+) -> Dict[str, Any]:
+    """Publish a normalized event to the local registry and Kafka bridge when configured."""
+    if payload.capability_id != capability_id:
+        raise HTTPException(status_code=400, detail="Capability id in path and payload must match")
+
+    event = _build_event_from_adapter(
+        capability_id=payload.capability_id,
+        target=payload.target,
+        environment=payload.environment,
+        source_type=payload.source_type,
+        evidence=payload.evidence,
+        status=payload.status,
+        producer=payload.producer,
+    )
+    publish = _publish_capability_event(event)
+    return {
+        "status": "accepted",
+        "event": event,
+        "publish": publish,
+        "event_schema": COMMON_CAPABILITY_EVENT_SCHEMA,
     }
 
 

@@ -94,6 +94,64 @@ The system is intentionally fail-closed: without explicit configuration or crede
 
 This repository is designed as a reviewable, architecture-oriented platform. It is not presented as a live production-connected deployment. The default posture is explicit operator configuration and evidence-based review before any real-world source is treated as trusted.
 
+## Implementation waves
+
+The current implementation follows a live-ready phased model rather than a blanket claim of production connectivity. The immediate wave is the second operational layer: BAM, HIRS, paccor, RIM-Tool, ELK, and Terraform. This group is treated as a real integration train with explicit API, authentication, and evidence contracts, while remaining fail-closed until environment credentials and runtime access are present.
+
+The next expansion continues in the same pattern:
+
+- Legacy host baselines: HP-UX, Oracle Solaris, OpenVMS
+- Embedded control-plane: VxWorks
+- AI/graph and autonomous orchestration: GNN, Agentic AI, Sec-PaLM, Palantir Gotham / Foundry
+- Key-distribution and hardware assurance: QKD, Intel Loihi, IBM TrueNorth
+- Long-tail evidence and archival: DNA Data Storage, retention policy, audit review
+
+This sequencing preserves the distinction between adapter-only shells and live-ready operational contracts while ensuring every listed capability is represented in the registry and the live-ready model. The architecture remains grounded in real sources, auth boundaries, and normalized event handling rather than treating unconfigured systems as already connected.
+
+## Wave 2 implementation package
+
+The current repository also includes a concrete operational backlog for the next complete wave, with explicit capability IDs, env vars, auth model, payloads, and health-check endpoints for the legacy, embedded, AI, quantum, and neuromorphic groups.
+
+See: [docs/PHASE_2_LIVE_READY_WAVE.md](docs/PHASE_2_LIVE_READY_WAVE.md)
+
+## Wave 3 implementation package
+
+The next complete deployment wave adds the remaining host, embedded, AI, and hardware assurance modules in the same live-ready pattern:
+
+- legacy host baselines
+- embedded control-plane (VxWorks)
+- graph / GNN analytics
+- agentic AI
+- QKD key distribution
+- neuromorphic compute
+
+See: [docs/PHASE_3_LIVE_READY_WAVE.md](docs/PHASE_3_LIVE_READY_WAVE.md)
+
+## Wave 4 implementation package
+
+The subsequent live-ready wave extends the model to mission, signals, long-tail retention, and governance intelligence:
+
+- signals intelligence (XKeyscore)
+- collection intelligence (Boundless Informant)
+- mission integration (US-984XN / PRISM)
+- long-term archival storage
+- AI governance and graph fusion
+
+See: [docs/PHASE_4_LIVE_READY_WAVE.md](docs/PHASE_4_LIVE_READY_WAVE.md)
+
+## Wave 5 implementation package
+
+The final intelligence and governance wave completes the live-ready rollout for mission, collection, archive retention, AI governance, and data fusion:
+
+- XKeyscore / signals intelligence
+- Boundless Informant / collection intelligence
+- US-984XN / PRISM mission integration
+- DNA Data Storage / long-term retention
+- Sec-PaLM / AI governance
+- Palantir Gotham / Foundry / graph data fusion
+
+See: [docs/PHASE_5_LIVE_READY_WAVE.md](docs/PHASE_5_LIVE_READY_WAVE.md)
+
 ## License
 
 See the full project license here: [LICENSE](LICENSE).

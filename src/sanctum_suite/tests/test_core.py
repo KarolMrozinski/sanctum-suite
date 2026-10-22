@@ -123,6 +123,90 @@ def test_guardrail_proxy():
     assert is_blocked_ok is False
 
 
+def test_security_capability_registry_phase1_supports_live_ready_adapters():
+    registry = SecurityCapabilityAdapterRegistry()
+    assert registry.get("security-capability:binary-analysis") is not None
+    assert registry.get("security-capability:kafka-event-bus") is not None
+    assert registry.get("security-capability:binary-metadata") is not None
+    assert registry.get("security-capability:runtime-attestation") is not None
+    assert registry.get("security-capability:platform-certificate") is not None
+    assert registry.get("security-capability:integrity-manifest") is not None
+    assert registry.get("security-capability:network-cartography") is not None
+    assert registry.get("security-capability:workflow-automation") is not None
+    assert registry.get("security-capability:graph-ai") is not None
+    assert registry.get("security-capability:neuromorphic-compute") is not None
+    assert registry.get("security-capability:signals-intel") is not None
+    assert registry.get("security-capability:collection-intel") is not None
+    assert registry.get("security-capability:commercial-cloud") is not None
+    assert registry.get("security-capability:ai-governance") is not None
+    assert registry.get("security-capability:graph-data-fusion") is not None
+
+    wave_map = registry.list_supported_by_wave()
+    assert "phase_0" in wave_map
+    assert "phase_4" in wave_map
+    assert "security-capability:graph-ai" in wave_map["phase_4"]
+    assert "security-capability:agentic-ai" in wave_map["phase_4"]
+    assert "security-capability:key-distribution" in wave_map["phase_4"]
+    assert "security-capability:neuromorphic-compute" in wave_map["phase_4"]
+
+    runtime_config = registry.get_runtime_requirements("security-capability:agentic-ai")
+    assert runtime_config["auth"]["type"] == "bearer_token"
+    assert "SANCTUM_AGENT_RUNTIME" in runtime_config["env"]
+    assert "SANCTUM_AGENT_TOKEN" in runtime_config["env"]
+
+    ghidra = registry.get("security-capability:binary-analysis")
+    payload = ghidra.fetch_evidence(target="edge-domain", environment="production")
+    assert payload["status"] in {"READY", "NOT_CONFIGURED"}
+
+    bam = registry.get("security-capability:binary-metadata")
+    bam_payload = bam.fetch_evidence(target="edge-domain", environment="production")
+    assert bam_payload["status"] in {"READY", "NOT_CONFIGURED"}
+
+    hirs = registry.get("security-capability:runtime-attestation")
+    hirs_payload = hirs.fetch_evidence(target="edge-domain", environment="production")
+    assert hirs_payload["status"] in {"READY", "NOT_CONFIGURED"}
+
+    paccor = registry.get("security-capability:platform-certificate")
+    paccor_payload = paccor.fetch_evidence(target="edge-domain", environment="production")
+    assert paccor_payload["status"] in {"READY", "NOT_CONFIGURED"}
+
+    rim = registry.get("security-capability:integrity-manifest")
+    rim_payload = rim.fetch_evidence(target="edge-domain", environment="production")
+    assert rim_payload["status"] in {"READY", "NOT_CONFIGURED"}
+
+    kafka = registry.get("security-capability:kafka-event-bus")
+    kafka_payload = kafka.fetch_evidence(target="edge-domain", environment="production")
+    assert kafka_payload["status"] in {"READY", "NOT_CONFIGURED"}
+    assert "provider" in kafka_payload
+
+    matrix = PlatformTechnologyCatalog().capability_readiness_matrix()
+    assert "live_ready" in matrix
+    assert "adapter_only" in matrix
+    assert "not_implemented" in matrix
+    assert "Ghidra" in " ".join(matrix["live_ready"])
+    assert "BAM - Binary Analysis Metadata" in matrix["live_ready"]
+    assert "HIRS - Host Integrity at Runtime and Start-up" in matrix["live_ready"]
+    assert "paccor - Platform Attribute Certificate Creator" in matrix["live_ready"]
+    assert "RIM-Tool" in matrix["live_ready"]
+    assert "GRASSMARLIN" in matrix["live_ready"]
+    assert "WALKOFF" in matrix["live_ready"]
+    assert "Mandiant Advantage" in matrix["live_ready"]
+    assert "Google Cloud Ecosystem" in matrix["live_ready"]
+
+    next_wave = PlatformTechnologyCatalog().next_wave_roadmap()
+    assert next_wave["wave_title"] == "Legacy + embedded + graph/agentic + QKD + neuromorphic"
+    assert any(entry["capability_id"] == "security-capability:graph-ai" for entry in next_wave["modules"])
+    assert any(entry["capability_id"] == "security-capability:key-distribution" for entry in next_wave["modules"])
+    assert any(entry["capability_id"] == "security-capability:neuromorphic-compute" for entry in next_wave["modules"])
+    assert any(entry["capability_id"] == "security-capability:long-term-storage" for entry in next_wave["modules"])
+
+    roadmap = PlatformTechnologyCatalog().phase_roadmap()
+    assert set(roadmap) >= {"phase_0", "phase_1", "phase_2", "phase_3", "phase_4", "phase_5", "phase_6"}
+    assert "Google Cloud Platform (GCP)" in roadmap["phase_1"]["modules"]
+    assert "BAM - Binary Analysis Metadata" in roadmap["phase_2"]["modules"]
+    assert "GRASSMARLIN" in roadmap["phase_3"]["modules"]
+
+
 def test_security_capability_api_contract(monkeypatch):
     api_key = "test-key-" + "x" * 32
     monkeypatch.setenv("SANCTUM_API_KEY", api_key)
@@ -185,6 +269,32 @@ def test_security_capability_api_contract(monkeypatch):
     )
     assert evidence_post.status_code == 200
     assert evidence_post.json()["record"]["capability_id"] == "security-capability:gcp-platform"
+
+    health = client.get(
+        "/api/v1/security-capabilities/security-capability:gcp-platform/health",
+        params={"target": "edge-domain", "environment": "gcp"},
+        headers=headers,
+    )
+    assert health.status_code == 200
+    body = health.json()
+    assert body["capability_id"] == "security-capability:gcp-platform"
+    assert body["event_schema"] == "sanctum-capability-event-v1"
+
+    event_post = client.post(
+        "/api/v1/security-capabilities/security-capability:gcp-platform/events",
+        headers=headers,
+        json={
+            "capability_id": "security-capability:gcp-platform",
+            "target": "edge-domain",
+            "environment": "gcp",
+            "source_type": "gcp_api",
+            "status": "READY",
+            "evidence": {"project_id": "prod-core-01", "iam_model": "organization-level"},
+            "producer": "sanctum-suite",
+        },
+    )
+    assert event_post.status_code == 200
+    assert event_post.json()["event"]["capability_id"] == "security-capability:gcp-platform"
 
 
 def test_siem_exporter():

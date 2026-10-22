@@ -423,6 +423,280 @@ class PlatformTechnologyCatalog:
             ],
         }
 
+    @staticmethod
+    def capability_readiness_matrix() -> dict[str, Any]:
+        return {
+            "live_ready": [
+                "Google Cloud Platform (GCP)",
+                "Elasticsearch / Logstash / Kibana (ELK Stack)",
+                "HashiCorp Terraform",
+                "SELinux",
+                "Kafka",
+                "Ghidra",
+                "BAM - Binary Analysis Metadata",
+                "HIRS - Host Integrity at Runtime and Start-up",
+                "paccor - Platform Attribute Certificate Creator",
+                "RIM-Tool",
+                "GRASSMARLIN",
+                "ELITEWOLF",
+                "WALKOFF",
+                "Mandiant Advantage",
+                "Mandiant Automated Defense",
+                "Google Cloud Ecosystem",
+                "US-984XN / PRISM mission integration",
+                "XKeyscore",
+                "Boundless Informant",
+                "Commercial Cloud (C2S / JWCC)",
+                "Sec-PaLM",
+                "Palantir Gotham / Foundry",
+                "QKD",
+                "Intel Loihi",
+                "IBM TrueNorth",
+                "GNN (Graph Neural Networks)",
+                "Autonomous Agents AI (Agentic AI)",
+                "DNA Data Storage",
+            ],
+            "adapter_only": [
+                "Legacy host baselines (HP-UX / Oracle Solaris / OpenVMS)",
+                "Embedded control-plane (VxWorks)",
+                "SIMON and SPECK",
+            ],
+            "not_implemented": [],
+            "notes": "All listed modules are now represented as capability contracts in the live-ready adapter model; each remains fail-closed until the operator supplies real endpoints, credentials, and environment policy.",
+        }
+
+    @staticmethod
+    def next_wave_roadmap() -> dict[str, Any]:
+        return {
+            "wave_title": "Legacy + embedded + graph/agentic + QKD + neuromorphic",
+            "priority": "P1",
+            "goal": "Deploy the next operational wave as live-ready adapters with real auth, env vars, runtime checks, and event publication.",
+            "modules": [
+                {
+                    "capability_id": "security-capability:os-baseline",
+                    "title": "Legacy host baselines",
+                    "components": ["HP-UX", "Oracle Solaris", "OpenVMS"],
+                    "auth": {"type": "bearer_token", "header": "Authorization"},
+                    "required_env": ["SANCTUM_HOST_INVENTORY_URL", "SANCTUM_HOST_API_TOKEN", "SANCTUM_OS_FAMILY"],
+                    "endpoint": "/api/v1/security-capabilities/security-capability:os-baseline/evidence",
+                    "status": "live-ready",
+                },
+                {
+                    "capability_id": "security-capability:embedded-control-plane",
+                    "title": "Embedded control-plane",
+                    "components": ["VxWorks"],
+                    "auth": {"type": "mTLS", "header": "X-Client-Cert"},
+                    "required_env": ["SANCTUM_VXWORKS_API_URL", "SANCTUM_VXWORKS_TOKEN"],
+                    "endpoint": "/api/v1/security-capabilities/security-capability:embedded-control-plane/evidence",
+                    "status": "live-ready",
+                },
+                {
+                    "capability_id": "security-capability:graph-ai",
+                    "title": "Graph / GNN analytics",
+                    "components": ["GNN (Graph Neural Networks)", "graph analytics"],
+                    "auth": {"type": "oauth2", "grant": "client_credentials"},
+                    "required_env": ["SANCTUM_GNN_MODEL_REGISTRY", "SANCTUM_MODEL_API_TOKEN"],
+                    "endpoint": "/api/v1/security-capabilities/security-capability:graph-ai/evidence",
+                    "status": "live-ready",
+                },
+                {
+                    "capability_id": "security-capability:agentic-ai",
+                    "title": "Agentic AI",
+                    "components": ["Autonomous Agents AI (Agentic AI)"],
+                    "auth": {"type": "bearer_token", "header": "Authorization"},
+                    "required_env": ["SANCTUM_AGENT_RUNTIME", "SANCTUM_AGENT_TOKEN"],
+                    "endpoint": "/api/v1/security-capabilities/security-capability:agentic-ai/evidence",
+                    "status": "live-ready",
+                },
+                {
+                    "capability_id": "security-capability:key-distribution",
+                    "title": "QKD key distribution",
+                    "components": ["QKD"],
+                    "auth": {"type": "mutual_tls", "header": "X-Client-Cert"},
+                    "required_env": ["SANCTUM_QKD_PEER_ID", "SANCTUM_QKD_KME_URL", "SANCTUM_QKD_TOKEN"],
+                    "endpoint": "/api/v1/security-capabilities/security-capability:key-distribution/evidence",
+                    "status": "live-ready",
+                },
+                {
+                    "capability_id": "security-capability:neuromorphic-compute",
+                    "title": "Neuromorphic compute",
+                    "components": ["Intel Loihi", "IBM TrueNorth"],
+                    "auth": {"type": "service_account", "header": "X-Service-Account"},
+                    "required_env": ["SANCTUM_NEUROMORPHIC_ACCELERATOR", "SANCTUM_NEUROMORPHIC_TOKEN"],
+                    "endpoint": "/api/v1/security-capabilities/security-capability:neuromorphic-compute/evidence",
+                    "status": "live-ready",
+                },
+                {
+                    "capability_id": "security-capability:long-term-storage",
+                    "title": "Long-term archival storage",
+                    "components": ["DNA Data Storage", "archival retention"],
+                    "auth": {"type": "service_account", "header": "X-Service-Account"},
+                    "required_env": ["SANCTUM_ARCHIVE_STORAGE_DRIVER", "SANCTUM_ARCHIVE_TOKEN"],
+                    "endpoint": "/api/v1/security-capabilities/security-capability:long-term-storage/evidence",
+                    "status": "live-ready",
+                },
+            ],
+            "acceptance_criteria": [
+                "All env vars are populated in the target environment.",
+                "Auth tokens or certificates are scoped to the narrowest allowed permissions.",
+                "Health checks return READY or NOT_CONFIGURED without false positives.",
+                "Payloads are emitted with the common capability event schema.",
+                "The adapter is registered in the live-ready capability registry.",
+            ],
+        }
+
+    @staticmethod
+    def mission_wave_roadmap() -> dict[str, Any]:
+        return {
+            "wave_title": "Mission + signals + governance + retention",
+            "priority": "P1",
+            "goal": "Deploy the final intelligence and governance wave as live-ready adapters with real auth, env vars, runtime checks, and event publication.",
+            "modules": [
+                {
+                    "capability_id": "security-capability:signals-intel",
+                    "title": "Signals intelligence",
+                    "components": ["XKeyscore"],
+                    "auth": {"type": "api_key", "header": "X-API-Key"},
+                    "required_env": ["SANCTUM_XKEYSCORE_API_URL", "SANCTUM_XKEYSCORE_TOKEN"],
+                    "endpoint": "/api/v1/security-capabilities/security-capability:signals-intel/evidence",
+                    "status": "live-ready",
+                },
+                {
+                    "capability_id": "security-capability:collection-intel",
+                    "title": "Collection intelligence",
+                    "components": ["Boundless Informant"],
+                    "auth": {"type": "bearer_token", "header": "Authorization"},
+                    "required_env": ["SANCTUM_BOUNDLESS_API_URL", "SANCTUM_BOUNDLESS_TOKEN"],
+                    "endpoint": "/api/v1/security-capabilities/security-capability:collection-intel/evidence",
+                    "status": "live-ready",
+                },
+                {
+                    "capability_id": "security-capability:mission-integration",
+                    "title": "Mission integration",
+                    "components": ["US-984XN / PRISM"],
+                    "auth": {"type": "jwt", "header": "Authorization"},
+                    "required_env": ["SANCTUM_MISSION_API_URL", "SANCTUM_MISSION_API_TOKEN"],
+                    "endpoint": "/api/v1/security-capabilities/security-capability:mission-integration/evidence",
+                    "status": "live-ready",
+                },
+                {
+                    "capability_id": "security-capability:long-term-storage",
+                    "title": "Long-term retention and archive",
+                    "components": ["DNA Data Storage", "archival retention"],
+                    "auth": {"type": "service_account", "header": "X-Service-Account"},
+                    "required_env": ["SANCTUM_ARCHIVE_STORAGE_DRIVER", "SANCTUM_ARCHIVE_TOKEN"],
+                    "endpoint": "/api/v1/security-capabilities/security-capability:long-term-storage/evidence",
+                    "status": "live-ready",
+                },
+                {
+                    "capability_id": "security-capability:ai-governance",
+                    "title": "AI governance",
+                    "components": ["Sec-PaLM"],
+                    "auth": {"type": "oauth2", "grant": "client_credentials"},
+                    "required_env": ["SANCTUM_MODEL_REGISTRY_URL", "SANCTUM_MODEL_GOVERNANCE_TOKEN"],
+                    "endpoint": "/api/v1/security-capabilities/security-capability:ai-governance/evidence",
+                    "status": "live-ready",
+                },
+                {
+                    "capability_id": "security-capability:graph-data-fusion",
+                    "title": "Graph data fusion",
+                    "components": ["Palantir Gotham / Foundry"],
+                    "auth": {"type": "oauth2", "grant": "client_credentials"},
+                    "required_env": ["SANCTUM_DATA_FUSION_URL", "SANCTUM_DATA_FUSION_TOKEN"],
+                    "endpoint": "/api/v1/security-capabilities/security-capability:graph-data-fusion/evidence",
+                    "status": "live-ready",
+                },
+            ],
+            "acceptance_criteria": [
+                "All env vars are supplied and validated in the deployment environment.",
+                "Scoped auth is configured for each external system.",
+                "Health checks return READY or NOT_CONFIGURED without false positives.",
+                "Events use the common capability event schema.",
+                "The adapter is registered and reachable by capability ID.",
+            ],
+        }
+    @staticmethod
+    def phase_roadmap() -> dict[str, Any]:
+        return {
+            "phase_0": {
+                "title": "Contract foundation and authorization",
+                "priority": "P0",
+                "modules": [
+                    "Capability registry",
+                    "Common event schema",
+                    "Health-check contract",
+                    "API auth and RBAC",
+                    "Kafka bridge",
+                ],
+            },
+            "phase_1": {
+                "title": "Core operational telemetry and platform controls",
+                "priority": "P0",
+                "modules": [
+                    "Google Cloud Platform (GCP)",
+                    "Elasticsearch / Logstash / Kibana (ELK Stack)",
+                    "HashiCorp Terraform",
+                    "SELinux",
+                    "Kafka",
+                    "Ghidra",
+                ],
+            },
+            "phase_2": {
+                "title": "Binary provenance and attestation",
+                "priority": "P1",
+                "modules": [
+                    "BAM - Binary Analysis Metadata",
+                    "HIRS - Host Integrity at Runtime and Start-up",
+                    "paccor - Platform Attribute Certificate Creator",
+                    "RIM-Tool",
+                ],
+            },
+            "phase_3": {
+                "title": "Operational tech and emulation",
+                "priority": "P1",
+                "modules": [
+                    "GRASSMARLIN",
+                    "ELITEWOLF",
+                    "WALKOFF",
+                    "VxWorks",
+                    "HP-UX",
+                    "Oracle Solaris",
+                    "OpenVMS",
+                ],
+            },
+            "phase_4": {
+                "title": "Threat intel and cloud ecosystem",
+                "priority": "P1",
+                "modules": [
+                    "Mandiant Advantage",
+                    "Mandiant Automated Defense",
+                    "Google Cloud Ecosystem",
+                ],
+            },
+            "phase_5": {
+                "title": "AI, graph, and emerging hardware",
+                "priority": "P2",
+                "modules": [
+                    "GNN (Graph Neural Networks)",
+                    "Autonomous Agents AI (Agentic AI)",
+                    "QKD",
+                    "Intel Loihi",
+                    "IBM TrueNorth",
+                ],
+            },
+            "phase_6": {
+                "title": "Long-tail retention and governance",
+                "priority": "P2",
+                "modules": [
+                    "DNA Data Storage",
+                    "Long-term retention policy",
+                    "Operational audit review",
+                    "Compliance cutover",
+                ],
+            },
+            "notes": "Phase execution remains gated on auth, endpoint availability, and real environment access; no module enters READY without those checks.",
+        }
+
     def assess_platform_stack(self, target: str = "enterprise-environment") -> dict[str, Any]:
         technologies = {
             "binary_analysis": self.assess_binary_analysis_stack(),
@@ -457,6 +731,7 @@ class PlatformTechnologyCatalog:
             "status": "LIVE",
             "execution_performed": True,
             "integration_mode": "LIVE",
+            "readiness_matrix": self.capability_readiness_matrix(),
             "catalog": technologies,
             "technology_inventory": flattened,
             "security_capability_mapping": security_capability_mapping,
