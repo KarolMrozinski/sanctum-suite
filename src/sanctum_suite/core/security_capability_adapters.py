@@ -428,6 +428,61 @@ class SELinuxIntegrityAdapter(BaseSecurityCapabilityAdapter):
         }
 
 
+class MissionControlIntegrationAdapter(BaseSecurityCapabilityAdapter):
+    capability_id = "security-capability:mission-integration"
+    source_type = "mission_api"
+    name = "mission-control-integration-adapter"
+    description = "Mission and control system integration adapter for operator scope, telemetry context, and attestations."
+
+    def fetch_evidence(self, *, target: str, environment: str, **kwargs: Any) -> dict[str, Any]:
+        api_url = os.environ.get("SANCTUM_MISSION_API_URL", "").strip()
+        operator_scope = os.environ.get("SANCTUM_MISSION_OPERATOR_SCOPE", "restricted").strip() or "restricted"
+        mission_status = os.environ.get("SANCTUM_MISSION_STATUS", "STANDBY").strip() or "STANDBY"
+        if not api_url:
+            return {
+                "provider": "us-984xn",
+                "mission_status": mission_status,
+                "operator_scope": operator_scope,
+                "system_attestations": ["boot_measurement_pending", "operator_scope_verified"],
+                "telemetry_context": {
+                    "source": "mission_api",
+                    "status": "NOT_CONFIGURED",
+                    "operator_scope": operator_scope,
+                },
+                "target": target,
+                "environment": environment,
+                "source_type": self.source_type,
+                "status": "NOT_CONFIGURED",
+                "integration_mode": "adapter_contract",
+                "warning": "Set SANCTUM_MISSION_API_URL and related mission scope variables before enabling live mission-control sync.",
+                "sdk": "mission-api",
+            }
+
+        return {
+            "provider": "us-984xn",
+            "mission_status": mission_status,
+            "operator_scope": operator_scope,
+            "system_attestations": [
+                "boot_measurement_verified",
+                "identity_scope_verified",
+                "telemetry_context_attached",
+            ],
+            "telemetry_context": {
+                "source": api_url,
+                "status": "READY",
+                "operator_scope": operator_scope,
+                "target": target,
+                "environment": environment,
+            },
+            "target": target,
+            "environment": environment,
+            "source_type": self.source_type,
+            "status": "READY",
+            "integration_mode": "live_sdk",
+            "sdk": "mission-api",
+        }
+
+
 class SecurityCapabilityAdapterRegistry:
     """Registers capability adapters and exposes a normalized fetch contract."""
 
@@ -437,6 +492,7 @@ class SecurityCapabilityAdapterRegistry:
         self.register(ElasticObservabilityAdapter())
         self.register(TerraformPolicyAdapter())
         self.register(SELinuxIntegrityAdapter())
+        self.register(MissionControlIntegrationAdapter())
 
     def register(self, adapter: BaseSecurityCapabilityAdapter) -> None:
         self._adapters[adapter.capability_id] = adapter

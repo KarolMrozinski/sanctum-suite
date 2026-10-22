@@ -1172,7 +1172,7 @@ class SecurityCapabilityEvidenceRequest(BaseModel):
     source_type: str = Field(
         min_length=1,
         max_length=128,
-        pattern=r"^(artifact_store|asset_inventory|cloud_inventory|data_platform_api|gcp_api|logging_api|model_registry|attestation_api|iac_api|host_policy_api|source_repository|threat_intel_api|soar_api|firmware_api|manifest_store|certificate_service|metadata_feed)$",
+        pattern=r"^(artifact_store|asset_inventory|cloud_inventory|data_platform_api|gcp_api|logging_api|model_registry|attestation_api|iac_api|host_policy_api|source_repository|threat_intel_api|soar_api|firmware_api|manifest_store|certificate_service|metadata_feed|mission_api)$",
         description="Normalized evidence source type",
     )
     evidence: Dict[str, Any] = Field(

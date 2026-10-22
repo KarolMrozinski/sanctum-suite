@@ -333,6 +333,23 @@ class PlatformTechnologyCatalog:
             ],
         }
 
+    def assess_mission_and_control_stack(self) -> dict[str, Any]:
+        return {
+            "category": "mission_and_control_systems",
+            "status": "PLAN_ONLY",
+            "purpose": "Mission-state visibility, operator authorization scope, attestation context, and telemetry review for control-system integration.",
+            "tools": [
+                self._tool_record(
+                    name="US-984XN",
+                    integration="mission_integration",
+                    capability_id="security-capability:mission-integration",
+                    expected_inputs=["mission_status", "operator_scope", "system_attestations", "telemetry_context"],
+                    real_data_binding="mission_api",
+                    notes="Relevant for mission-state monitoring, operator authorization boundaries, platform attestation, and telemetry correlation.",
+                ),
+            ],
+        }
+
     def assess_ai_and_advanced_technology_stack(self) -> dict[str, Any]:
         return {
             "category": "advanced_ai_and_hardware_technology",
@@ -412,6 +429,7 @@ class PlatformTechnologyCatalog:
             "os_integrity": self.assess_operating_system_stack(),
             "signals_and_monitoring": self.assess_intelligence_and_platform_stack(),
             "cloud_platforms": self.assess_cloud_integration_stack(),
+            "mission_and_control_systems": self.assess_mission_and_control_stack(),
             "software_stacks": self.assess_software_stack(),
             "ai_and_hardware": self.assess_ai_and_advanced_technology_stack(),
         }
@@ -449,7 +467,7 @@ class PlatformTechnologyCatalog:
                     "target": "string",
                     "environment": "string",
                     "capability_id": "string",
-                    "source_type": "artifact_store|asset_inventory|cloud_inventory|data_platform_api|gcp_api|logging_api|model_registry|attestation_api",
+                    "source_type": "artifact_store|asset_inventory|cloud_inventory|data_platform_api|gcp_api|logging_api|model_registry|attestation_api|mission_api",
                     "evidence": {
                         "timestamp": "ISO-8601",
                         "provider": "string",

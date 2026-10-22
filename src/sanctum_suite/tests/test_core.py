@@ -78,6 +78,7 @@ from sanctum_suite.core.zero_trust_mesh import ZeroTrustMeshProtocolEngine
 from sanctum_suite.core.self_healing import SelfHealingBinaryEngine
 from sanctum_suite.core.chaos_resilience import ChaosResilienceEngine
 from sanctum_suite.core.technology_stack_catalog import PlatformTechnologyCatalog
+from sanctum_suite.core.security_capability_adapters import SecurityCapabilityAdapterRegistry
 from sanctum_suite.core.vram_guard import VramEnclaveGuardEngine
 from sanctum_suite.core.cloud_infrastructure import CloudInfrastructureManager
 from sanctum_suite.core.was_security import WASModule
@@ -941,12 +942,26 @@ def test_platform_technology_catalog():
     assert res["execution_performed"] is False
     assert "Ghidra" in res["technology_inventory"]
     assert "SELinux" in res["technology_inventory"]
+    assert "US-984XN" in res["technology_inventory"]
     assert "GCP" in res["technology_inventory"]
     assert "QKD" in res["technology_inventory"]
     assert "Autonomous Agents AI (Agentic AI)" in res["technology_inventory"]
     assert any(item["technology"] == "Ghidra" for item in res["security_capability_mapping"])
+    assert any(item["technology"] == "US-984XN" for item in res["security_capability_mapping"])
     assert any(item["capability_id"] == "security-capability:gcp-platform" for item in res["security_capability_mapping"])
-    assert res["api_contract"]["required_payload"]["source_type"] == "artifact_store|asset_inventory|cloud_inventory|data_platform_api|gcp_api|logging_api|model_registry|attestation_api"
+    assert any(item["capability_id"] == "security-capability:mission-integration" for item in res["security_capability_mapping"])
+    assert res["api_contract"]["required_payload"]["source_type"] == "artifact_store|asset_inventory|cloud_inventory|data_platform_api|gcp_api|logging_api|model_registry|attestation_api|mission_api"
+
+
+def test_mission_control_integration_adapter():
+    registry = SecurityCapabilityAdapterRegistry()
+    adapter = registry.get("security-capability:mission-integration")
+    assert adapter is not None
+    payload = adapter.fetch_evidence(target="edge-domain", environment="ops")
+    assert payload["status"] in {"READY", "NOT_CONFIGURED"}
+    assert payload["source_type"] == "mission_api"
+    assert payload["target"] == "edge-domain"
+    assert payload["environment"] == "ops"
 
 
 def test_vram_enclave_guard_engine():

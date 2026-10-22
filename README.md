@@ -1,51 +1,46 @@
-﻿<div align="center">
-
 # SANCTUM-SUITE
 
-</div>
-
 <div align="center">
-
-### Trust-aware security engineering for controlled environments
-
-<p>
-  <img src="https://img.shields.io/badge/Python-3.11%2B-3776ab?style=flat-square&logo=python&logoColor=white" alt="Python 3.11+" />
-  <img src="https://img.shields.io/badge/FastAPI-API-009688?style=flat-square&logo=fastapi&logoColor=white" alt="FastAPI" />
-  <img src="https://img.shields.io/badge/Status-beta-f59e0b?style=flat-square" alt="Beta" />
-  <img src="https://img.shields.io/badge/Docs-OpenAPI-2563eb?style=flat-square" alt="OpenAPI" />
-</p>
-
+  <p>
+    <img src="https://img.shields.io/badge/Python-3.11%2B-3776ab?style=flat-square&logo=python&logoColor=white" alt="Python 3.11+" />
+    <img src="https://img.shields.io/badge/FastAPI-API-009688?style=flat-square&logo=fastapi&logoColor=white" alt="FastAPI" />
+    <img src="https://img.shields.io/badge/Status-beta-f59e0b?style=flat-square" alt="Beta" />
+    <img src="https://img.shields.io/badge/Docs-OpenAPI-2563eb?style=flat-square" alt="OpenAPI" />
+  </p>
 </div>
 
-## Why was created ?
+## Why SANCTUM-SUITE was created
 
-Modern security programs often fail not because the right tools are missing, but because the environment lacks grounded evidence, clear trust boundaries, and explicit operator intent. SANCTUM-SUITE was created to give organizations a structured way to define what is being verified, what evidence exists, and what remains untrusted or unconfigured before live integration is considered.
+Modern security programs often fail not because the right tools are missing, but because the environment lacks grounded evidence, explicit trust boundaries, and clear operator intent. SANCTUM-SUITE was created to give organizations a structured way to define what is being verified, what evidence exists, and what remains untrusted or unconfigured before live integration is considered.
 
-## Core pillars
+The project is designed for controlled, high-assurance environments where governance, auditability, and evidence quality matter as much as tooling capability. It turns a security stack into a reviewable model of trust and evidence collection instead of a vague list of technologies.
+
+## Core product pillars
 
 <table>
   <tr>
-    <td><a href="#platform-catalog"><strong>Platform catalog</strong></a><br/>Structured inventory of technologies and security domains.</td>
-    <td><a href="#security-capability-model"><strong>Security capability model</strong></a><br/>Normalized mapping from technologies to evidence-backed capabilities.</td>
+    <td><a href="#platform-catalog"><strong>Platform catalog</strong></a><br/>Operator-managed inventory of technologies, systems, and capability surfaces.</td>
+    <td><a href="#security-capability-model"><strong>Security capability model</strong></a><br/>Normalized mapping from technologies to evidence-backed security functions.</td>
   </tr>
   <tr>
-    <td><a href="#api-contract"><strong>API contract</strong></a><br/>REST endpoints for capability discovery and evidence exchange.</td>
-    <td><a href="#documentation"><strong>Documentation</strong></a><br/>Deep technical notebook, OpenAPI schema, and adapter examples.</td>
+    <td><a href="#api-contract"><strong>API contract</strong></a><br/>REST endpoints for capability discovery, evidence exchange, and controlled sync.</td>
+    <td><a href="#documentation"><strong>Documentation</strong></a><br/>Detailed notebook, OpenAPI contracts, and adapter examples for future integration.</td>
   </tr>
 </table>
 
 ## Platform catalog
 
-The project maintains a structured catalog of operator-managed technology surfaces that may later be bound to real evidence sources.
+The project maintains a structured catalog of technology surfaces that may later be bound to real telemetry, attestation, and policy evidence.
 
 - Binary analysis and reversing: Ghidra, BAM, HIRS, paccor, RIM-Tool
 - OS and runtime integrity: HP-UX, Oracle Solaris, OpenVMS, SELinux, VxWorks
-- Monitoring and intelligence: GRASSMARLIN, ELITEWOLF, WALKOFF, PRISM, XKeyscore, Boundless Informant
+- Signals, intelligence, and monitoring: GRASSMARLIN, ELITEWOLF, WALKOFF, PRISM, XKeyscore, Boundless Informant
 - Cloud and infrastructure: C2S, JWCC, Mandiant Advantage, Mandiant Automated Defense, Google Cloud Platform (GCP)
-- Software and data platforms: C/C++, Go, Assembly, Apache Accumulo, Hadoop, Spark, Kafka, ELK Stack, Terraform
-- AI and emerging hardware: Sec-PaLM, Palantir Gotham / Foundry, QKD, Loihi, TrueNorth, GNN, Agentic AI, DNA Data Storage
+- Mission and control systems: US-984XN
+- Software and data platforms: C/C++, Go, Assembly, Apache Accumulo, Apache Hadoop, Spark, Kafka, ELK Stack, Terraform
+- AI and emerging hardware: Sec-PaLM, Palantir Gotham / Foundry, QKD, Intel Loihi, IBM TrueNorth, GNN, Agentic AI, DNA Data Storage
 
-This catalog is intentionally evidence-first: technologies are modeled as capability surfaces, not as guaranteed live integrations.
+This catalog remains evidence-first by design: technologies are modeled as capability surfaces, not as guaranteed live integrations.
 
 ## Security capability model
 
@@ -57,11 +52,12 @@ SANCTUM-SUITE maps technologies to normalized security capabilities such as:
 - `security-capability:gcp-platform`
 - `security-capability:terraform-policy`
 - `security-capability:observability`
+- `security-capability:mission-integration`
 
 Each capability includes:
 
 - stable identifier
-- source type
+- source type and trust boundary
 - expected evidence format
 - integration mode: `PLAN_ONLY`, `CONFIGURED`, `LIVE`
 - operator-controlled trust context
@@ -77,7 +73,7 @@ The repository exposes an explicit REST surface for future data binding and evid
 - `POST /api/v1/security-capabilities/{capability_id}/evidence`
 - `POST /api/v1/security-capabilities/{capability_id}/sync`
 
-The implementation is intentionally safe by default and fail-closed when configuration or credentials are missing.
+The system is intentionally fail-closed: without explicit configuration or credentials, it remains in a safe review-only mode rather than pretending to be connected to live operational sources.
 
 ## Documentation
 
@@ -90,7 +86,7 @@ The implementation is intentionally safe by default and fail-closed when configu
 
 ## Operational stance
 
-This repository is designed as a reviewable, architecture-oriented platform. It is not presented as a live, production-connected deployment. The default posture is explicit operator configuration and evidence-based review before any real-world data feed is treated as trusted.
+This repository is designed as a reviewable, architecture-oriented platform. It is not presented as a live production-connected deployment. The default posture is explicit operator configuration and evidence-based review before any real-world source is treated as trusted.
 
 ## License
 
