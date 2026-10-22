@@ -1,3 +1,5 @@
+version: '3.8'
+
 services:
   sanctum-core:
     build:
@@ -54,9 +56,29 @@ services:
       interval: 15s
       timeout: 5s
       retries: 3
+    networks:
+      - sanctum-net
+
+  # DODANY MODUŁ DASHBOARDU (pobierany bezpośrednio z GHCR)
+  sanctum-dashboard:
+    image: ghcr.io/${GITHUB_REPOSITORY_OWNER}/sanctum-dashboard:latest
+    container_name: sanctum-suite-dashboard
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:3000:3000"
+    environment:
+      - NEXT_PUBLIC_API_URL=http://sanctum-core:8000
+    depends_on:
+      - sanctum-core
+    networks:
+      - sanctum-net
 
 volumes:
   sanctum_data:
+
+networks:
+  sanctum-net:
+    driver: bridge
 
 secrets:
   keylime-verifier-ca:
