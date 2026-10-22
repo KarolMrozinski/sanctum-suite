@@ -1,4 +1,6 @@
-﻿# <h1>SANCTUM-SUITE</h1>
+﻿<div align="center">
+
+# SANCTUM-SUITE
 
 <div align="center">
 
