@@ -111,295 +111,63 @@ This model is designed to be extended with real telemetry and evidence sources i
 
 ## API contract for real-data binding
 
-The platform catalog is designed to be connected to real evidence stores without claiming live execution or deployment. The recommended contract is a security-capability record that links a technology to a validated data source and expected evidence payload.
+SANCTUM-SUITE keeps the integration model explicit and evidence-first. The core rule is simple: a technology may be cataloged and mapped to a capability without claiming live runtime connectivity.
 
-### Capability mapping
+### Key capability mapping
 
-| Security capability | Technology | Source type | Example evidence |
-|---|---|---|---|
-| `security-capability:binary-analysis` | Ghidra | `artifact_store` | SHA-256, file type, symbol metadata |
-| `security-capability:runtime-attestation` | HIRS | `attestation_api` | boot measurements, runtime state |
-| `security-capability:linux-integrity` | SELinux | `host_policy_api` | SELinux state, AVC logs, policy summary |
-| `security-capability:gcp-platform` | GCP | `gcp_api` | project inventory, IAM model, services |
-| `security-capability:terraform-policy` | Terraform | `iac_api` | drift report, module versions, state |
-| `security-capability:observability` | ELK Stack | `logging_api` | log indices, traces, alert configurations |
-| `security-capability:agentic-ai` | Agentic AI | `agent_runtime` | tool permissions, execution logs |
+| Security capability | Technology | Example source type |
+|---|---|---|
+| `security-capability:binary-analysis` | Ghidra | `artifact_store` |
+| `security-capability:linux-integrity` | SELinux | `host_policy_api` |
+| `security-capability:gcp-platform` | GCP | `gcp_api` |
+| `security-capability:terraform-policy` | Terraform | `iac_api` |
+| `security-capability:observability` | ELK Stack | `logging_api` |
+| `security-capability:runtime-attestation` | HIRS | `attestation_api` |
 
-### Recommended payload schema
+### Minimal payload
 
 ```json
 {
-  "target": "production-internal",
+  "target": "edge-domain",
   "environment": "gcp",
   "capability_id": "security-capability:gcp-platform",
+  "technology": "Google Cloud Platform (GCP)",
   "source_type": "gcp_api",
   "evidence": {
-    "timestamp": "2026-10-22T12:00:00Z",
-    "provider": "google-cloud",
-    "artifact_id": "project-prod-core",
-    "values": {
-      "project_id": "prod-core-01",
-      "service_accounts": ["svc-audit", "svc-terraform"],
-      "resource_inventory": 154,
-      "iam_model": "organization-level"
-    }
+    "project_id": "prod-core-01",
+    "service_accounts": ["svc-audit", "svc-terraform"],
+    "resource_inventory": 154,
+    "iam_model": "organization-level"
   },
   "status": "PLAN_ONLY"
 }
 ```
 
-### Example: concrete environment payload
+This keeps the contract secure, reviewable, and ready for real binding later, without pretending that the environment is already connected.
 
-```json
-{
-  "target": "edge-domain",
-  "environment": "aws-gcp-hybrid",
-  "capability_map": {
-    "Ghidra": "security-capability:binary-analysis",
-    "SELinux": "security-capability:linux-integrity",
-    "Google Cloud Platform (GCP)": "security-capability:gcp-platform",
-    "HashiCorp Terraform": "security-capability:terraform-policy",
-    "Elasticsearch / Logstash / Kibana (ELK Stack)": "security-capability:observability"
-  },
-  "results": [
-    {
-      "technology": "Ghidra",
-      "status": "PLAN_ONLY",
-      "source_type": "artifact_store",
-      "artifact_id": "firmware-image-2026-10-22",
-      "evidence": {
-        "sha256": "4ae8d6...",
-        "artifact_type": "firmware",
-        "symbol_context": "not_yet_loaded"
-      }
-    },
-    {
-      "technology": "Google Cloud Platform (GCP)",
-      "status": "PLAN_ONLY",
-      "source_type": "gcp_api",
-      "artifact_id": "project-prod-core",
-      "evidence": {
-        "project_id": "prod-core-01",
-        "service_accounts": ["svc-audit", "svc-terraform"],
-        "resource_inventory": 154,
-        "iam_model": "organization-level"
-      }
-    },
-    {
-      "technology": "HashiCorp Terraform",
-      "status": "PLAN_ONLY",
-      "source_type": "iac_api",
-      "artifact_id": "terraform-state-prod",
-      "evidence": {
-        "terraform_state": "state-prod-01",
-        "module_versions": ["v1.8.3"],
-        "drift_report": "pending"
-      }
-    },
-    {
-      "technology": "Elasticsearch / Logstash / Kibana (ELK Stack)",
-      "status": "PLAN_ONLY",
-      "source_type": "logging_api",
-      "artifact_id": "elk-prod-logs",
-      "evidence": {
-        "log_index": "security-*",
-        "pipeline_config": "prod-collector",
-        "dashboard_rules": 42
-      }
-    }
-  ]
-}
-```
+## REST API: security capabilities
 
-This contract keeps the model auditable and extensible: the project can bind new technologies to live sources without pretending that the integration is already active or production-verified.
+The project exposes a concrete REST surface for capability discovery and evidence handling.
 
-## REST API: security-capabilities and evidence
+### Essential endpoints
 
-The project exposes a concrete REST contract for capability discovery, evidence ingestion, and evidence retrieval. The API is intentionally plan-first and evidence-oriented: it supports future live connectors while keeping the status explicit and auditable.
-
-### Endpoints
-
-- `GET /api/v1/security-capabilities` — list available technology-to-capability mappings and the catalog metadata
+- `GET /api/v1/security-capabilities` — list available capability mappings
 - `GET /api/v1/security-capabilities/{capability_id}` — fetch one normalized capability record
-- `POST /api/v1/security-capabilities` — create a capability record in the in-memory evidence store
-- `GET /api/v1/security-capabilities/{capability_id}/evidence` — retrieve evidence records for one capability
-- `POST /api/v1/security-capabilities/{capability_id}/evidence` — store evidence for one capability
-- `POST /api/v1/security-capabilities/{capability_id}/sync` — pull the latest normalized evidence from the adapter registry and persist it as a record
+- `POST /api/v1/security-capabilities` — register or create a capability evidence record
+- `GET /api/v1/security-capabilities/{capability_id}/evidence` — retrieve evidence history
+- `POST /api/v1/security-capabilities/{capability_id}/evidence` — submit evidence payload
+- `POST /api/v1/security-capabilities/{capability_id}/sync` — invoke the provider adapter sync contract
 
-### FastAPI models
+### Important implementation notes
 
-The API uses concrete Pydantic models for real-data payloads:
+- The adapter layer is in [src/sanctum_suite/core/security_capability_adapters.py](src/sanctum_suite/core/security_capability_adapters.py)
+- The safe-by-default provider examples are in [src/sanctum_suite/core/security_capability_sdk_examples.py](./src/sanctum_suite/core/security_capability_sdk_examples.py)
+- The OpenAPI contract is available in [docs/openapi/security_capabilities_openapi.yaml](./docs/openapi/security_capabilities_openapi.yaml), [docs/openapi/security_capabilities_openapi.json](./docs/openapi/security_capabilities_openapi.json), and [docs/openapi/openapi.json](./docs/openapi/openapi.json)
 
-- `SecurityCapabilityEvidenceRequest`
-- `SecurityCapabilityRecord`
-- `SecurityCapabilityEvidenceRecord`
+For the detailed payloads, adapter examples, and deep technical walk-through, see the notebook: [notebooks/sanctum_deep_dive.ipynb](./notebooks/sanctum_deep_dive.ipynb).
 
-These models support fields such as:
+## View-only access notice
 
-- `target`
-- `environment`
-- `capability_id`
-- `technology`
-- `source_type`
-- `evidence`
-- `status`
-- `observed_at`
-
-### Real adapter layer
-
-The reference adapter layer for real-data binding lives in [src/sanctum_suite/core/security_capability_adapters.py](src/sanctum_suite/core/security_capability_adapters.py) and includes normalized adapters for:
-
-- GCP (`security-capability:gcp-platform` / `gcp_api`)
-- ELK / logging (`security-capability:observability` / `logging_api`)
-- Terraform (`security-capability:terraform-policy` / `iac_api`)
-- SELinux (`security-capability:linux-integrity` / `host_policy_api`)
-
-These adapters return a normalized evidence object that can later be backed by actual API calls or provider SDKs without changing the contract.
-
-### OpenAPI example schema
-
-A ready-to-use example OpenAPI document for these routes is stored in [docs/openapi/security_capabilities_openapi.yaml](./docs/openapi/security_capabilities_openapi.yaml) and its JSON equivalent at [docs/openapi/security_capabilities_openapi.json](./docs/openapi/security_capabilities_openapi.json). The actual FastAPI export generated by the app is available at [docs/openapi/openapi.json](./docs/openapi/openapi.json). They cover the security-capability registry, evidence ingestion, and adapter sync contract for GCP, ELK, Terraform, SELinux, and related sources, while preserving the safe-by-default `PLAN_ONLY` semantics.
-
-A production-oriented provider SDK example is also available in [src/sanctum_suite/core/security_capability_sdk_examples.py](./src/sanctum_suite/core/security_capability_sdk_examples.py). It demonstrates real contract shapes for GCP, ELK, Terraform, and SELinux with explicit `safe-demo` vs `live` separation, while keeping the default behavior fail-closed unless credentials and runtime prerequisites are configured.
-
-### Example curl commands
-
-```bash
-export SANCTUM_API_KEY="test-key-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
-
-curl -sS \
-  -H "X-API-Key: $SANCTUM_API_KEY" \
-  "http://localhost:8000/api/v1/security-capabilities?target=edge-domain&capability_id=security-capability:gcp-platform"
-
-curl -sS \
-  -H "X-API-Key: $SANCTUM_API_KEY" \
-  "http://localhost:8000/api/v1/security-capabilities/security-capability:gcp-platform/evidence?target=edge-domain&environment=gcp"
-
-curl -sS \
-  -H "X-API-Key: $SANCTUM_API_KEY" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "target": "edge-domain",
-    "environment": "gcp",
-    "capability_id": "security-capability:gcp-platform",
-    "technology": "Google Cloud Platform (GCP)",
-    "source_type": "gcp_api",
-    "evidence": {
-      "project_id": "prod-core-01",
-      "service_accounts": ["svc-audit", "svc-terraform"],
-      "resource_inventory": 154,
-      "iam_model": "organization-level"
-    },
-    "status": "PLAN_ONLY"
-  }' \
-  "http://localhost:8000/api/v1/security-capabilities/security-capability:gcp-platform/evidence"
-
-curl -sS \
-  -H "X-API-Key: $SANCTUM_API_KEY" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "target": "edge-domain",
-    "environment": "gcp",
-    "capability_id": "security-capability:terraform-policy",
-    "technology": "HashiCorp Terraform",
-    "source_type": "iac_api",
-    "evidence": {
-      "terraform_state": "state-prod-01",
-      "module_versions": ["v1.8.3"],
-      "drift_report": "pending"
-    },
-    "status": "PLAN_ONLY"
-  }' \
-  "http://localhost:8000/api/v1/security-capabilities"
-
-curl -sS \
-  -H "X-API-Key: $SANCTUM_API_KEY" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "target": "edge-domain",
-    "environment": "gcp",
-    "force_refresh": true
-  }' \
-  "http://localhost:8000/api/v1/security-capabilities/security-capability:gcp-platform/sync"
-```
-
-### Sync endpoint contract
-
-The `/api/v1/security-capabilities/{capability_id}/sync` route follows the same adapter-driven contract as the evidence endpoints. The route validates the capability in the catalog, resolves the registered provider adapter, calls `sync_evidence()`, and stores the normalized result in the in-memory evidence store. This pattern is intended to be the real integration point for future SDK-backed connectors.
-
-### Full environment payload example
-
-```json
-{
-  "target": "edge-domain",
-  "environment": "gcp",
-  "capability_map": {
-    "Ghidra": "security-capability:binary-analysis",
-    "SELinux": "security-capability:linux-integrity",
-    "Google Cloud Platform (GCP)": "security-capability:gcp-platform",
-    "HashiCorp Terraform": "security-capability:terraform-policy",
-    "Elasticsearch / Logstash / Kibana (ELK Stack)": "security-capability:observability"
-  },
-  "results": [
-    {
-      "technology": "Ghidra",
-      "capability_id": "security-capability:binary-analysis",
-      "source_type": "artifact_store",
-      "status": "PLAN_ONLY",
-      "evidence": {
-        "sha256": "4ae8d6...",
-        "artifact_type": "firmware",
-        "symbol_context": "not_yet_loaded"
-      }
-    },
-    {
-      "technology": "SELinux",
-      "capability_id": "security-capability:linux-integrity",
-      "source_type": "host_policy_api",
-      "status": "PLAN_ONLY",
-      "evidence": {
-        "selinux_enforce": "enforcing",
-        "avc_logs": "recent",
-        "policy_summary": "baseline-loaded"
-      }
-    },
-    {
-      "technology": "Google Cloud Platform (GCP)",
-      "capability_id": "security-capability:gcp-platform",
-      "source_type": "gcp_api",
-      "status": "PLAN_ONLY",
-      "evidence": {
-        "project_id": "prod-core-01",
-        "service_accounts": ["svc-audit", "svc-terraform"],
-        "resource_inventory": 154,
-        "iam_model": "organization-level"
-      }
-    },
-    {
-      "technology": "HashiCorp Terraform",
-      "capability_id": "security-capability:terraform-policy",
-      "source_type": "iac_api",
-      "status": "PLAN_ONLY",
-      "evidence": {
-        "terraform_state": "state-prod-01",
-        "module_versions": ["v1.8.3"],
-        "drift_report": "pending"
-      }
-    },
-    {
-      "technology": "Elasticsearch / Logstash / Kibana (ELK Stack)",
-      "capability_id": "security-capability:observability",
-      "source_type": "logging_api",
-      "status": "PLAN_ONLY",
-      "evidence": {
-        "log_index": "security-*",
-        "pipeline_config": "prod-collector",
-        "dashboard_rules": 42
-      }
-    }
-  ]
-}
-```
 
 ## View-only access notice
 
