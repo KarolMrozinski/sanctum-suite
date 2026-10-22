@@ -23,10 +23,19 @@ The project is designed for controlled, high-assurance environments where govern
     <td><a href="#api-contract"><strong>API contract</strong></a><br/>REST endpoints for capability discovery, evidence exchange, and controlled sync.</td>
   </tr>
   <tr>
-    <td><a href="#documentation"><strong>Documentation</strong></a><br/>Detailed notebook, OpenAPI contracts, and adapter examples for future integration.</td>
+    <td><a href="#documentation"><strong>Documentation</strong></a><br/>Deployment docs, OpenAPI contracts, and adapter examples for future integration.</td>
     <td><a href="#product-overview"><strong>Product overview</strong></a><br/>Explicit evidence-based review and operator-controlled trust boundaries before live integration.</td>
   </tr>
 </table>
+
+## Recent updates
+
+Recent work has focused on making the repository more operationally grounded without pretending the platform is already deployed in production.
+
+- Expanded the capability registry to cover cloud, telemetry, attestation, mission, AI, graph, and emerging compute stacks while preserving a fail-closed readiness model.
+- Formalized the distinction between `PLAN_ONLY`, `CONFIGURED`, and `LIVE` states so adapters do not claim live integration without runtime evidence.
+- Added deployment-oriented assets under [deployment/README.md](deployment/README.md), including AKS/GKE patterns, secret manager references, and phase-based rollout guidance.
+- Kept the project architecture-first: the repository now emphasizes real integration contracts, trust boundaries, and evidence handling rather than marketing-style capability claims.
 
 ## Security capability model
 
@@ -63,7 +72,7 @@ The system is intentionally fail-closed: without explicit configuration or crede
 
 ## Documentation
 
-- Deep technical notebook: [notebooks/sanctum_deep_dive.ipynb](notebooks/sanctum_deep_dive.ipynb)
+- Deployment guide: [deployment/README.md](deployment/README.md)
 - OpenAPI YAML: [docs/openapi/security_capabilities_openapi.yaml](docs/openapi/security_capabilities_openapi.yaml)
 - OpenAPI JSON: [docs/openapi/security_capabilities_openapi.json](docs/openapi/security_capabilities_openapi.json)
 - FastAPI export: [docs/openapi/openapi.json](docs/openapi/openapi.json)
