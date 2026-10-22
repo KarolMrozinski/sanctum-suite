@@ -75,6 +75,8 @@ from sanctum_suite.core.threat_intel import SovereignThreatIntelAggregator
 from sanctum_suite.core.zero_trust_mesh import ZeroTrustMeshProtocolEngine
 from sanctum_suite.core.self_healing import SelfHealingBinaryEngine
 from sanctum_suite.core.vram_guard import VramEnclaveGuardEngine
+from sanctum_suite.core.cloud_infrastructure import CloudInfrastructureManager
+from sanctum_suite.core.was_security import WASModule
 from sanctum_suite.modules.shadow import ShadowAgentModule
 
 def test_mitre_mapping():
@@ -635,6 +637,27 @@ def test_supply_chain_sbom_audit_engine():
     assert res["compliance_status"] == "NOT_ASSESSED"
     assert res["dependencies_scanned"] is None
     assert res["vulnerable_components_found"] is None
+
+def test_cloud_infrastructure_manager():
+    manager = CloudInfrastructureManager()
+    aws = manager.assess_cloud_infrastructure("aws", region="eu-central-1", workload="sanctum-suite")
+    azure = manager.assess_cloud_infrastructure("azure", region="westeurope", workload="sanctum-suite")
+
+    assert aws["platform"] == "AWS"
+    assert azure["platform"] == "Azure"
+    assert "identity protection" in aws["defense_in_depth"]
+    assert "Azure Firewall" in azure["recommended_controls"][1]
+
+
+def test_was_module_security_assessment():
+    engine = WASModule()
+    res = engine.assess_web_application("api.sanctum-suite.local", "sanctum-api")
+
+    assert res["status"] == "PLAN_ONLY"
+    assert res["waf_policy"]["required"] is True
+    assert "defense_in_depth" in res
+    assert res["defense_in_depth"]["model"] == "defense_in_depth"
+
 
 def test_realtime_xdr_mesh_correlator():
     correlator = RealtimeXdrMeshCorrelator()

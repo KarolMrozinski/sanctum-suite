@@ -118,6 +118,14 @@ SANCTUM-SUITE to rozwijany zestaw modułów przeznaczonych do pracy w kontrolowa
 | **Checklist AML/MiCA** | Checklist sprawy i append-only rejestr referencji dowodów dla przeglądu MiCA, AMLR, TFR i polskiej ustawy AML (CASP w UE). Nie ocenia zgodności — wszystkie sprawy zachowują status `NOT_ASSESSED`. [Dokumentacja](./docs/AML_MICA_CASE_REVIEW.md). |
 | **Dowód ZK** | Obwód Groth16 dowodzi, że prywatnie zakodowane oceny dostawcy nie przekraczają progu `medium`, bez ich publikowania. Dowód nie uwierzytelnia dostawcy ani raportu i nie jest połączony z przypadkiem; wymagany jest niezależny ceremony setup. [Dokumentacja](./docs/ZK_AUDIT_PROOFS.md). |
 
+### Cloud infrastructure and web application security
+
+| Moduł | Funkcja | Opis |
+|---|---|---|
+| **Cloud infrastructure management** | `CloudInfrastructureManager` | Planowanie środków ochrony dla AWS i Microsoft Azure z oceną podstawowych kontroli, segmentacji sieci i polityk bezpieczeństwa dostępu. Moduł pozostaje w trybie planowania i nie wykonuje połączeń do chmury bez jawnej konfiguracji operatora. |
+| **WAS / WAF planning** | `WASModule` | Ocena aplikacji internetowej z polityką WAF, filtracją żądań i modelem defense in depth obejmującym warstwy tożsamości, sieci, aplikacji, danych i monitoringu. |
+| **Defense in depth** | `DefenseInDepthPolicy` | Struktura kontroli warstwowych dla usług internetowych i infrastruktury tych usług, z naciskiem na redukcję ryzyka z wykorzystaniem wielu barier i nadzoru. |
+
 ### Privacy-enhancing technologies (eksperymentalne)
 
 | Moduł | Polecenie | Opis |

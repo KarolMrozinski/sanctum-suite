@@ -84,6 +84,8 @@ from sanctum_suite.core.zero_trust_mesh import ZeroTrustMeshProtocolEngine
 from sanctum_suite.core.self_healing import SelfHealingBinaryEngine
 from sanctum_suite.core.vram_guard import VramEnclaveGuardEngine
 from sanctum_suite.core.darknet_apt_shield import DarknetAptShieldEngine
+from sanctum_suite.core.cloud_infrastructure import CloudInfrastructureManager
+from sanctum_suite.core.was_security import WASModule
 
 class SanctumUnifiedOrchestrator:
     """Sovereign Enterprise Orchestration Engine z eBPF In-Kernel Enforcement, Autonomous Red-Team i PQC Assurance."""
@@ -167,6 +169,8 @@ class SanctumUnifiedOrchestrator:
         self.self_healing = SelfHealingBinaryEngine()
         self.vram_guard = VramEnclaveGuardEngine()
         self.darknet_shield = DarknetAptShieldEngine()
+        self.cloud_infrastructure = CloudInfrastructureManager()
+        self.was_security = WASModule()
 
     def execute_full_resilience_audit(
         self,
@@ -279,6 +283,10 @@ class SanctumUnifiedOrchestrator:
         airgap_transfer = self.airgap_diode.enforce_unidirectional_transfer("telemetry_payload", "secure_enclave_alpha")
         diamond_event = self.diamond_tracker.build_diamond_event("APT29_COZY_BEAR", "Custom eBPF Injection", "inference-cluster")
         nist_controls = self.nist_800_53.audit_security_controls()
+        aws_baseline = self.cloud_infrastructure.assess_cloud_infrastructure("aws", region="eu-central-1", workload="sanctum-suite")
+        azure_baseline = self.cloud_infrastructure.assess_cloud_infrastructure("azure", region="westeurope", workload="sanctum-suite")
+        was_assessment = self.was_security.assess_web_application("api.sanctum-suite.local", "sanctum-api")
+        defense_in_depth = self.was_security.assess_web_application("portal.sanctum-suite.local", "sanctum-portal")
 
         purple_sync = self.purple_team.coordinate_emulation_cycle("APT29 Credential Access", "Sigma-Rule-9941")
         tempest_audit = self.tempest_auditor.audit_enclave_emissions("Enclave-Alpha-Room")
@@ -355,6 +363,14 @@ class SanctumUnifiedOrchestrator:
             "airgap_transfer": airgap_transfer,
             "diamond_event": diamond_event,
             "nist_controls": nist_controls,
+            "cloud_infrastructure": {
+                "aws": aws_baseline,
+                "azure": azure_baseline,
+            },
+            "web_application_security": {
+                "was": was_assessment,
+                "defense_in_depth": defense_in_depth,
+            },
             "purple_sync": purple_sync,
             "tempest_audit": tempest_audit,
             "threat_intel_sync": threat_intel_sync,
