@@ -19,28 +19,14 @@ The project is designed for controlled, high-assurance environments where govern
 
 <table>
   <tr>
-    <td><a href="#platform-catalog"><strong>Platform catalog</strong></a><br/>Operator-managed inventory of technologies, systems, and capability surfaces.</td>
     <td><a href="#security-capability-model"><strong>Security capability model</strong></a><br/>Normalized mapping from technologies to evidence-backed security functions.</td>
+    <td><a href="#api-contract"><strong>API contract</strong></a><br/>REST endpoints for capability discovery, evidence exchange, and controlled sync.</td>
   </tr>
   <tr>
-    <td><a href="#api-contract"><strong>API contract</strong></a><br/>REST endpoints for capability discovery, evidence exchange, and controlled sync.</td>
     <td><a href="#documentation"><strong>Documentation</strong></a><br/>Detailed notebook, OpenAPI contracts, and adapter examples for future integration.</td>
+    <td><a href="#operational-stance"><strong>Operational stance</strong></a><br/>Explicit evidence-based review and operator-controlled trust boundaries before live integration.</td>
   </tr>
 </table>
-
-## Platform catalog
-
-The project maintains a structured catalog of technology surfaces that may later be bound to real telemetry, attestation, and policy evidence.
-
-- Binary analysis and reversing: Ghidra, BAM, HIRS, paccor, RIM-Tool
-- OS and runtime integrity: HP-UX, Oracle Solaris, OpenVMS, SELinux, VxWorks
-- Signals, intelligence, and monitoring: GRASSMARLIN, ELITEWOLF, WALKOFF, PRISM, XKeyscore, Boundless Informant
-- Cloud and infrastructure: C2S, JWCC, Mandiant Advantage, Mandiant Automated Defense, Google Cloud Platform (GCP)
-- Mission and control systems: US-984XN (official SIGAD designation for the PRISM signals intelligence program)
-- Software and data platforms: C/C++, Go, Assembly, Apache Accumulo, Apache Hadoop, Spark, Kafka, ELK Stack, Terraform
-- AI and emerging hardware: Sec-PaLM, Palantir Gotham / Foundry, QKD, Intel Loihi, IBM TrueNorth, GNN, Agentic AI, DNA Data Storage
-
-This catalog remains evidence-first by design: technologies are modeled as capability surfaces, not as guaranteed live integrations.
 
 ## Security capability model
 
