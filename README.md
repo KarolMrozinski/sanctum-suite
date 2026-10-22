@@ -125,6 +125,9 @@ SANCTUM-SUITE to rozwijany zestaw modułów przeznaczonych do pracy w kontrolowa
 | **Cloud infrastructure management** | `CloudInfrastructureManager` | Planowanie środków ochrony dla AWS i Microsoft Azure z oceną podstawowych kontroli, segmentacji sieci i polityk bezpieczeństwa dostępu. Moduł pozostaje w trybie planowania i nie wykonuje połączeń do chmury bez jawnej konfiguracji operatora. |
 | **WAS / WAF planning** | `WASModule` | Ocena aplikacji internetowej z polityką WAF, filtracją żądań i modelem defense in depth obejmującym warstwy tożsamości, sieci, aplikacji, danych i monitoringu. |
 | **Defense in depth** | `DefenseInDepthPolicy` | Struktura kontroli warstwowych dla usług internetowych i infrastruktury tych usług, z naciskiem na redukcję ryzyka z wykorzystaniem wielu barier i nadzoru. |
+| **Sigstore / Cosign attestation** | `SigstoreCosignSecurityManager` | Planowanie polityki podpisywania artefaktów, attestation in-toto i weryfikacji tożsamości podpisującego bez wykonywania zewnętrznych połączeń do Sigstore/Rekor. |
+| **Falco runtime security** | `FalcoSecurityModule` | Model kontroli runtime dla detekcji nieautoryzowanych połączeń, zapisów do wrażliwych ścieżek i wykonania procesów w kontenerach. |
+| **SBOM / CycloneDX / SPDX** | `SbomFormatManager` | Ocena formatu dokumentu SBOM i rekomendacja dla CycloneDX lub SPDX, z integracją do audytu łańcucha dostaw i raportowania bezpieczeństwa. |
 
 ### Privacy-enhancing technologies (eksperymentalne)
 

@@ -77,6 +77,9 @@ from sanctum_suite.core.self_healing import SelfHealingBinaryEngine
 from sanctum_suite.core.vram_guard import VramEnclaveGuardEngine
 from sanctum_suite.core.cloud_infrastructure import CloudInfrastructureManager
 from sanctum_suite.core.was_security import WASModule
+from sanctum_suite.core.sigstore_cosign import SigstoreCosignSecurityManager
+from sanctum_suite.core.falco_security import FalcoSecurityModule
+from sanctum_suite.core.cyclonedx_spdx import SbomFormatManager
 from sanctum_suite.modules.shadow import ShadowAgentModule
 
 def test_mitre_mapping():
@@ -657,6 +660,22 @@ def test_was_module_security_assessment():
     assert res["waf_policy"]["required"] is True
     assert "defense_in_depth" in res
     assert res["defense_in_depth"]["model"] == "defense_in_depth"
+
+
+def test_supply_chain_security_modules():
+    sigstore = SigstoreCosignSecurityManager().assess_sigstore_cosign(
+        "sanctum-suite-release", "KarolMrozinski/sanctum-suite"
+    )
+    falco = FalcoSecurityModule().assess_runtime_security("sanctum-suite", "prod")
+    sbom = SbomFormatManager().assess_sbom_format("CycloneDX")
+
+    assert sigstore["status"] == "PLAN_ONLY"
+    assert "Rekor" in sigstore["key_requirements"][2]
+    assert falco["status"] == "PLAN_ONLY"
+    assert falco["runtime_rules"][0]["rule_id"] == "unexpected_outbound_connection"
+    assert sbom["status"] == "PLAN_ONLY"
+    assert sbom["preferred_format"] == "CycloneDX"
+    assert "SPDX" in sbom["supported_formats"]
 
 
 def test_realtime_xdr_mesh_correlator():

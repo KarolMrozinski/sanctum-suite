@@ -86,6 +86,9 @@ from sanctum_suite.core.vram_guard import VramEnclaveGuardEngine
 from sanctum_suite.core.darknet_apt_shield import DarknetAptShieldEngine
 from sanctum_suite.core.cloud_infrastructure import CloudInfrastructureManager
 from sanctum_suite.core.was_security import WASModule
+from sanctum_suite.core.sigstore_cosign import SigstoreCosignSecurityManager
+from sanctum_suite.core.falco_security import FalcoSecurityModule
+from sanctum_suite.core.cyclonedx_spdx import SbomFormatManager
 
 class SanctumUnifiedOrchestrator:
     """Sovereign Enterprise Orchestration Engine z eBPF In-Kernel Enforcement, Autonomous Red-Team i PQC Assurance."""
@@ -171,6 +174,9 @@ class SanctumUnifiedOrchestrator:
         self.darknet_shield = DarknetAptShieldEngine()
         self.cloud_infrastructure = CloudInfrastructureManager()
         self.was_security = WASModule()
+        self.sigstore_cosign = SigstoreCosignSecurityManager()
+        self.falco_security = FalcoSecurityModule()
+        self.sbom_format_manager = SbomFormatManager()
 
     def execute_full_resilience_audit(
         self,
@@ -287,6 +293,11 @@ class SanctumUnifiedOrchestrator:
         azure_baseline = self.cloud_infrastructure.assess_cloud_infrastructure("azure", region="westeurope", workload="sanctum-suite")
         was_assessment = self.was_security.assess_web_application("api.sanctum-suite.local", "sanctum-api")
         defense_in_depth = self.was_security.assess_web_application("portal.sanctum-suite.local", "sanctum-portal")
+        sigstore_cosign = self.sigstore_cosign.assess_sigstore_cosign("sanctum-suite-release", "KarolMrozinski/sanctum-suite")
+        falco_runtime = self.falco_security.assess_runtime_security("sanctum-suite", "prod")
+        sbom_standard = self.sbom_format_manager.assess_sbom_format("CycloneDX")
+        sbom_audit["sbom_format"] = sbom_standard["preferred_format"]
+        sbom_audit["supported_sbom_formats"] = sbom_standard["supported_formats"]
 
         purple_sync = self.purple_team.coordinate_emulation_cycle("APT29 Credential Access", "Sigma-Rule-9941")
         tempest_audit = self.tempest_auditor.audit_enclave_emissions("Enclave-Alpha-Room")
@@ -370,6 +381,11 @@ class SanctumUnifiedOrchestrator:
             "web_application_security": {
                 "was": was_assessment,
                 "defense_in_depth": defense_in_depth,
+            },
+            "supply_chain_security": {
+                "sigstore_cosign": sigstore_cosign,
+                "falco_runtime_security": falco_runtime,
+                "sbom_format": sbom_standard,
             },
             "purple_sync": purple_sync,
             "tempest_audit": tempest_audit,
