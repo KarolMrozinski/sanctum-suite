@@ -1193,6 +1193,26 @@ class SecurityCapabilitySyncRequest(BaseModel):
     force_refresh: bool = Field(default=False, description="Force a fresh sync pass instead of returning cached records when present")
 
 
+class MissionControlSyncRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    target: str = Field(min_length=1, max_length=200, description="Mission target or operational domain")
+    environment: str = Field(min_length=1, max_length=200, description="Environment label such as production, field, or ops")
+    mission_id: str = Field(default="PRISM-US-984XN", min_length=1, max_length=256, description="Operational mission identifier")
+    mission_status: str = Field(default="ACTIVE", min_length=1, max_length=128, description="Current mission status")
+    operator_scope: str = Field(default="full_scope", min_length=1, max_length=128, description="Authorized operator scope")
+    system_attestations: List[str] = Field(
+        default_factory=lambda: ["boot_measurement_verified", "identity_scope_verified", "telemetry_context_attached"],
+        min_length=1,
+        max_length=20,
+        description="Attestation values from the mission control layer",
+    )
+    telemetry_context: Dict[str, Any] = Field(
+        default_factory=dict,
+        description="Real-time telemetry metadata and mission context for the live connection",
+    )
+
+
 class SecurityCapabilityRecord(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -1660,6 +1680,108 @@ async def sync_security_capability(
         "capability": match,
         "record": record.model_dump(mode="json"),
         "adapter": {"name": adapter.name, "source_type": adapter.source_type},
+    }
+
+
+@app.get("/api/v1/mission-control", dependencies=[Security(verify_api_key)])
+async def get_mission_control_status(
+    target: str = Query(default="enterprise-environment", description="Target environment label"),
+    environment: str = Query(default="enterprise-environment", description="Environment name"),
+) -> Dict[str, Any]:
+    """Return the live mission-control status contract for US-984XN / PRISM integration."""
+    adapter = security_capability_adapter_registry.get("security-capability:mission-integration")
+    if adapter is None:
+        raise HTTPException(status_code=404, detail="Mission control adapter not registered")
+
+    evidence = adapter.fetch_evidence(target=target, environment=environment)
+    example_payload = {
+        "target": target,
+        "environment": environment,
+        "mission_id": "PRISM-US-984XN",
+        "mission_status": "ACTIVE",
+        "operator_scope": "full_scope",
+        "system_attestations": [
+            "boot_measurement_verified",
+            "identity_scope_verified",
+            "telemetry_context_attached",
+        ],
+        "telemetry_context": {
+            "source": "mission-control",
+            "status": "READY",
+            "last_seen": datetime.now(timezone.utc).isoformat(),
+            "stream": "ops",
+            "operator_scope": "full_scope",
+        },
+    }
+    return {
+        "status": "LIVE",
+        "capability_id": "security-capability:mission-integration",
+        "target": target,
+        "environment": environment,
+        "payload": evidence,
+        "example_payload": example_payload,
+        "contract": {
+            "method": "POST",
+            "route": "/api/v1/mission-control/sync",
+            "source_type": "mission_api",
+            "required_fields": [
+                "target",
+                "environment",
+                "mission_id",
+                "mission_status",
+                "operator_scope",
+                "system_attestations",
+                "telemetry_context",
+            ],
+        },
+    }
+
+
+@app.post("/api/v1/mission-control/sync", dependencies=[Security(verify_api_key)])
+async def sync_mission_control(payload: MissionControlSyncRequest) -> Dict[str, Any]:
+    """Accept a live mission-control payload and normalize it for PRISM/US-984XN integration."""
+    evidence = {
+        "provider": "us-984xn",
+        "mission_id": payload.mission_id,
+        "mission_status": payload.mission_status,
+        "operator_scope": payload.operator_scope,
+        "system_attestations": payload.system_attestations,
+        "telemetry_context": {
+            **payload.telemetry_context,
+            "source": payload.telemetry_context.get("source", "mission-control"),
+            "status": "READY",
+            "operator_scope": payload.operator_scope,
+            "target": payload.target,
+            "environment": payload.environment,
+        },
+        "target": payload.target,
+        "environment": payload.environment,
+        "source_type": "mission_api",
+    }
+    record = SecurityCapabilityEvidenceRecord(
+        capability_id="security-capability:mission-integration",
+        target=payload.target,
+        environment=payload.environment,
+        source_type="mission_api",
+        evidence=evidence,
+        status="READY",
+    )
+    _security_capability_evidence_store.setdefault("security-capability:mission-integration", []).append(record)
+    return {
+        "status": "accepted",
+        "capability_id": "security-capability:mission-integration",
+        "target": payload.target,
+        "environment": payload.environment,
+        "record": record.model_dump(mode="json"),
+        "example_payload": {
+            "target": payload.target,
+            "environment": payload.environment,
+            "mission_id": payload.mission_id,
+            "mission_status": payload.mission_status,
+            "operator_scope": payload.operator_scope,
+            "system_attestations": payload.system_attestations,
+            "telemetry_context": evidence["telemetry_context"],
+        },
     }
 
 

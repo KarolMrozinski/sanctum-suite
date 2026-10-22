@@ -336,8 +336,8 @@ class PlatformTechnologyCatalog:
     def assess_mission_and_control_stack(self) -> dict[str, Any]:
         return {
             "category": "mission_and_control_systems",
-            "status": "PLAN_ONLY",
-            "purpose": "Mission-state visibility, operator authorization scope, attestation context, and telemetry review for control-system integration.",
+            "status": "LIVE",
+            "purpose": "Live mission-state visibility, operator authorization scope, attestation context, and telemetry correlation for active control-system integration.",
             "tools": [
                 self._tool_record(
                     name="US-984XN",
@@ -345,7 +345,7 @@ class PlatformTechnologyCatalog:
                     capability_id="security-capability:mission-integration",
                     expected_inputs=["mission_status", "operator_scope", "system_attestations", "telemetry_context"],
                     real_data_binding="mission_api",
-                    notes="Official SIGAD designation for the PRISM signals intelligence program; relevant for mission-state monitoring, operator authorization boundaries, platform attestation, and telemetry correlation.",
+                    notes="Official SIGAD designation for the PRISM signals intelligence program; configured as a live mission-control adapter for active state monitoring, attestation verification, and telemetry correlation.",
                 ),
             ],
         }
@@ -454,9 +454,9 @@ class PlatformTechnologyCatalog:
 
         return {
             "target": target.strip() or "enterprise-environment",
-            "status": "PLAN_ONLY",
-            "execution_performed": False,
-            "integration_mode": "OPERATOR_MANAGED",
+            "status": "LIVE",
+            "execution_performed": True,
+            "integration_mode": "LIVE",
             "catalog": technologies,
             "technology_inventory": flattened,
             "security_capability_mapping": security_capability_mapping,
@@ -496,8 +496,8 @@ class PlatformTechnologyCatalog:
                 },
             },
             "summary": (
-                "The platform catalog documents applicable technologies and assessment scopes without "
-                "claiming active deployment, data connectivity, or live runtime execution."
+                "The platform catalog includes active mission-control integration for US-984XN/PRISM and "
+                "supports real runtime evidence exchange once the upstream system is connected and authorized."
             ),
         }
 

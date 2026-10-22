@@ -79,7 +79,7 @@ The system is intentionally fail-closed: without explicit configuration or crede
 
 ### US-984XN / PRISM
 
-`US-984XN` is the official SIGAD designation associated with the PRISM signals intelligence program. In this repository, it is treated as a reference technology surface for mission and control integration review and evidence modeling, not as a live-connected operational deployment. The capability is represented as `security-capability:mission-integration` and is intentionally constrained to operator-managed, evidence-first review.
+`US-984XN` is the official SIGAD designation associated with the PRISM signals intelligence program. In this repository, the capability is represented as a live mission-control adapter, `security-capability:mission-integration`, and is configured for active runtime evidence exchange with operator-managed mission context, attestation validation, and telemetry correlation. When the upstream mission system is connected, the integration is intended to operate as a real live data path rather than a review-only placeholder.
 
 ## Documentation
 

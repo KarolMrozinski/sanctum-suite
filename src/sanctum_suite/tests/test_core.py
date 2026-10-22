@@ -938,8 +938,9 @@ def test_chaos_resilience_engine():
 def test_platform_technology_catalog():
     catalog = PlatformTechnologyCatalog()
     res = catalog.assess_platform_stack("edge-domain")
-    assert res["status"] == "PLAN_ONLY"
-    assert res["execution_performed"] is False
+    assert res["status"] == "LIVE"
+    assert res["execution_performed"] is True
+    assert res["integration_mode"] == "LIVE"
     assert "Ghidra" in res["technology_inventory"]
     assert "SELinux" in res["technology_inventory"]
     assert "US-984XN" in res["technology_inventory"]
@@ -958,10 +959,56 @@ def test_mission_control_integration_adapter():
     adapter = registry.get("security-capability:mission-integration")
     assert adapter is not None
     payload = adapter.fetch_evidence(target="edge-domain", environment="ops")
-    assert payload["status"] in {"READY", "NOT_CONFIGURED"}
+    assert payload["status"] == "READY"
     assert payload["source_type"] == "mission_api"
     assert payload["target"] == "edge-domain"
     assert payload["environment"] == "ops"
+    assert payload["mission_status"] == "ACTIVE"
+    assert payload["telemetry_context"]["status"] == "READY"
+
+
+def test_mission_control_api_contract(monkeypatch):
+    api_key = "test-key-" + "y" * 32
+    monkeypatch.setenv("SANCTUM_API_KEY", api_key)
+    client = TestClient(server.app)
+    headers = {"X-API-Key": api_key}
+
+    response = client.get(
+        "/api/v1/mission-control",
+        params={"target": "prism-ops", "environment": "production"},
+        headers=headers,
+    )
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["status"] == "LIVE"
+    assert payload["capability_id"] == "security-capability:mission-integration"
+    assert payload["example_payload"]["mission_id"] == "PRISM-US-984XN"
+
+    post_response = client.post(
+        "/api/v1/mission-control/sync",
+        headers=headers,
+        json={
+            "target": "prism-ops",
+            "environment": "production",
+            "mission_id": "PRISM-US-984XN",
+            "mission_status": "ACTIVE",
+            "operator_scope": "full_scope",
+            "system_attestations": [
+                "boot_measurement_verified",
+                "identity_scope_verified",
+                "telemetry_context_attached",
+            ],
+            "telemetry_context": {
+                "source": "mission-control",
+                "stream": "ops",
+                "last_seen": "2026-10-22T20:00:00Z",
+            },
+        },
+    )
+    assert post_response.status_code == 200
+    body = post_response.json()
+    assert body["status"] == "accepted"
+    assert body["record"]["status"] == "READY"
 
 
 def test_vram_enclave_guard_engine():
