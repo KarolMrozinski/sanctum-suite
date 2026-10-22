@@ -42,9 +42,21 @@ CLI, API i dashboard dla audytów autoryzowanych, analizy zdarzeń, weryfikacji 
 | 🔭 **Telemetria** | Parquet/Arrow, sandbox Wasmtime, OpenTelemetry |
 | 🧪 **Privacy-enhancing tech** | FHE, HSM/PKCS#11, Apache AGE, SMPC, ZK, private ledger |
 
+## 🆕 Co nowego w 6.0.0
+
+Najświeższe wydanie dodaje szerszy zestaw funkcji operacyjnych i dokumentacyjnych:
+
+- nowy entrypoint `sanctum` oraz rozszerzony zestaw komend CLI do orkiestracji auditów, analityki, dashboardu i skanowania portów;
+- osobny marketing site i operacyjny workbench z routami: About, Features, Documentation, Pricing, Privacy oraz Workbench;
+- formularz lead inquiry z walidacją i przekierowaniem do webhooka po stronie serwera;
+- publikację obrazów kontenerowych do GitHub Container Registry (GHCR) dla stacku SANCTUM-SUITE i dashboardu, wraz z gotowym `docker-compose.yml` opartym o obrazy z GHCR;
+- pełną dokumentację instalacji, wdrożenia, bezpieczeństwa i monetizacji oraz runbook AWS;
+- odseparowany build dashboardu w kontenerze oraz dokumentację runbooka dla środowisk air-gap;
+- stabilizację terminala i kompatybilności CLI na Windowsie, poprawę bezpieczeństwa konfiguracji oraz rygorystyczne żądanie jawnej autoryzacji przed aktywnym audytem.
+
 ## 🗺️ Spis treści
 
-[O projekcie](#-o-projekcie) · [Status i ograniczenia](#-status-i-ograniczenia) · [Moduły](#-moduły) · [Szybki start](#-szybki-start) · [Aktywne testy](#-aktywne-testy) · [Architektura](#-architektura) · [Telemetria i audyt](#-telemetria-i-audyt) · [Dokumentacja](#-dokumentacja) · [Licencja](#-licencja)
+[O projekcie](#-o-projekcie) · [Co nowego w 6.0.0](#-co-nowego-w-600) · [Status i ograniczenia](#-status-i-ograniczenia) · [Moduły](#-moduły) · [Szybki start](#-szybki-start) · [Aktywne testy](#-aktywne-testy) · [Architektura](#-architektura) · [Telemetria i audyt](#-telemetria-i-audyt) · [Dokumentacja](#-dokumentacja) · [Licencja](#-licencja)
 
 ## 📌 O projekcie
 
