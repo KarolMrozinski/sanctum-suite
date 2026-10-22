@@ -1,47 +1,53 @@
-﻿<div align="center">
+<div align="center">
 
 # SANCTUM-SUITE
 
-### Modular security engineering toolkit
+### Trust-aware security engineering for controlled environments
 
 **Verify · Attest · Audit**
 
-CLI, API, dashboard and audit workflows for supply-chain verification, operational telemetry, trusted attestation, and AI safety experiments.
+CLI, API, telemetry workflows, and governance tooling for supply-chain verification, operational assurance, and policy-driven security review.
 
 <p>
   <img src="https://img.shields.io/badge/Python-3.11%2B-3776ab?style=flat-square&logo=python&logoColor=white" alt="Python 3.11+">
-  <img src="https://img.shields.io/badge/Next.js-dashboard-111827?style=flat-square&logo=nextdotjs&logoColor=white" alt="Next.js">
-  <img src="https://img.shields.io/badge/status-beta-f59e0b?style=flat-square" alt="Status beta">
+  <img src="https://img.shields.io/badge/Next.js-dashboard-111827?style=flat-square&logo=nextdotjs&logoColor=white" alt="Next.js dashboard">
+  <img src="https://img.shields.io/badge/status-beta-f59e0b?style=flat-square" alt="Beta status">
   <img src="https://img.shields.io/badge/version-6.0.0-2563eb?style=flat-square" alt="Version 6.0.0">
 </p>
 
 </div>
 
+## Overview
+
+SANCTUM-SUITE is a modular security engineering platform designed for environments where trust, evidence, and explicit authorization matter as much as tooling itself. It brings together security workflows, attestation patterns, telemetry correlation, policy enforcement, and reporting into a single operational framework.
+
+The project is intended for controlled, auditable, and security-conscious deployments where operators need stronger visibility into what was checked, why it was allowed, and what evidence supports the decision.
+
 ## Why SANCTUM-SUITE?
 
-SANCTUM-SUITE is designed for controlled, auditable environments where trust must be verified before operational decisions are made. It combines:
+Modern security programs often fail not because the right tools are missing, but because the environment lacks clear evidence, policy boundaries, and verifiable trust context. SANCTUM-SUITE addresses that gap by combining:
 
-- security audit workflows
-- attestation and trust verification
-- telemetry and incident correlation
-- OPA-based policy checks
-- supply chain and SBOM reporting
-- optional dashboard and API interfaces
+- policy-aware audit workflows
+- attestation and trust verification hooks
+- telemetry ingestion and event correlation
+- supply-chain and artifact verification flows
+- structured reporting for operators and auditors
+- optional CLI, API, and dashboard interfaces
 
 ## Core capabilities
 
-- 🔐 Supply chain verification: Cosign/Sigstore, in-toto, SBOM and reporting flows
-- 🧾 Executive reporting: structured JSON + Markdown outputs for auditors and operators
-- 🛡️ Trust and attestation: TPM/Measured Boot, KMS and policy verification hooks
-- 📦 Air-gap readiness: local execution patterns, immutable storage concepts, offline verification
-- 🔭 Telemetry and auditing: Parquet/Arrow ingestion, event correlation, evidence tracking
-- 🧪 AI safety and privacy experiments: prompt analysis, private data flows, secure compute patterns
+- 🔐 Supply chain verification: Sigstore/Cosign-style attestations, policy checks, SBOM-oriented reporting
+- 🧾 Executive reporting: structured JSON and Markdown outputs for technical and governance audiences
+- 🛡️ Trust and attestation: TPM/Measured Boot awareness, policy enforcement, and attestation gates
+- 📦 Air-gap readiness: local execution patterns, evidence handling, and offline-first operational design
+- 🔭 Telemetry and auditability: Parquet/Arrow ingestion, event correlation, incident traceability
+- 🧪 AI safety and privacy experiments: prompt-risk evaluation, secure flow patterns, controlled research tooling
 
 ## Quick start
 
 ```bash
 python -m venv .venv
-. .venv/bin/activate  # Windows: .venv\Scripts\activate
+. .venv/bin/activate
 pip install -e .
 sanctum --help
 ```
@@ -54,14 +60,33 @@ npm install
 npm run dev
 ```
 
+## Project structure
+
+```text
+.
+├── src/                  # Core Python package and security logic
+├── notebooks/            # Deep-dive technical and architectural notes
+├── docs/                 # Installation and operational guidance
+├── policies/             # OPA policy definitions
+├── sanctum-dashboard/    # Optional Next.js dashboard
+├── scripts/              # Helper tooling and automation scripts
+├── README.md             # Project overview
+├── DEPLOYMENT.md         # Deployment runbook
+├── SECURITY.md           # Security guidance and controls
+├── LICENSE               # Source-available licensing terms
+├── pyproject.toml        # Packaging and dependency metadata
+├── action.yml            # GitHub Action metadata
+└── .github/              # CI and repository automation
+```
+
 ## Main modules
 
-- Active audits and policy-driven verification
-- Incident response and access audit workflows
-- AI safety experiments and prompt analysis
-- API, CLI and dashboard interfaces
-- Trust attestation and policy enforcement
-- Privacy-enhancing and experimental security research modules
+- Active audit and policy-driven verification
+- Incident response and access-audit workflows
+- AI safety and prompt-analysis experiments
+- CLI, REST API, and dashboard interfaces
+- Trust attestation and enforcement controls
+- Privacy-focused and experimental security research components
 
 ## Documentation
 
@@ -72,32 +97,18 @@ npm run dev
 
 ## Project status
 
-> SANCTUM-SUITE is currently in beta. Features may be experimental, partially integrated, or designed for controlled environments rather than production deployment.
+> SANCTUM-SUITE is currently in beta. Some modules may be experimental, partially integrated, or intended for controlled evaluation environments rather than broad production deployment.
 
-This repository is intended for secure evaluation, research workflows, and governed environments. It does not replace formal certification or independent validation for production systems.
-
-## Repository structure
-
-```text
-.
-├── src/                  # Python package and core logic
-├── notebooks/            # Deep-dive research and architecture notes
-├── docs/                 # installation and operational documentation
-├── policies/             # OPA security policies
-├── sanctum-dashboard/    # optional Next.js dashboard
-├── scripts/              # helpers and tooling
-├── README.md             # project overview
-├── DEPLOYMENT.md         # deployment runbook
-├── SECURITY.md           # security guidance
-├── LICENSE               # source-available license
-├── pyproject.toml        # Python package metadata
-└── action.yml            # GitHub Action metadata
-```
+This repository is designed for secure evaluation, governed operations, and research-oriented security workflows. It does not replace formal certification, external attestation, or independent validation for production environments.
 
 ## Recommended reading
 
-- Start here: this README
-- For deeper technical context: [notebooks/sanctum_deep_dive.ipynb](./notebooks/sanctum_deep_dive.ipynb)
-- For deployment and environment setup: [DEPLOYMENT.md](./DEPLOYMENT.md)
-- For security principles: [SECURITY.md](./SECURITY.md)
+- Start with this README for the high-level overview
+- Read the [deep-dive notebook](./notebooks/sanctum_deep_dive.ipynb) for architecture and rationale
+- Review [DEPLOYMENT.md](./DEPLOYMENT.md) for operational setup and environment guidance
+- Review [SECURITY.md](./SECURITY.md) for project safeguards and security posture
+
+## License
+
+SANCTUM-SUITE is distributed under a limited source-available license. Please review the full terms in [LICENSE](./LICENSE) before using, deploying, or adapting the project.
 
