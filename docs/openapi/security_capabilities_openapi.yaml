@@ -1,0 +1,520 @@
+openapi: 3.1.0
+info:
+  title: SANCTUM-SUITE Security Capabilities API
+  version: 1.0.0
+  description: |
+    Operator-managed security capability and evidence API for technologies such as GCP, ELK, Terraform, SELinux, Ghidra and related control surfaces.
+
+    This contract is intentionally safe-by-default: live integration is only valid when the operator configures provider credentials and validates the connection. The default status remains PLAN_ONLY unless the environment is explicitly configured and the evidence source is verified.
+  contact:
+    name: SANCTUM-SUITE maintainers
+    email: ops@example.invalid
+servers:
+  - url: http://localhost:8000
+    description: Local development server
+security:
+  - ApiKeyAuth: []
+components:
+  securitySchemes:
+    ApiKeyAuth:
+      type: apiKey
+      in: header
+      name: X-API-Key
+      description: API key for operator-controlled access. Required for all routes.
+  schemas:
+    StatusEnum:
+      type: string
+      enum:
+        - PLAN_ONLY
+        - READY
+        - NOT_CONFIGURED
+        - ERROR
+      default: PLAN_ONLY
+      description: >
+        Default remains PLAN_ONLY to keep the model explicit and auditable. A READY status requires a verified, configured source.
+    SourceTypeEnum:
+      type: string
+      enum:
+        - artifact_store
+        - asset_inventory
+        - cloud_inventory
+        - data_platform_api
+        - gcp_api
+        - logging_api
+        - model_registry
+        - attestation_api
+        - iac_api
+        - host_policy_api
+        - source_repository
+        - threat_intel_api
+        - soar_api
+        - firmware_api
+        - manifest_store
+        - certificate_service
+        - metadata_feed
+      description: Normalized evidence source type used by the adapter layer.
+    EvidenceObject:
+      type: object
+      additionalProperties: true
+      description: Provider-specific evidence payload normalized by adapter logic.
+    SecurityCapabilityEvidenceRequest:
+      type: object
+      required:
+        - target
+        - environment
+        - capability_id
+        - source_type
+        - evidence
+      properties:
+        target:
+          type: string
+          description: Logical target or organization domain.
+          example: edge-domain
+        environment:
+          type: string
+          description: Deployment environment label.
+          example: gcp
+        capability_id:
+          type: string
+          description: Stable capability identifier.
+          example: security-capability:gcp-platform
+        technology:
+          type: string
+          nullable: true
+          description: Human-readable source technology.
+          example: Google Cloud Platform (GCP)
+        source_type:
+          $ref: '#/components/schemas/SourceTypeEnum'
+        evidence:
+          $ref: '#/components/schemas/EvidenceObject'
+        status:
+          $ref: '#/components/schemas/StatusEnum'
+      example:
+        target: edge-domain
+        environment: gcp
+        capability_id: security-capability:gcp-platform
+        technology: Google Cloud Platform (GCP)
+        source_type: gcp_api
+        status: PLAN_ONLY
+        evidence:
+          project_id: prod-core-01
+          service_accounts:
+            - svc-audit
+            - svc-terraform
+          resource_inventory: 154
+          iam_model: organization-level
+    SecurityCapabilityRecord:
+      type: object
+      required:
+        - id
+        - target
+        - environment
+        - capability_id
+        - source_type
+        - evidence
+        - status
+        - created_at
+      properties:
+        id:
+          type: string
+          format: uuid
+        target:
+          type: string
+        environment:
+          type: string
+        capability_id:
+          type: string
+        technology:
+          type: string
+          nullable: true
+        source_type:
+          $ref: '#/components/schemas/SourceTypeEnum'
+        evidence:
+          $ref: '#/components/schemas/EvidenceObject'
+        status:
+          $ref: '#/components/schemas/StatusEnum'
+        created_at:
+          type: string
+          format: date-time
+      example:
+        id: 9f2f4dd6-cd76-4c2a-8cec-595d0d9ed8a3
+        target: edge-domain
+        environment: gcp
+        capability_id: security-capability:gcp-platform
+        technology: Google Cloud Platform (GCP)
+        source_type: gcp_api
+        evidence:
+          project_id: prod-core-01
+          service_accounts:
+            - svc-audit
+            - svc-terraform
+          resource_inventory: 154
+          iam_model: organization-level
+        status: PLAN_ONLY
+        created_at: '2026-10-22T19:35:00Z'
+    SecurityCapabilityEvidenceRecord:
+      type: object
+      required:
+        - id
+        - capability_id
+        - target
+        - environment
+        - source_type
+        - evidence
+        - status
+        - observed_at
+      properties:
+        id:
+          type: string
+          format: uuid
+        capability_id:
+          type: string
+        target:
+          type: string
+        environment:
+          type: string
+        source_type:
+          $ref: '#/components/schemas/SourceTypeEnum'
+        evidence:
+          $ref: '#/components/schemas/EvidenceObject'
+        status:
+          $ref: '#/components/schemas/StatusEnum'
+        observed_at:
+          type: string
+          format: date-time
+    CapabilityEnvelope:
+      type: object
+      properties:
+        capability_id:
+          type: string
+          example: security-capability:gcp-platform
+        technology:
+          type: string
+          example: Google Cloud Platform (GCP)
+        status:
+          $ref: '#/components/schemas/StatusEnum'
+        source_type:
+          $ref: '#/components/schemas/SourceTypeEnum'
+        expected_inputs:
+          type: array
+          items:
+            type: string
+          example:
+            - project_inventory
+            - iam_policy
+            - log_sink
+        real_data_binding:
+          type: object
+          additionalProperties: true
+          example:
+            provider: google-cloud
+            auth_required: true
+            credentials_from: env
+            safe_mode: true
+    SecurityCapabilityListResponse:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/CapabilityEnvelope'
+        count:
+          type: integer
+          example: 6
+    SyncRequest:
+      type: object
+      properties:
+        target:
+          type: string
+          example: edge-domain
+        environment:
+          type: string
+          example: gcp
+        force_refresh:
+          type: boolean
+          default: false
+          example: true
+    SyncResponse:
+      type: object
+      required:
+        - capability_id
+        - status
+        - evidence
+      properties:
+        capability_id:
+          type: string
+          example: security-capability:gcp-platform
+        status:
+          $ref: '#/components/schemas/StatusEnum'
+        evidence:
+          $ref: '#/components/schemas/EvidenceObject'
+        adapter:
+          type: string
+          example: GCPCloudAdapter
+        synced_at:
+          type: string
+          format: date-time
+paths:
+  /api/v1/security-capabilities:
+    get:
+      tags:
+        - security-capabilities
+      summary: List normalized security capability records
+      description: Lists the known technology-to-security-capability mapping and the adapter metadata for operator review.
+      security:
+        - ApiKeyAuth: []
+      parameters:
+        - in: query
+          name: target
+          schema:
+            type: string
+          required: false
+          description: Logical target or tenant label.
+        - in: query
+          name: environment
+          schema:
+            type: string
+          required: false
+          description: Logical environment label.
+        - in: query
+          name: capability_id
+          schema:
+            type: string
+          required: false
+          description: Filter to a specific capability identifier.
+      responses:
+        '200':
+          description: Successful list of capability records.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SecurityCapabilityListResponse'
+              example:
+                items:
+                  - capability_id: security-capability:gcp-platform
+                    technology: Google Cloud Platform (GCP)
+                    status: PLAN_ONLY
+                    source_type: gcp_api
+                    expected_inputs:
+                      - project_inventory
+                      - iam_policy
+                    real_data_binding:
+                      provider: google-cloud
+                      auth_required: true
+                      safe_mode: true
+                  - capability_id: security-capability:observability
+                    technology: Elasticsearch / Logstash / Kibana (ELK Stack)
+                    status: PLAN_ONLY
+                    source_type: logging_api
+                    expected_inputs:
+                      - log_index
+                      - alert_rule
+                    real_data_binding:
+                      provider: elastic
+                      auth_required: true
+                      safe_mode: true
+                count: 2
+    post:
+      tags:
+        - security-capabilities
+      summary: Create a security capability record
+      description: Creates a normalized capability observation in the in-memory store. This is a safe contract surface for later live integration.
+      security:
+        - ApiKeyAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SecurityCapabilityEvidenceRequest'
+      responses:
+        '200':
+          description: The created record.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SecurityCapabilityRecord'
+        '422':
+          description: Validation error.
+  /api/v1/security-capabilities/{capability_id}:
+    get:
+      tags:
+        - security-capabilities
+      summary: Get one capability by identifier
+      description: Returns the normalized security-capability metadata for the provided capability identifier.
+      security:
+        - ApiKeyAuth: []
+      parameters:
+        - in: path
+          name: capability_id
+          required: true
+          schema:
+            type: string
+          example: security-capability:gcp-platform
+      responses:
+        '200':
+          description: Single capability record.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CapabilityEnvelope'
+        '404':
+          description: Capability not found.
+  /api/v1/security-capabilities/{capability_id}/evidence:
+    get:
+      tags:
+        - security-capabilities
+      summary: Get evidence records for a specific capability
+      description: Returns evidence entries collected for the specified capability and optional target/environment filters.
+      security:
+        - ApiKeyAuth: []
+      parameters:
+        - in: path
+          name: capability_id
+          required: true
+          schema:
+            type: string
+          example: security-capability:gcp-platform
+        - in: query
+          name: target
+          required: false
+          schema:
+            type: string
+        - in: query
+          name: environment
+          required: false
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Evidence records returned.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/SecurityCapabilityEvidenceRecord'
+    post:
+      tags:
+        - security-capabilities
+      summary: Submit evidence for a capability
+      description: Accepts provider-normalized evidence and stores it as a capability evidence record.
+      security:
+        - ApiKeyAuth: []
+      parameters:
+        - in: path
+          name: capability_id
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SecurityCapabilityEvidenceRequest'
+      responses:
+        '200':
+          description: Submitted evidence record.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SecurityCapabilityEvidenceRecord'
+        '422':
+          description: Validation error.
+  /api/v1/security-capabilities/{capability_id}/sync:
+    post:
+      tags:
+        - security-capabilities
+      summary: Trigger adapter sync for one capability
+      description: Resolves the adapter for the specified capability and performs a normalized sync pass. The adapter is expected to fail closed when credentials or runtime dependencies are missing.
+      security:
+        - ApiKeyAuth: []
+      parameters:
+        - in: path
+          name: capability_id
+          required: true
+          schema:
+            type: string
+          example: security-capability:gcp-platform
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SyncRequest'
+      responses:
+        '200':
+          description: Sync completed and normalized evidence stored.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SyncResponse'
+        '404':
+          description: Capability or adapter not found.
+        '503':
+          description: Provider is not configured or is unavailable.
+
+examples:
+  GCPEnvironmentPayload:
+    summary: Full GCP + ELK + Terraform + SELinux example
+    value:
+      target: edge-domain
+      environment: gcp
+      capability_map:
+        Ghidra: security-capability:binary-analysis
+        SELinux: security-capability:linux-integrity
+        Google Cloud Platform (GCP): security-capability:gcp-platform
+        HashiCorp Terraform: security-capability:terraform-policy
+        Elasticsearch / Logstash / Kibana (ELK Stack): security-capability:observability
+      results:
+        - technology: Ghidra
+          capability_id: security-capability:binary-analysis
+          source_type: artifact_store
+          status: PLAN_ONLY
+          evidence:
+            sha256: 4ae8d6f9fd3f6e14d63a1561cae1b384d5f6737b7d8c9b2f1b41a91fa7af1b29
+            artifact_type: firmware
+            symbol_context: not_yet_loaded
+        - technology: SELinux
+          capability_id: security-capability:linux-integrity
+          source_type: host_policy_api
+          status: PLAN_ONLY
+          evidence:
+            selinux_enforce: enforcing
+            avc_logs: recent
+            policy_summary: baseline-loaded
+        - technology: Google Cloud Platform (GCP)
+          capability_id: security-capability:gcp-platform
+          source_type: gcp_api
+          status: PLAN_ONLY
+          evidence:
+            project_id: prod-core-01
+            service_accounts:
+              - svc-audit
+              - svc-terraform
+            resource_inventory: 154
+            iam_model: organization-level
+        - technology: HashiCorp Terraform
+          capability_id: security-capability:terraform-policy
+          source_type: iac_api
+          status: PLAN_ONLY
+          evidence:
+            terraform_state: state-prod-01
+            module_versions:
+              - v1.8.3
+            drift_report: pending
+        - technology: Elasticsearch / Logstash / Kibana (ELK Stack)
+          capability_id: security-capability:observability
+          source_type: logging_api
+          status: PLAN_ONLY
+          evidence:
+            log_index: security-*
+            pipeline_config: prod-collector
+            dashboard_rules: 42
+  GCPAdapterSyncExample:
+    summary: Example sync request for Google Cloud adapter
+    value:
+      target: edge-domain
+      environment: gcp
+      force_refresh: true

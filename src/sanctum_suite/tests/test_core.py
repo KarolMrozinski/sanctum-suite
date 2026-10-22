@@ -21,6 +21,8 @@ from sanctum_suite.modules.multimodal_fuzzer import MultimodalSafetyFuzzer
 from sanctum_suite.core.github_integration import GitHubAutomatedPRPublisher
 from sanctum_suite.core.rbac import RBACPermissionManager, UserRole
 from fastapi import HTTPException
+from fastapi.testclient import TestClient
+from sanctum_suite.api import server
 from sanctum_suite.core.compliance import RegulatoryComplianceEngine
 from sanctum_suite.core.attack_graph import AttackGraphEngine
 from sanctum_client.client import SanctumSuiteClient
@@ -118,6 +120,70 @@ def test_guardrail_proxy():
 
     is_blocked_ok, msg_ok, _ = proxy.inspect_prompt("Hello, tell me a cybersecurity story")
     assert is_blocked_ok is False
+
+
+def test_security_capability_api_contract(monkeypatch):
+    api_key = "test-key-" + "x" * 32
+    monkeypatch.setenv("SANCTUM_API_KEY", api_key)
+    client = TestClient(server.app)
+    headers = {"X-API-Key": api_key}
+
+    response = client.get(
+        "/api/v1/security-capabilities",
+        params={"target": "edge-domain", "capability_id": "security-capability:gcp-platform"},
+        headers=headers,
+    )
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["items"][0]["capability_id"] == "security-capability:gcp-platform"
+    assert payload["catalog"]["api_contract"]["target_endpoint"] == "/api/v1/security-capabilities"
+
+    created = client.post(
+        "/api/v1/security-capabilities",
+        headers=headers,
+        json={
+            "target": "edge-domain",
+            "environment": "gcp",
+            "capability_id": "security-capability:gcp-platform",
+            "technology": "Google Cloud Platform (GCP)",
+            "source_type": "gcp_api",
+            "evidence": {
+                "project_id": "prod-core-01",
+                "service_accounts": ["svc-audit", "svc-terraform"],
+                "resource_inventory": 154,
+                "iam_model": "organization-level",
+            },
+            "status": "PLAN_ONLY",
+        },
+    )
+    assert created.status_code == 200
+    assert created.json()["record"]["capability_id"] == "security-capability:gcp-platform"
+
+    evidence_get = client.get(
+        "/api/v1/security-capabilities/security-capability:gcp-platform/evidence",
+        params={"target": "edge-domain", "environment": "gcp"},
+        headers=headers,
+    )
+    assert evidence_get.status_code == 200
+    assert evidence_get.json()["capability_id"] == "security-capability:gcp-platform"
+
+    evidence_post = client.post(
+        "/api/v1/security-capabilities/security-capability:gcp-platform/evidence",
+        headers=headers,
+        json={
+            "target": "edge-domain",
+            "environment": "gcp",
+            "capability_id": "security-capability:gcp-platform",
+            "source_type": "gcp_api",
+            "evidence": {
+                "project_id": "prod-core-01",
+                "iam_model": "organization-level",
+            },
+            "status": "PLAN_ONLY",
+        },
+    )
+    assert evidence_post.status_code == 200
+    assert evidence_post.json()["record"]["capability_id"] == "security-capability:gcp-platform"
 
 
 def test_siem_exporter():

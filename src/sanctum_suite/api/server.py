@@ -102,6 +102,8 @@ from sanctum_suite.core.tee_attestation import (
 )
 from sanctum_suite.core.methodology_catalog import list_methodology_references
 from sanctum_suite.core.target_authorization import TargetAuthorizationError, require_authorized_target
+from sanctum_suite.core.technology_stack_catalog import PlatformTechnologyCatalog
+from sanctum_suite.core.security_capability_adapters import SecurityCapabilityAdapterRegistry
 from sanctum_suite.core.billing import CommercialLicenseManager
 from sanctum_suite.core.privacy_credentials import (
     DifferentialPrivacyCredentialIssuer,
@@ -111,10 +113,17 @@ from sanctum_suite.core.privacy_credentials import (
 
 app = FastAPI(
     title="SANCTUM-SUITE API",
-    description="API for audit workflows, analytics, prompt inspection, and detection rules.",
+    description="API for audit workflows, analytics, prompt inspection, detection rules, and security-capability evidence for controlled environments.",
     version="6.0.0",
+    openapi_tags=[
+        {
+            "name": "security-capabilities",
+            "description": "Operator-managed security capability and evidence records for GCP, ELK, Terraform, SELinux, and similar sources.",
+        }
+    ],
 )
 _LOGGER = logging.getLogger(__name__)
+security_capability_adapter_registry = SecurityCapabilityAdapterRegistry()
 onchain_graph_builder = OnChainGraphBuilder()
 
 
@@ -1136,6 +1145,81 @@ class AuditRequest(BaseModel):
     authorization_reference: str = Field(min_length=1, max_length=500)
 
 
+class SecurityCapabilityEvidenceRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    target: str = Field(
+        min_length=1,
+        max_length=200,
+        description="Target environment label, e.g. edge-domain or prod-tenant",
+    )
+    environment: str = Field(
+        min_length=1,
+        max_length=200,
+        description="Logical environment name, e.g. gcp, hybrid, or production",
+    )
+    capability_id: str = Field(
+        min_length=1,
+        max_length=256,
+        description="Stable capability identifier like security-capability:gcp-platform",
+    )
+    technology: str | None = Field(
+        default=None,
+        min_length=1,
+        max_length=200,
+        description="Human-readable technology name such as Google Cloud Platform (GCP)",
+    )
+    source_type: str = Field(
+        min_length=1,
+        max_length=128,
+        pattern=r"^(artifact_store|asset_inventory|cloud_inventory|data_platform_api|gcp_api|logging_api|model_registry|attestation_api|iac_api|host_policy_api|source_repository|threat_intel_api|soar_api|firmware_api|manifest_store|certificate_service|metadata_feed)$",
+        description="Normalized evidence source type",
+    )
+    evidence: Dict[str, Any] = Field(
+        default_factory=dict,
+        description="Provider-specific evidence values normalized to the common capability schema",
+    )
+    status: Literal["PLAN_ONLY", "READY", "NOT_CONFIGURED", "ERROR"] = Field(
+        default="PLAN_ONLY",
+        description="Current evidence status. The default remains PLAN_ONLY in the safe, operator-managed model.",
+    )
+
+
+class SecurityCapabilitySyncRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    target: str | None = Field(default=None, min_length=1, max_length=200)
+    environment: str | None = Field(default=None, min_length=1, max_length=200)
+    force_refresh: bool = Field(default=False, description="Force a fresh sync pass instead of returning cached records when present")
+
+
+class SecurityCapabilityRecord(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    target: str
+    environment: str
+    capability_id: str
+    technology: str | None = None
+    source_type: str
+    evidence: Dict[str, Any]
+    status: Literal["PLAN_ONLY", "READY", "NOT_CONFIGURED", "ERROR"] = "PLAN_ONLY"
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+
+class SecurityCapabilityEvidenceRecord(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    capability_id: str
+    target: str
+    environment: str
+    source_type: str
+    evidence: Dict[str, Any]
+    status: Literal["PLAN_ONLY", "READY", "NOT_CONFIGURED", "ERROR"] = "PLAN_ONLY"
+    observed_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+
 class PrivacyCredentialObservation(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -1370,6 +1454,213 @@ class IncidentPlaybookDecisionRequest(BaseModel):
 @app.get("/")
 async def root() -> Dict[str, str]:
     return {"status": "ONLINE", "system": "SANCTUM-SUITE Enterprise Core"}
+
+
+_security_capability_store: List[SecurityCapabilityRecord] = []
+_security_capability_evidence_store: Dict[str, List[SecurityCapabilityEvidenceRecord]] = {}
+
+
+@app.get("/api/v1/security-capabilities", dependencies=[Security(verify_api_key)])
+async def list_security_capabilities(
+    target: str = Query(default="enterprise-environment", description="Target environment label"),
+    capability_id: str | None = Query(default=None, description="Optional capability filter"),
+    technology: str | None = Query(default=None, description="Optional technology filter"),
+    environment: str | None = Query(default=None, description="Optional environment filter"),
+) -> Dict[str, Any]:
+    """Return the platform technology catalog as a machine-readable capability map."""
+    catalog = PlatformTechnologyCatalog().assess_platform_stack(target=target)
+    mapped = catalog["security_capability_mapping"]
+    if capability_id:
+        mapped = [item for item in mapped if item["capability_id"] == capability_id]
+    if technology:
+        mapped = [item for item in mapped if item["technology"] == technology]
+    if environment:
+        filtered_records = [
+            item for item in _security_capability_store if item.environment == environment
+        ]
+    else:
+        filtered_records = list(_security_capability_store)
+
+    return {
+        "target": target,
+        "environment": environment or "enterprise-environment",
+        "catalog": catalog,
+        "items": mapped,
+        "stored_records": [record.model_dump(mode="json") for record in filtered_records],
+    }
+
+
+@app.get("/api/v1/security-capabilities/{capability_id}", dependencies=[Security(verify_api_key)])
+async def get_security_capability(
+    capability_id: str,
+    target: str = Query(default="enterprise-environment", description="Target environment label"),
+) -> Dict[str, Any]:
+    """Return the normalized capability record for one security capability."""
+    catalog = PlatformTechnologyCatalog().assess_platform_stack(target=target)
+    match = next(
+        (
+            item
+            for item in catalog["security_capability_mapping"]
+            if item["capability_id"] == capability_id
+        ),
+        None,
+    )
+    if match is None:
+        raise HTTPException(status_code=404, detail="Capability not found")
+    stored = [
+        record.model_dump(mode="json")
+        for record in _security_capability_store
+        if record.capability_id == capability_id and record.target == target
+    ]
+    return {
+        "target": target,
+        "capability": match,
+        "stored_records": stored,
+        "api_contract": catalog["api_contract"],
+    }
+
+
+@app.post("/api/v1/security-capabilities", dependencies=[Security(verify_api_key)])
+async def ingest_security_capability(payload: SecurityCapabilityEvidenceRequest) -> Dict[str, Any]:
+    """Persist a structured evidence record for a security capability."""
+    record = SecurityCapabilityRecord(
+        target=payload.target,
+        environment=payload.environment,
+        capability_id=payload.capability_id,
+        technology=payload.technology,
+        source_type=payload.source_type,
+        evidence=payload.evidence,
+        status=payload.status,
+    )
+    _security_capability_store.append(record)
+    return {
+        "status": "accepted",
+        "record": record.model_dump(mode="json"),
+        "api_contract": PlatformTechnologyCatalog().assess_platform_stack(target=payload.target)["api_contract"],
+    }
+
+
+@app.get("/api/v1/security-capabilities/{capability_id}/evidence", dependencies=[Security(verify_api_key)])
+async def get_security_capability_evidence(
+    capability_id: str,
+    target: str = Query(default="enterprise-environment", description="Target environment label"),
+    environment: str = Query(default="enterprise-environment", description="Environment name"),
+) -> Dict[str, Any]:
+    """Return the evidence records for a specific capability, using the adapter registry when available."""
+    catalog = PlatformTechnologyCatalog().assess_platform_stack(target=target)
+    match = next(
+        (
+            item
+            for item in catalog["security_capability_mapping"]
+            if item["capability_id"] == capability_id
+        ),
+        None,
+    )
+    if match is None:
+        raise HTTPException(status_code=404, detail="Capability not found")
+
+    records = _security_capability_evidence_store.get(capability_id, [])
+    filtered = [
+        record.model_dump(mode="json")
+        for record in records
+        if record.target == target and record.environment == environment
+    ]
+
+    adapter = security_capability_adapter_registry.get(capability_id)
+    if not filtered and adapter is not None:
+        evidence = adapter.sync_evidence(target=target, environment=environment)
+        filtered = [{
+            "id": str(uuid.uuid4()),
+            "capability_id": capability_id,
+            "target": target,
+            "environment": environment,
+            "source_type": adapter.source_type,
+            "evidence": evidence,
+            "status": evidence.get("status", "PLAN_ONLY"),
+            "observed_at": datetime.now(timezone.utc).isoformat(),
+        }]
+
+    return {
+        "capability_id": capability_id,
+        "target": target,
+        "environment": environment,
+        "capability": match,
+        "records": filtered,
+        "adapter": None if adapter is None else {"name": adapter.name, "source_type": adapter.source_type},
+    }
+
+
+@app.post("/api/v1/security-capabilities/{capability_id}/evidence", dependencies=[Security(verify_api_key)])
+async def submit_security_capability_evidence(
+    capability_id: str,
+    payload: SecurityCapabilityEvidenceRequest,
+) -> Dict[str, Any]:
+    """Submit evidence for a specific capability and normalize it for later retrieval."""
+    if payload.capability_id != capability_id:
+        raise HTTPException(status_code=400, detail="Capability id in path and payload must match")
+
+    record = SecurityCapabilityEvidenceRecord(
+        capability_id=capability_id,
+        target=payload.target,
+        environment=payload.environment,
+        source_type=payload.source_type,
+        evidence=payload.evidence,
+        status=payload.status,
+    )
+    _security_capability_evidence_store.setdefault(capability_id, []).append(record)
+    return {
+        "status": "accepted",
+        "record": record.model_dump(mode="json"),
+    }
+
+
+@app.post("/api/v1/security-capabilities/{capability_id}/sync", dependencies=[Security(verify_api_key)])
+async def sync_security_capability(
+    capability_id: str,
+    payload: SecurityCapabilitySyncRequest | None = None,
+    target: str = Query(default="enterprise-environment", description="Target environment label"),
+    environment: str = Query(default="enterprise-environment", description="Environment name"),
+) -> Dict[str, Any]:
+    """Synchronize evidence for a capability using the registry-backed adapter contract."""
+    if payload is not None:
+        target = payload.target or target
+        environment = payload.environment or environment
+
+    catalog = PlatformTechnologyCatalog().assess_platform_stack(target=target)
+    match = next(
+        (
+            item
+            for item in catalog["security_capability_mapping"]
+            if item["capability_id"] == capability_id
+        ),
+        None,
+    )
+    if match is None:
+        raise HTTPException(status_code=404, detail="Capability not found")
+
+    adapter = security_capability_adapter_registry.get(capability_id)
+    if adapter is None:
+        raise HTTPException(status_code=404, detail="No adapter registered for capability")
+
+    evidence = adapter.sync_evidence(target=target, environment=environment)
+    record = SecurityCapabilityEvidenceRecord(
+        capability_id=capability_id,
+        target=target,
+        environment=environment,
+        source_type=adapter.source_type,
+        evidence=evidence,
+        status=evidence.get("status", "PLAN_ONLY"),
+    )
+    _security_capability_evidence_store.setdefault(capability_id, []).append(record)
+    return {
+        "status": "accepted",
+        "capability_id": capability_id,
+        "target": target,
+        "environment": environment,
+        "capability": match,
+        "record": record.model_dump(mode="json"),
+        "adapter": {"name": adapter.name, "source_type": adapter.source_type},
+    }
 
 
 @app.post("/api/v1/audit", dependencies=[Security(verify_api_key)])
