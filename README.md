@@ -13,11 +13,9 @@
 
 </div>
 
-SANCTUM-SUITE is a modular security engineering framework for organizations that need explicit evidence, attestation, and operator-controlled trust review. It brings together capability mapping, policy-aware integration design, evidence handling, and governance workflows in a single reviewable architecture.
+## Why SANCTUM-SUITE was created
 
-## Why it exists
-
-Modern security programs often fail not because the right tools are missing, but because the environment lacks grounded evidence, clear trust boundaries, and explicit operator intent. SANCTUM-SUITE addresses that gap by structuring the problem around capability review before live data integration.
+Modern security programs often fail not because the right tools are missing, but because the environment lacks grounded evidence, clear trust boundaries, and explicit operator intent. SANCTUM-SUITE was created to give organizations a structured way to define what is being verified, what evidence exists, and what remains untrusted or unconfigured before live integration is considered.
 
 ## Core pillars
 
@@ -93,6 +91,10 @@ The implementation is intentionally safe by default and fail-closed when configu
 ## Operational stance
 
 This repository is designed as a reviewable, architecture-oriented platform. It is not presented as a live, production-connected deployment. The default posture is explicit operator configuration and evidence-based review before any real-world data feed is treated as trusted.
+
+## License
+
+See the full project license here: [LICENSE](LICENSE).
 
 ## View-only notice
 
