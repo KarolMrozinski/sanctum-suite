@@ -30,7 +30,7 @@ jobs:
           images: ghcr.io/${{ github.repository }}/sanctum-dashboard
 
       - name: Build and push Docker image
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@v7
         with:
           context: ./sanctum-dashboard
           file: ./sanctum-dashboard/Dockerfile
