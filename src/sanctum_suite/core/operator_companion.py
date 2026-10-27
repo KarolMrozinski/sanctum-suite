@@ -14,14 +14,13 @@ logging.basicConfig(
 logger = logging.getLogger("OperatorCompanion")
 
 class OperatorCompanionError(Exception):
-    """Custom exception for Operator Companion operations."""
     pass
 
 class OperatorCompanion:
     """
     Autonomous Operator Companion and Conversational AI Agent for Sanctum Suite.
-    Provides local, air-gapped natural language interaction, diagnostics, and 
-    system status inspection for operators.
+    Supports dynamic backend switching: Embedded model, custom local GGUF path, 
+    or local inference servers (e.g., LM Studio).
     """
 
     def __init__(self, workspace_dir: Path = Path("/var/lib/sanctum")):
@@ -29,10 +28,26 @@ class OperatorCompanion:
         self.workspace_dir.mkdir(parents=True, exist_ok=True)
         self.state_file = self.workspace_dir / "orchestrator_state.json"
         self.telemetry_dir = self.workspace_dir / "telemetry"
-        logger.info(f"Initialized OperatorCompanion with workspace: {self.workspace_dir}")
+        
+        # Konfiguracja źródła modelu AI
+        self.custom_model_path = os.environ.get("SANCTUM_MODEL_PATH")
+        self.local_api_url = os.environ.get("SANCTUM_LLM_API_URL")
+        self.embedded_model_path = Path("models/llama-3.2-3b-instruct.Q4_K_M.gguf")
+        
+        logger.info(f"Initialized OperatorCompanion. Active model backend config -> Custom Path: {self.custom_model_path}, API URL: {self.local_api_url}")
+
+    def _resolve_active_model_info(self) -> str:
+        """Identify which model backend is currently active for inference."""
+        if self.local_api_url:
+            return f"External Local Server / LM Studio ({self.local_api_url})"
+        elif self.custom_model_path and Path(self.custom_model_path).exists():
+            return f"Custom Local GGUF ({self.custom_model_path})"
+        elif self.embedded_model_path.exists():
+            return f"Embedded Default Model (Llama-3.2-3B-Instruct @ {self.embedded_model_path})"
+        else:
+            return "Rule-based Fallback (No model weights detected yet - run 'make model-download')"
 
     def _load_orchestrator_state(self) -> Optional[Dict[str, Any]]:
-        """Safely load the latest orchestrator state file if it exists."""
         if not self.state_file.exists():
             return None
         try:
@@ -42,7 +57,6 @@ class OperatorCompanion:
             return None
 
     def _get_telemetry_summary(self) -> Dict[str, Any]:
-        """Gather summary metrics from local telemetry buffer logs."""
         if not self.telemetry_dir.exists():
             return {"files_count": 0, "status": "no_telemetry_dir"}
         
@@ -58,12 +72,12 @@ class OperatorCompanion:
             return {"files_count": 0, "status": "error", "details": str(e)}
 
     def get_comprehensive_status_report(self) -> Dict[str, Any]:
-        """Generate a complete system status report for the operator."""
         state = self._load_orchestrator_state()
         telemetry = self._get_telemetry_summary()
         
         return {
             "companion_id": "SANCTUM-COMPANION-v1",
+            "active_model_backend": self._resolve_active_model_info(),
             "timestamp": datetime.utcnow().isoformat() + "Z",
             "workspace": str(self.workspace_dir),
             "orchestrator_state": state if state else "not_initialized",
@@ -72,14 +86,17 @@ class OperatorCompanion:
         }
 
     def process_operator_query(self, query: str) -> str:
-        """Process incoming natural language queries from the operator and return contextual answers."""
         if not query or not isinstance(query, str):
             return "[Agent AI]: Nie otrzymano poprawnego zapytania. Wpisz 'pomoc', aby zobaczyć dostępne komendy."
 
         query_lower = query.strip().lower()
         logger.info(f"Processing operator query: '{query}'")
 
-        if "status" in query_lower or "stan" in query_lower or "raport" in query_lower:
+        if "model" in query_lower or "backend" in query_lower:
+            backend_info = self._resolve_active_model_info()
+            return f"[Agent AI]: Aktualnie używany model / backend inferencji:\n -> {backend_info}"
+
+        elif "status" in query_lower or "stan" in query_lower or "raport" in query_lower:
             report = self.get_comprehensive_status_report()
             return f"[Agent AI]: Pełny raport stanu systemowego:\n{json.dumps(report, indent=2, sort_keys=True)}"
 
@@ -106,6 +123,7 @@ class OperatorCompanion:
         elif "pomoc" in query_lower or "help" in query_lower or "komendy" in query_lower:
             return (
                 "[Agent AI]: Witaj w centrum dowodzenia Sanctum Suite. Dostępne zapytania diagnostyczne:\n"
+                " - 'model' / 'backend' – sprawdzenie, jaki model AI lub serwer (np. LM Studio) jest aktualnie używany\n"
                 " - 'status' / 'stan systemu' – pobranie pełnego raportu diagnostycznego\n"
                 " - 'telemetria' / 'bufor' – inspekcja bufora i logów wsadowych\n"
                 " - 'sandbox' / 'izolacja' – sprawdzenie statusu środowiska wykonawczego\n"
@@ -118,5 +136,5 @@ class OperatorCompanion:
         else:
             return (
                 f"[Agent AI]: Przeanalizowałem zapytanie: '{query}'. "
-                "Działam w trybie w pełni lokalnym (Air-Gapped). Wpisz 'pomoc', aby wyświetlić dostępne opcje diagnostyczne."
+                f"Używany backend: {self._resolve_active_model_info()}. Wpisz 'pomoc', aby wyświetlić dostępne opcje."
             )
