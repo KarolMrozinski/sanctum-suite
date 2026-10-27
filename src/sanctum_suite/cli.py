@@ -73,6 +73,28 @@ class SanctumCLI:
             print(f"Nieznana komenda: {command}")
             sys.exit(1)
 
+    def handle_chat_command(self) -> None:
+        from sanctum_suite.core.operator_companion import OperatorCompanion
+        companion = OperatorCompanion(workspace_dir=self.workspace_dir)
+        
+        print("=== SANCTUM SUITE: ROZMOWA Z AGENTEM AI ===")
+        print("Wpisz swoje pytanie lub komendę (wpisz 'exit', aby zakończyć rozmowę):\n")
+        
+        while True:
+            try:
+                user_input = input("Operator > ")
+                if not user_input.strip():
+                    continue
+                if user_input.strip().lower() in ["exit", "quit", "wyjdź"]:
+                    print("[Agent AI]: Zamykam sesję dialogową. Do zobaczenia!")
+                    break
+                
+                response = companion.process_operator_query(user_input)
+                print(f"\n{response}\n")
+            except (KeyboardInterrupt, EOFError):
+                print("\n[Agent AI]: Sesja przerwana.")
+                break
+
 if __name__ == "__main__":
     cli = SanctumCLI()
     cli.main()
