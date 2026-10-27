@@ -19,6 +19,9 @@ from rich.console import Console
 from rich.panel import Panel
 from rich.table import Table
 from rich.progress import Progress, SpinnerColumn, TextColumn
+from sanctum_suite.core.secure_asset_loader import SecureAssetLoader, SECURE_STORAGE_DIR
+from sanctum_suite.core.ai_model_loader import SecureAIModelManager, AI_MODELS_DIR
+from sanctum_suite.core.offline_release_bundler import OfflineReleaseBundler, RELEASE_BUNDLE_DIR
 
 from sanctum_suite.orchestrator.engine import SanctumUnifiedOrchestrator
 from sanctum_suite.core.analytics import AnalyticsStoreEngine
@@ -1935,6 +1938,48 @@ def _is_loopback_bind_host(host: str) -> bool:
         return ipaddress.ip_address(host.strip("[]")).is_loopback
     except ValueError:
         return False
+
+@app.command(name="provision-threat-intel")
+def provision_threat_intel_cmd(
+    filename: str = typer.Option("threat_intel_feed.db", help="Nazwa pliku bazy Threat Intel"),
+    expected_sha256: str = typer.Option(..., "--sha256", help="Oczekiwana suma kontrolna SHA-256"),
+) -> None:
+    """Weryfikuje i montuje ciężką bazę Threat Intelligence (~1.8 GB)."""
+    try:
+        loader = SecureAssetLoader(SECURE_STORAGE_DIR)
+        loader.provision_asset(filename, expected_sha256)
+        typer.echo(f"Pomyślnie zweryfikowano i zamontowano zasób: {filename}")
+    except Exception as error:
+        raise typer.BadParameter(str(error)) from error
+
+
+@app.command(name="verify-ai-model")
+def verify_ai_model_cmd(
+    model_filename: str = typer.Option("local_anomaly_detector.onnx", help="Nazwa pliku modelu ONNX/PyTorch"),
+    expected_sha256: str = typer.Option(..., "--sha256", help="Oczekiwana suma kontrolna SHA-256 wag"),
+) -> None:
+    """Weryfikuje nienaruszalność lokalnego modelu AI (~2.2 GB) przed inferencją."""
+    try:
+        manager = SecureAIModelManager(AI_MODELS_DIR)
+        path = manager.load_heavy_model(model_filename, expected_sha256)
+        typer.echo(f"Model AI zweryfikowany i gotowy w ścieżce: {path}")
+    except Exception as error:
+        raise typer.BadParameter(str(error)) from error
+
+
+@app.command(name="unpack-offline-bundle")
+def unpack_offline_bundle_cmd(
+    bundle_filename: str = typer.Option("sanctum_offline_bundle_v6.tar.gz", help="Paczka wdrożeniowa OCI/Helm"),
+    expected_sha256: str = typer.Option(..., "--sha256", help="Suma kontrolna paczki Air-Gapped"),
+    target_path: Path = typer.Option(Path("/opt/sanctum/runtime"), "--target", help="Katalog docelowy wdrożenia"),
+) -> None:
+    """Weryfikuje i rozpakowuje archiwum wdrożeniowe w trybie offline (~1.5 GB)."""
+    try:
+        bundler = OfflineReleaseBundler(RELEASE_BUNDLE_DIR)
+        bundler.unpack_airgap_payload(bundle_filename, expected_sha256, target_path)
+        typer.echo(f"Wdrożono paczkę offline do: {target_path}")
+    except Exception as error:
+        raise typer.BadParameter(str(error)) from error
 
 if __name__ == "__main__":
     app()
