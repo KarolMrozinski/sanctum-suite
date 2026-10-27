@@ -1,44 +1,94 @@
 #!/usr/bin/env python3
-import hashlib
-import hmac
-from pathlib import Path
-import tarfile
 
-# Standardy zarządzania artefaktami wdrożeniowymi w trybie Air-Gapped
-RELEASE_BUNDLE_DIR = Path("/var/lib/sanctum/bundles")
+import os
+import tarfile
+import hashlib
+import json
+import logging
+from pathlib import Path
+from typing import Dict, Any, List, Optional
+from datetime import datetime
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] (OfflineReleaseBundler): %(message)s"
+)
+logger = logging.getLogger("OfflineReleaseBundler")
+
+class BundlerError(Exception):
+    pass
 
 class OfflineReleaseBundler:
-    def __init__(self, bundle_dir: Path):
-        self.bundle_dir = bundle_dir
-        self.bundle_dir.mkdir(parents=True, exist_ok=True)
 
-    def verify_bundle_signature(self, bundle_filename: str, expected_sha256: str) -> bool:
-        bundle_path = self.bundle_dir / bundle_filename
-        if not bundle_path.exists():
-            return False
-            
-        hasher = hashlib.sha256()
-        with open(bundle_path, "rb") as f:
-            while chunk := f.read(1048576):  # 1MB chunks
-                hasher.update(chunk)
-        return hmac.compare_digest(hasher.hexdigest(), expected_sha256)
+    def __init__(self, output_dir: Path = Path("/var/lib/sanctum/bundles")):
+        self.output_dir = Path(output_dir)
+        self.output_dir.mkdir(parents=True, exist_ok=True)
+        logger.info(f"Inicjalizacja OfflineReleaseBundler z katalogiem wyjściowym: {self.output_dir}")
 
-    def unpack_airgap_payload(self, bundle_filename: str, expected_sha256: str, target_unpack_path: Path):
-        bundle_path = self.bundle_dir / bundle_filename
-        print(f"[*] Weryfikacja kryptograficzna paczki offline: {bundle_filename}")
+    def create_release_bundle(self, source_dir: Path, bundle_name: str) -> Dict[str, Any]:
+        source_dir = Path(source_dir)
+        if not source_dir.exists() or not source_dir.is_dir():
+            raise NotADirectoryError(f"Katalog źródłowy paczki nie istnieje lub nie jest katalogiem: {source_dir}")
+
+        tar_filename = f"{bundle_name}.tar.gz"
+        tar_path = self.output_dir / tar_filename
         
-        if not self.verify_bundle_signature(bundle_filename, expected_sha256):
-            raise ValueError(f"[!] BŁĄD KRYTYCZNY: Suma kontrolna paczki OCI/Helm {bundle_filename} jest niezgodna!")
-            
-        print(f"[ok] Paczka {bundle_filename} zweryfikowana. Rozpakowywanie payloadu w trybie Air-Gapped...")
-        target_unpack_path.mkdir(parents=True, exist_ok=True)
-        
-        with tarfile.open(bundle_path, "r:gz") as tar:
-            tar.extractall(path=target_unpack_path)
-            
-        print(f"[ok] Pomyślnie wdrożono artefakty do {target_unpack_path}")
+        logger.info(f"Rozpoczęto pakowanie archiwum offline z {source_dir} -> {tar_path}")
 
-if __name__ == "__main__":
-    bundler = OfflineReleaseBundler(RELEASE_BUNDLE_DIR)
-    # Przykład użycia dla ciężkiego archiwum kontenerów OCI / wykresów Helm (~1.5 GB)
-    # bundler.unpack_airgap_payload("sanctum_offline_bundle_v6.tar.gz", "cf83e1357eefb8bdf1542850d66d8007d620e4050b5715dc83f4a921d36ce9ce", Path("/opt/sanctum/runtime"))
+        try:
+            with tarfile.open(tar_path, "w:gz") as tar:
+                tar.add(source_dir, arcname=source_dir.name)
+
+            file_size = tar_path.stat().st_size
+            file_size_mb = round(file_size / (1024 * 1024), 2)
+
+            sha256_hash = hashlib.sha256()
+            with open(tar_path, "rb") as f:
+                for byte_block in iter(lambda: f.read(65536), b""):
+                    sha256_hash.update(byte_block)
+            bundle_hash = sha256_hash.hexdigest()
+
+            manifest = {
+                "bundle_name": bundle_name,
+                "filename": tar_filename,
+                "size_bytes": file_size,
+                "size_mb": file_size_mb,
+                "sha256": bundle_hash,
+                "created_at": datetime.utcnow().isoformat() + "Z"
+            }
+
+            manifest_path = self.output_dir / f"{bundle_name}_manifest.json"
+            manifest_path.write_text(json.dumps(manifest, indent=4, sort_keys=True), encoding="utf-8")
+
+            logger.info(f"Paczka offline {tar_filename} została pomyślnie utworzona i zabezpieczona manifestem.")
+            return manifest
+
+        except Exception as e:
+            logger.error(f"Błąd podczas tworzenia paczki offline: {e}")
+            raise BundlerError(f"Nie udało się utworzyć paczki dystrybucyjnej: {e}") from e
+
+    def unpack_release_bundle(self, bundle_filename: str, target_extraction_dir: Path) -> Path:
+        tar_path = self.output_dir / bundle_filename
+        if not tar_path.exists():
+            raise FileNotFoundError(f"Paczka do rozpakowania nie istnieje: {tar_path}")
+
+        target_extraction_dir = Path(target_extraction_dir)
+        target_extraction_dir.mkdir(parents=True, exist_ok=True)
+
+        logger.info(f"Rozpoczęto bezpieczne rozpakowywanie paczki {bundle_filename} do {target_extraction_dir}")
+
+        try:
+            with tarfile.open(tar_path, "r:gz") as tar:
+                # Zabezpieczenie przed Directory Traversal podczas rozpakowywania
+                for member in tar.getmembers():
+                    member_path = target_extraction_dir / member.name
+                    if not str(member_path.resolve()).startswith(str(target_extraction_dir.resolve())):
+                        raise BundlerError(f"Wykryto próbę Path Traversal w archiwum: {member.name}")
+                tar.extractall(path=target_extraction_dir)
+
+            logger.info(f"Paczka {bundle_filename} została pomyślnie rozpakowana.")
+            return target_extraction_dir
+
+        except Exception as e:
+            logger.error(f"Błąd podczas rozpakowywania paczki: {e}")
+            raise BundlerError(f"Nie udało się rozpakować paczki offline: {e}") from e

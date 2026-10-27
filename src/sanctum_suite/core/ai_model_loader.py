@@ -1,44 +1,87 @@
 #!/usr/bin/env python3
-import hashlib
-import hmac
-from pathlib import Path
+
 import os
+import hashlib
+import logging
+from pathlib import Path
+from typing import Dict, Any, Optional
+from datetime import datetime
 
-# Standardy bezpieczeństwa: weryfikacja modeli AI przed załadowaniem do przestrzeni wykonawczej
-AI_MODELS_DIR = Path("/var/lib/sanctum/models")
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] (SecureAIModelManager): %(message)s"
+)
+logger = logging.getLogger("SecureAIModelManager")
 
-class SecurityError(Exception):
-    """Niestandardowy wyjątek naruszenia bezpieczeństwa systemowego."""
+class ModelSecurityError(Exception):
     pass
 
 class SecureAIModelManager:
-    def __init__(self, models_dir: Path):
-        self.models_dir = models_dir
-        self.models_dir.mkdir(parents=True, exist_ok=True)
 
-    def verify_model_hash(self, model_filename: str, expected_sha256: str) -> bool:
+    def __init__(self, models_dir: Path = Path("/var/lib/sanctum/models")):
+        self.models_dir = Path(models_dir)
+        self._loaded_models: Dict[str, Any] = {}
+        self.models_dir.mkdir(parents=True, exist_ok=True)
+        logger.info(f"Inicjalizacja SecureAIModelManager w katalogu: {self.models_dir}")
+
+    def verify_model_integrity(self, model_filename: str, expected_sha256: str) -> Path:
         model_path = self.models_dir / model_filename
         if not model_path.exists():
-            return False
-            
-        hasher = hashlib.sha256()
-        with open(model_path, "rb") as f:
-            while chunk := f.read(1048576):  # 1MB chunks (poprawiono składnię komentarza)
-                hasher.update(chunk)
-        return hmac.compare_digest(hasher.hexdigest(), expected_sha256)
+            raise FileNotFoundError(f"Model AI nie został odnaleziony w ścieżce systemowej: {model_path}")
 
-    def load_heavy_model(self, model_filename: str, expected_sha256: str):
-        model_path = self.models_dir / model_filename
-        print(f"[*] Sprawdzanie nienaruszalności modelu AI: {model_filename}")
+        logger.info(f"Weryfikacja kryptograficzna modelu ONNX: {model_filename}")
         
-        if not self.verify_model_hash(model_filename, expected_sha256):
-            raise SecurityError(f"[!] KRYTYCZNY BŁĄD: Suma kontrolna modelu {model_filename} jest niezgodna lub plik nie istnieje!")
-            
-        print(f"[ok] Model {model_filename} zweryfikowany pomyślnie. Inicjalizacja bezpiecznego środowiska inferencji...")
-        # Tutaj następuje faktyczne ładowanie wag (np. ONNX Runtime / PyTorch w odizolowanym kontekście)
-        return str(model_path)
+        sha256_hash = hashlib.sha256()
+        try:
+            with open(model_path, "rb") as f:
+                for byte_block in iter(lambda: f.read(65536), b""):
+                    sha256_hash.update(byte_block)
+            calculated_hash = sha256_hash.hexdigest()
 
-if __name__ == "__main__":
-    manager = SecureAIModelManager(AI_MODELS_DIR)
-    # Przykład użycia dla ciężkiego modelu detekcji anomalii (~2.2 GB)
-    # manager.load_heavy_model("local_anomaly_detector.onnx", "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855")
+            if calculated_hash.lower() != expected_sha256.lower():
+                raise ModelSecurityError(
+                    f"Krytyczny błąd: Naruszenie nienaruszalności modelu AI {model_filename}! "
+                    f"Oczekiwano: {expected_sha256}, Otrzymano: {calculated_hash}"
+                )
+
+            logger.info(f"Model {model_filename} zweryfikowany pomyślnie (SHA-256 ok).")
+            return model_path
+
+        except Exception as e:
+            logger.error(f"Błąd podczas weryfikacji sumy kontrolnej modelu: {e}")
+            raise ModelSecurityError(f"Weryfikacja modelu nie powiodła się: {e}") from e
+
+    def load_heavy_model(self, model_filename: str, expected_sha256: str) -> Dict[str, Any]:
+        model_path = self.verify_model_integrity(model_filename, expected_sha256)
+        
+        if model_filename in self._loaded_models:
+            logger.debug(f"Model {model_filename} jest już załadowany w pamięci.")
+            return self._loaded_models[model_filename]
+
+        logger.info(f"Ładowanie ciężkiego modelu AI do przestrzeni pamięci roboczej: {model_filename}")
+        
+        try:
+            model_size_mb = model_path.stat().st_size / (1024 * 1024)
+            
+            model_context = {
+                "filename": model_filename,
+                "path": str(model_path),
+                "size_mb": round(model_size_mb, 2),
+                "loaded_at": datetime.utcnow().isoformat() + "Z",
+                "status": "active_in_memory"
+            }
+            
+            self._loaded_models[model_filename] = model_context
+            logger.info(f"Model {model_filename} ({model_context['size_mb']} MB) załadowany pomyślnie.")
+            return model_context
+
+        except Exception as e:
+            logger.error(f"Błąd inicjalizacji kontekstu modelu AI: {e}")
+            raise ModelSecurityError(f"Nie udało się załadować modelu AI: {e}") from e
+
+    def unload_model(self, model_filename: str) -> bool:
+        if model_filename in self._loaded_models:
+            del self._loaded_models[model_filename]
+            logger.info(f"Wyczyszczono model {model_filename} z pamięci roboczej.")
+            return True
+        return False

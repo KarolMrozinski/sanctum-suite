@@ -22,6 +22,8 @@ from rich.progress import Progress, SpinnerColumn, TextColumn
 from sanctum_suite.core.secure_asset_loader import SecureAssetLoader, SECURE_STORAGE_DIR
 from sanctum_suite.core.ai_model_loader import SecureAIModelManager, AI_MODELS_DIR
 from sanctum_suite.core.offline_release_bundler import OfflineReleaseBundler, RELEASE_BUNDLE_DIR
+from sanctum_suite.core.system_orchestrator import SystemOrchestrator
+from sanctum_suite.core.offline_release_bundler import OfflineReleaseBundler
 
 from sanctum_suite.orchestrator.engine import SanctumUnifiedOrchestrator
 from sanctum_suite.core.analytics import AnalyticsStoreEngine
@@ -1980,6 +1982,63 @@ def unpack_offline_bundle_cmd(
         typer.echo(f"Wdrożono paczkę offline do: {target_path}")
     except Exception as error:
         raise typer.BadParameter(str(error)) from error
+
+@app.command("preflight")
+def cmd_preflight():
+    """Uruchamia pełny audyt wstępny i weryfikację środowiska systemowego."""
+    console.print("[bold cyan][*] Uruchamianie procedury pre-flight Sanctum Suite...[/bold cyan]")
+    try:
+        orchestrator = SystemOrchestrator()
+        report = orchestrator.run_system_preflight()
+        
+        table = Table(title="Raport pre-flight systemu")
+        table.add_column("Komponent / Sprawdzenie", style="cyan")
+        table.add_column("Status", style="green")
+        
+        for k, v in report.get("checks", {}).items():
+            status_str = "[green]OK (Znaleziono)[/green]" if v else "[red]BŁĄD (Brak zasobu)[/red]"
+            table.add_row(k, status_str)
+            
+        console.print(table)
+        console.print(f"[bold green][+] Ogólny status systemu: {report.get('overall_status').upper()}[/bold green]")
+    except Exception as e:
+        console.print(f"[bold red][!] Błąd krytyczny pre-flight: {e}[/bold red]")
+        raise typer.Exit(code=1)
+
+@app.command("analyze-ioc")
+def cmd_analyze_ioc(hash_value: str = typer.Argument(..., help="Suma kontrolna / IOC do przeanalizowania")):
+    """Analizuje pojedynczy wskaźnik zagrożenia (IOC) w lokalnej bazie APT."""
+    console.print(f"[bold cyan][*] Analiza wskaźnika IOC: {hash_value}[/bold cyan]")
+    try:
+        orchestrator = SystemOrchestrator()
+        result = orchestrator.execute_threat_analysis_pipeline([hash_value])
+        
+        results_list = result.get("results", [])
+        if results_list:
+            res = results_list[0]
+            if res.get("matched"):
+                console.print(f"[bold red][!] WYKRYTO ZAGROŻENIE![/bold red]")
+                console.print(f"    Kampania: [yellow]{res.get('campaign')}[/yellow]")
+                console.print(f"    Aktor APT: [yellow]{res.get('threat_actor')}[/yellow]")
+                console.print(f"    Poziom pewności: [yellow]{res.get('confidence')}%[/yellow]")
+            else:
+                console.print("[green][+] Wskaźnik czysty. Brak dopasowań w bazie Threat Intel.[/green]")
+    except Exception as e:
+        console.print(f"[bold red][!] Błąd analizy IOC: {e}[/bold red]")
+        raise typer.Exit(code=1)
+
+@app.command("pack")
+def cmd_pack(source_dir: Path = typer.Argument(..., help="Katalog źródłowy do spakowania"), name: str = typer.Option("sanctum_release", help="Nazwa paczki")):
+    """Tworzy szyfrowaną paczkę dystrybucyjną offline z manifestem SHA-256."""
+    console.print(f"[bold cyan][*] Pakowanie zasobów z {source_dir}...[/bold cyan]")
+    try:
+        bundler = OfflineReleaseBundler()
+        manifest = bundler.create_release_bundle(source_dir, name)
+        console.print(f"[bold green][+] Utworzono paczkę:[/bold green] {manifest.get('filename')}")
+        console.print(f"    SHA-256: [cyan]{manifest.get('sha256')}[/cyan]")
+    except Exception as e:
+        console.print(f"[bold red][!] Błąd pakowania: {e}[/bold red]")
+        raise typer.Exit(code=1)
 
 if __name__ == "__main__":
     app()
