@@ -25,10 +25,18 @@ procedure Sanctum_Suite is
       Length : Unsigned_32) return Unsigned_32;
    pragma Import (C, Sanctum_Compute_Hash, "sanctum_compute_hash");
 
+   procedure Sanctum_Encrypt_Buffer
+     (Data    : System.Address;
+      Length  : Unsigned_32;
+      Key     : System.Address;
+      Key_Len : Unsigned_32);
+   pragma Import (C, Sanctum_Encrypt_Buffer, "sanctum_encrypt_buffer");
+
    -- Zmienne konfiguracyjne wczytywane z pliku
    Config_Sec_Level : Security_Level := 5;
    Config_Port      : Port_Type      := 5555;
    Config_Node_ID   : Unsigned_8     := 16#42#;
+   Encryption_Key   : aliased constant String := "SANCTUM_SECURE_256_BIT_KEY_ALPHA";
 
    -- Forward specyfikacje procedur pomocniczych
    procedure Save_Logs_To_Disk;
@@ -190,7 +198,7 @@ begin
 
    -- Inicjalizacja pakietu C i kryptografii
    Sanctum_Fill_Packet (Packet'Access);
-   Packet.Node_ID := Config_Node_ID; -- Nadpisanie Node_ID z konfiguracji
+   Packet.Node_ID := Config_Node_ID;
    Global_State.Log_Event
      ("C-Module hardware packet successfully parsed.");
 
@@ -210,8 +218,9 @@ begin
       Ada.Text_IO.Put_Line ("4. Print Audit Log Buffer");
       Ada.Text_IO.Put_Line ("5. Save Audit Logs to Disk (Persistent)");
       Ada.Text_IO.Put_Line ("6. Transmit Network Telemetry (Sockets)");
-      Ada.Text_IO.Put_Line ("7. Exit / Shutdown Suite");
-      Ada.Text_IO.Put ("Select an option (1-7): ");
+      Ada.Text_IO.Put_Line ("7. Encrypt / Decrypt Packet via C (AES-256)");
+      Ada.Text_IO.Put_Line ("8. Exit / Shutdown Suite");
+      Ada.Text_IO.Put ("Select an option (1-8): ");
 
       Ada.Text_IO.Get_Line (Input_Str, Last);
 
@@ -275,6 +284,17 @@ begin
                Transmit_Network_Telemetry;
 
             when '7' =>
+               Sanctum_Encrypt_Buffer
+                 (Data    => Packet'Address,
+                  Length  => Unsigned_32'Val (Sanctum_Packet'Size / 8),
+                  Key     => Encryption_Key'Address,
+                  Key_Len => Encryption_Key'Length);
+               Global_State.Log_Event
+                 ("Packet payload encrypted/decrypted via C AES-256 cipher.");
+               Ada.Text_IO.Put_Line
+                 ("[+] Packet successfully ciphered/deciphered in memory.");
+
+            when '8' =>
                Global_State.Log_Event
                  ("Operator initiated graceful shutdown.");
                Save_Logs_To_Disk;
@@ -284,7 +304,7 @@ begin
 
             when others =>
                Ada.Text_IO.Put_Line
-                 ("[-] Invalid option. Choose between 1 and 7.");
+                 ("[-] Invalid option. Choose between 1 and 8.");
          end case;
       end if;
    end loop;
