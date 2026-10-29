@@ -4,9 +4,18 @@ with Interfaces; use Interfaces;
 procedure Sanctum_Suite is
    subtype Security_Level is Natural range 0 .. 5;
 
-   -- Deklaracja importu zewnętrznej funkcji niskopoziomowej napisanej w C
-   function Get_Hardware_Status return Unsigned_32;
-   pragma Import (C, Get_Hardware_Status, "sanctum_get_hardware_status");
+   -- Odwzorowanie struktury z języka C w Adzie
+   type Sanctum_Packet is record
+      Magic_ID : Unsigned_32;
+      Flags    : Unsigned_32;
+      Node_ID  : Unsigned_8;
+   end record;
+
+   pragma Convention (C, Sanctum_Packet);
+
+   -- Import zewnętrznej procedury z C operującej na wskaźniku do struktury
+   procedure Sanctum_Fill_Packet (Pkt : access Sanctum_Packet);
+   pragma Import (C, Sanctum_Fill_Packet, "sanctum_fill_packet");
 
    -- Obiekt chroniony: bezpieczny dostęp do stanu z poziomu wielu wątków
    protected type State_Manager (Initial_Level : Security_Level := 5) is
@@ -30,7 +39,7 @@ procedure Sanctum_Suite is
 
    -- Instancja globalnego obiektu chronionego stanu
    Global_State : State_Manager;
-   HW_Status    : Unsigned_32;
+   Packet       : aliased Sanctum_Packet;
 
    -- Zadanie w tle monitorujące bezpieczeństwo
    task Monitor;
@@ -49,10 +58,13 @@ procedure Sanctum_Suite is
 begin
    Ada.Text_IO.Put_Line ("[+] Sanctum Suite Advanced Core initialized.");
 
-   -- Wywołanie funkcji zintegrowanego modułu C
-   HW_Status := Get_Hardware_Status;
+   -- Wywołanie funkcji z C przekazującej strukturę przez wskaźnik
+   Sanctum_Fill_Packet (Packet'Access);
+
    Ada.Text_IO.Put_Line
-     ("[+] C-Module Hardware Status: 16#" & Unsigned_32'Image (HW_Status) & "#");
+     ("[+] C-Packet Magic ID: 16#" & Unsigned_32'Image (Packet.Magic_ID) & "#");
+   Ada.Text_IO.Put_Line
+     ("[+] C-Packet Node ID:  16#" & Unsigned_8'Image (Packet.Node_ID) & "#");
 
    Ada.Text_IO.Put_Line
      ("[+] Initial Level: " &
