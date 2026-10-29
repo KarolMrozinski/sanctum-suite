@@ -22,6 +22,7 @@ from datetime import datetime, timezone
 from pydantic import ConfigDict, model_validator
 from starlette.concurrency import run_in_threadpool
 
+from sanctum_suite import describe_integrated_language_modules
 from sanctum_suite.orchestrator.engine import SanctumUnifiedOrchestrator
 from sanctum_suite.core.analytics import AnalyticsStoreEngine
 from sanctum_suite.core.sigma_yara import DetectionRuleGenerator
@@ -123,7 +124,11 @@ app = FastAPI(
         {
             "name": "security-capabilities",
             "description": "Operator-managed security capability and evidence records for GCP, ELK, Terraform, SELinux, and similar sources.",
-        }
+        },
+        {
+            "name": "integrated-modules",
+            "description": "Runtime-visible companion modules discovered from bundled language source trees.",
+        },
     ],
 )
 _LOGGER = logging.getLogger(__name__)
@@ -1567,6 +1572,33 @@ def _phase_1_runtime_status() -> Dict[str, Any]:
         "ready_count": ready_count,
         "total_count": len(status_by_capability),
         "capabilities": status_by_capability,
+    }
+
+
+@app.get("/api/v1/modules", tags=["integrated-modules"], dependencies=[Security(verify_api_key)])
+async def list_integrated_program_modules() -> Dict[str, Any]:
+    """Expose the full runtime catalog of companion language modules bundled with the program."""
+    modules = describe_integrated_language_modules()
+    total = sum(len(entries) for entries in modules.values())
+    return {
+        "total_languages": len(modules),
+        "total_modules": total,
+        "modules": modules,
+    }
+
+
+@app.get("/api/v1/modules/{language}", tags=["integrated-modules"], dependencies=[Security(verify_api_key)])
+async def get_language_module_group(language: str) -> Dict[str, Any]:
+    """Return the full module inventory for one companion language."""
+    normalized = language.strip().lower()
+    modules = describe_integrated_language_modules()
+    items = modules.get(normalized)
+    if items is None:
+        raise HTTPException(status_code=404, detail=f"Language module group not found: {language}")
+    return {
+        "language": normalized,
+        "total_modules": len(items),
+        "modules": items,
     }
 
 

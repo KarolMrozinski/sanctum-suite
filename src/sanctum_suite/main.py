@@ -52,6 +52,7 @@ from sanctum_suite.core.zk_audit import (
     verify_zk_audit_proof,
 )
 from sanctum_suite.core.immutable_audit import MinioImmutableAuditStore
+from sanctum_suite import describe_integrated_language_modules
 
 _ASCII_TRANSLATION = {
     ord("ą"): "a",
@@ -173,6 +174,18 @@ def view_analytics(
             border_style="green",
         )
     )
+
+
+@app.command(name="modules")
+def list_modules_cmd() -> None:
+    """Print the full integrated language-module catalog with capability ids and source paths."""
+    catalog = describe_integrated_language_modules()
+    report = {
+        "total_languages": len(catalog),
+        "total_modules": sum(len(modules) for modules in catalog.values()),
+        "modules": catalog,
+    }
+    _print_json_report(report)
 
 
 @app.command(name="dashboard")
