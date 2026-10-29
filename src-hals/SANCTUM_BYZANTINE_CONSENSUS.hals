@@ -1,0 +1,74 @@
+/*****************************************************************************
+ * Sanctum Suite: Byzantine Fault Tolerant Consensus Manager (HAL/S)
+ * Rozproszony konsensus stanów dla systemów o wysokiej niezawodności w Air-Gap
+ *****************************************************************************/
+
+COMPILATION UNIT SANCTUM_BYZANTINE_CONSENSUS;
+
+    DECLARE TOTAL_REPLICAS CONSTANT(7);
+    DECLARE FAULT_TOLERANCE_LIMIT CONSTANT(2);
+
+    STRUCTURE REPLICA_NODE_STATE
+        INTEGER REPLICA_ID;
+        INTEGER STATE_SIGNATURE;
+        BOOLEAN IS_ACTIVE;
+        BOOLEAN VOTE_AGREEMENT;
+    END;
+
+    STRUCTURE CONSENSUS_ORCHESTRATOR
+        REPLICA_NODE_STATE REPLICAS(TOTAL_REPLICAS);
+        INTEGER AGREEMENT_TALLY;
+        BOOLEAN CONSENSUS_REACHED;
+        BOOLEAN SPLIT_BRAIN_DETECTED;
+    END;
+
+    /*************************************************************************
+     * Inicjalizacja orchardratora konsensusu replik
+     * ***********************************************************************/
+    SUBROUTINE INIT_CONSENSUS_ORCHESTRATOR(ORCHESTRATOR);
+        OUTPUT CONSENSUS_ORCHESTRATOR ORCHESTRATOR;
+        DECLARE R INTEGER;
+        
+        ORCHESTRATOR.AGREEMENT_TALLY = 0;
+        ORCHESTRATOR.CONSENSUS_REACHED = FALSE;
+        ORCHESTRATOR.SPLIT_BRAIN_DETECTED = FALSE;
+        
+        DO R = 1 TO TOTAL_REPLICAS;
+            ORCHESTRATOR.REPLICAS(R).REPLICA_ID = R;
+            ORCHESTRATOR.REPLICAS(R).STATE_SIGNATURE = 55555;
+            ORCHESTRATOR.REPLICAS(R).IS_ACTIVE = TRUE;
+            ORCHESTRATOR.REPLICAS(R).VOTE_AGREEMENT = TRUE;
+        END;
+    END INIT_CONSENSUS_ORCHESTRATOR;
+
+    /*************************************************************************
+     * Procedura obliczania zgodności stanów (Byzantine Voting Check)
+     * ***********************************************************************/
+    SUBROUTINE EVALUATE_REPLICA_CONSENSUS(ORCHESTRATOR);
+        INPUT OUTPUT CONSENSUS_ORCHESTRATOR ORCHESTRATOR;
+        DECLARE K INTEGER;
+        DECLARE AGREED_COUNT INTEGER;
+        
+        AGREED_COUNT = 0;
+        
+        DO K = 1 TO TOTAL_REPLICAS;
+            IF ORCHESTRATOR.REPLICAS(K).IS_ACTIVE AND ORCHESTRATOR.REPLICAS(K).STATE_SIGNATURE = 55555 THEN
+                ORCHESTRATOR.REPLICAS(K).VOTE_AGREEMENT = TRUE;
+                AGREED_COUNT = AGREED_COUNT + 1;
+            ELSE
+                ORCHESTRATOR.REPLICAS(K).VOTE_AGREEMENT = FALSE;
+            END;
+        END;
+        
+        ORCHESTRATOR.AGREEMENT_TALLY = AGREED_COUNT;
+        
+        IF AGREED_COUNT >= (TOTAL_REPLICAS - FAULT_TOLERANCE_LIMIT) THEN
+            ORCHESTRATOR.CONSENSUS_REACHED = TRUE;
+            ORCHESTRATOR.SPLIT_BRAIN_DETECTED = FALSE;
+        ELSE
+            ORCHESTRATOR.CONSENSUS_REACHED = FALSE;
+            ORCHESTRATOR.SPLIT_BRAIN_DETECTED = TRUE;
+        END;
+    END EVALUATE_REPLICA_CONSENSUS;
+
+END SANCTUM_BYZANTINE_CONSENSUS;

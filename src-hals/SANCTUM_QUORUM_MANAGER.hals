@@ -1,0 +1,77 @@
+/*****************************************************************************
+ * Sanctum Suite: Avionics Redundant Quorum & State Synchronization Manager (HAL/S)
+ * Zarządzanie rozproszonym kworum klastra i weryfikacja spójności stanów węzłów.
+ *****************************************************************************/
+
+COMPILATION UNIT SANCTUM_QUORUM_MANAGER;
+
+    DECLARE TOTAL_QUORUM_NODES CONSTANT(9);
+    DECLARE MIN_REQUIRED_QUORUM CONSTANT(6);
+
+    STRUCTURE NODE_QUORUM_RECORD
+        INTEGER NODE_ID;
+        INTEGER STATE_VECTOR_HASH;
+        BOOLEAN HEARTBEAT_ACTIVE;
+        BOOLEAN QUORUM_AGREEMENT;
+    END;
+
+    STRUCTURE QUORUM_ORCHESTRATOR_CONTEXT
+        NODE_QUORUM_RECORD NODES(TOTAL_QUORUM_NODES);
+        INTEGER ACTIVE_AGREEMENT_COUNT;
+        BOOLEAN QUORUM_ESTABLISHED;
+        BOOLEAN QUORUM_LOST_PANIC;
+    END;
+
+    /*************************************************************************
+     * Inicjalizacja kontekstu kworum klastra
+     * ***********************************************************************/
+    SUBROUTINE INITIALIZE_QUORUM_MANAGER(CONTEXT);
+        OUTPUT QUORUM_ORCHESTRATOR_CONTEXT CONTEXT;
+        DECLARE N INTEGER;
+        
+        CONTEXT.ACTIVE_AGREEMENT_COUNT = 0;
+        CONTEXT.QUORUM_ESTABLISHED = FALSE;
+        CONTEXT.QUORUM_LOST_PANIC = FALSE;
+        
+        DO N = 1 TO TOTAL_QUORUM_NODES;
+            CONTEXT.NODES(N).NODE_ID = N;
+            CONTEXT.NODES(N).STATE_VECTOR_HASH = 99887766;
+            CONTEXT.NODES(N).HEARTBEAT_ACTIVE = TRUE;
+            CONTEXT.NODES(N).QUORUM_AGREEMENT = TRUE;
+        END;
+    END INITIALIZE_QUORUM_MANAGER;
+
+    /*************************************************************************
+     * Procedura weryfikacji i głosowania kworum klastra
+     * ***********************************************************************/
+    SUBROUTINE EVALUATE_CLUSTER_QUORUM(CONTEXT, STATUS_FLAG);
+        INPUT OUTPUT QUORUM_ORCHESTRATOR_CONTEXT CONTEXT;
+        OUTPUT BOOLEAN STATUS_FLAG;
+        DECLARE IDX INTEGER;
+        DECLARE AGREEMENT_TOTAL INTEGER;
+        
+        AGREEMENT_TOTAL = 0;
+        
+        DO IDX = 1 TO TOTAL_QUORUM_NODES;
+            IF CONTEXT.NODES(IDX).HEARTBEAT_ACTIVE AND CONTEXT.NODES(IDX).STATE_VECTOR_HASH = 99887766 THEN
+                CONTEXT.NODES(IDX).QUORUM_AGREEMENT = TRUE;
+                AGREEMENT_TOTAL = AGREEMENT_TOTAL + 1;
+            ELSE
+                CONTEXT.NODES(IDX).QUORUM_AGREEMENT = FALSE;
+            END;
+        END;
+        
+        CONTEXT.ACTIVE_AGREEMENT_COUNT = AGREEMENT_TOTAL;
+        
+        IF AGREEMENT_TOTAL >= MIN_REQUIRED_QUORUM THEN
+            CONTEXT.QUORUM_ESTABLISHED = TRUE;
+            CONTEXT.QUORUM_LOST_PANIC = FALSE;
+            STATUS_FLAG = TRUE;
+        ELSE
+            CONTEXT.QUORUM_ESTABLISHED = FALSE;
+            CONTEXT.QUORUM_LOST_PANIC = TRUE;
+            STATUS_FLAG = FALSE;
+        END;
+    END EVALUATE_CLUSTER_QUORUM;
+
+END SANCTUM_QUORUM_MANAGER;

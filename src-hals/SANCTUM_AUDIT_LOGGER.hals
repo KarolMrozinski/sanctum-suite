@@ -1,0 +1,77 @@
+/*****************************************************************************
+ * Sanctum Suite: High-Integrity Avionics Audit & Event Logger (HAL/S)
+ * Zabezpieczony przed nadpisaniem bufor kołowy do rejestrowania zdarzeń
+ * bezpieczeństwa, naruszeń polityk oraz anomalii w systemie Air-Gap.
+ *****************************************************************************/
+
+COMPILATION UNIT SANCTUM_AUDIT_LOGGER;
+
+    DECLARE LOG_BUFFER_CAPACITY CONSTANT(64);
+    DECLARE SEVERITY_CRITICAL CONSTANT(3);
+
+    STRUCTURE AUDIT_LOG_ENTRY
+        INTEGER ENTRY_ID;
+        INTEGER EVENT_CODE;
+        INTEGER SEVERITY_LEVEL;
+        SCALAR TIMESTAMP;
+        BOOLEAN ENTRY_COMMITTED;
+    END;
+
+    STRUCTURE AUDIT_LOGGER_CONTEXT
+        AUDIT_LOG_ENTRY BUFFER(LOG_BUFFER_CAPACITY);
+        INTEGER HEAD_POINTER;
+        INTEGER CRITICAL_EVENTS_COUNT;
+        BOOLEAN BUFFER_OVERFLOW_FLAG;
+    END;
+
+    /*************************************************************************
+     * Inicjalizacja bufora dziennika audytu
+     * ***********************************************************************/
+    SUBROUTINE INITIALIZE_AUDIT_LOGGER(LOGGER);
+        OUTPUT AUDIT_LOGGER_CONTEXT LOGGER;
+        DECLARE L INTEGER;
+        
+        LOGGER.HEAD_POINTER = 1;
+        LOGGER.CRITICAL_EVENTS_COUNT = 0;
+        LOGGER.BUFFER_OVERFLOW_FLAG = FALSE;
+        
+        DO L = 1 TO LOG_BUFFER_CAPACITY;
+            LOGGER.BUFFER(L).ENTRY_ID = L;
+            LOGGER.BUFFER(L).EVENT_CODE = 0;
+            LOGGER.BUFFER(L).SEVERITY_LEVEL = 0;
+            LOGGER.BUFFER(L).TIMESTAMP = 0.0;
+            LOGGER.BUFFER(L).ENTRY_COMMITTED = FALSE;
+        END;
+    END INITIALIZE_AUDIT_LOGGER;
+
+    /*************************************************************************
+     * Procedura zapisu nowego zdarzenia krytycznego do bufora kołowego
+     * ***********************************************************************/
+    SUBROUTINE COMMIT_AUDIT_EVENT(LOGGER, EVENT_CODE, SEVERITY, TIMESTAMP);
+        INPUT OUTPUT AUDIT_LOGGER_CONTEXT LOGGER;
+        INPUT INTEGER EVENT_CODE;
+        INPUT INTEGER SEVERITY;
+        INPUT SCALAR TIMESTAMP;
+        DECLARE CURRENT_HEAD INTEGER;
+        
+        CURRENT_HEAD = LOGGER.HEAD_POINTER;
+        
+        IF CURRENT_HEAD > LOG_BUFFER_CAPACITY THEN
+            LOGGER.BUFFER_OVERFLOW_FLAG = TRUE;
+            LOGGER.HEAD_POINTER = 1;
+            CURRENT_HEAD = 1;
+        END;
+        
+        LOGGER.BUFFER(CURRENT_HEAD).EVENT_CODE = EVENT_CODE;
+        LOGGER.BUFFER(CURRENT_HEAD).SEVERITY_LEVEL = SEVERITY;
+        LOGGER.BUFFER(CURRENT_HEAD).TIMESTAMP = TIMESTAMP;
+        LOGGER.BUFFER(CURRENT_HEAD).ENTRY_COMMITTED = TRUE;
+        
+        IF SEVERITY >= SEVERITY_CRITICAL THEN
+            LOGGER.CRITICAL_EVENTS_COUNT = LOGGER.CRITICAL_EVENTS_COUNT + 1;
+        END;
+        
+        LOGGER.HEAD_POINTER = LOGGER.HEAD_POINTER + 1;
+    END COMMIT_AUDIT_EVENT;
+
+END SANCTUM_AUDIT_LOGGER;

@@ -1,0 +1,74 @@
+/*****************************************************************************
+ * Sanctum Suite: Hardware Entropy Pool & Randomness Governor (HAL/S)
+ * Ciągły monitoring jakości generatorów liczb pseudolosowych i entropii kluczy
+ *****************************************************************************/
+
+COMPILATION UNIT SANCTUM_ENTROPY_GOVERNOR;
+
+    DECLARE ENTROPY_BUFFER_SIZE CONSTANT(256);
+    DECLARE MIN_ACCEPTABLE_ENTROPY CONSTANT(7.5);
+
+    STRUCTURE ENTROPY_SOURCE_BLOCK
+        INTEGER SOURCE_ID;
+        SCALAR SHANNON_ENTROPY_VALUE;
+        BOOLEAN REPETITION_TEST_PASSED;
+        BOOLEAN POOL_READY;
+    END;
+
+    STRUCTURE ENTROPY_GOVERNOR_CONTEXT
+        ENTROPY_SOURCE_BLOCK SOURCES(4);
+        SCALAR GLOBAL_ENTROPY_INDEX;
+        BOOLEAN SYSTEM_ENCRYPTION_HALTED;
+    END;
+
+    /*************************************************************************
+     * Inicjalizacja gubernatora entropii systemowej
+     * ***********************************************************************/
+    SUBROUTINE INITIALIZE_ENTROPY_GOVERNOR(GOVERNOR);
+        OUTPUT ENTROPY_GOVERNOR_CONTEXT GOVERNOR;
+        DECLARE S INTEGER;
+        
+        GOVERNOR.GLOBAL_ENTROPY_INDEX = 0.0;
+        GOVERNOR.SYSTEM_ENCRYPTION_HALTED = FALSE;
+        
+        DO S = 1 TO 4;
+            GOVERNOR.SOURCES(S).SOURCE_ID = S;
+            GOVERNOR.SOURCES(S).SHANNON_ENTROPY_VALUE = 7.95;
+            GOVERNOR.SOURCES(S).REPETITION_TEST_PASSED = TRUE;
+            GOVERNOR.SOURCES(S).POOL_READY = TRUE;
+        END;
+    END INITIALIZE_ENTROPY_GOVERNOR;
+
+    /*************************************************************************
+     * Procedura audytu jakości entropii puli kryptograficznej
+     * ***********************************************************************/
+    SUBROUTINE AUDIT_ENTROPY_STABILITY(GOVERNOR, STATUS_OK);
+        INPUT OUTPUT ENTROPY_GOVERNOR_CONTEXT GOVERNOR;
+        OUTPUT BOOLEAN STATUS_OK;
+        DECLARE IDX INTEGER;
+        DECLARE TOTAL_SCORE SCALAR;
+        
+        TOTAL_SCORE = 0.0;
+        STATUS_OK = TRUE;
+        
+        DO IDX = 1 TO 4;
+            IF GOVERNOR.SOURCES(IDX).SHANNON_ENTROPY_VALUE < MIN_ACCEPTABLE_ENTROPY THEN
+                GOVERNOR.SOURCES(IDX).POOL_READY = FALSE;
+                STATUS_OK = FALSE;
+            END;
+            
+            IF NOT GOVERNOR.SOURCES(IDX).REPETITION_TEST_PASSED THEN
+                STATUS_OK = FALSE;
+            END;
+            
+            TOTAL_SCORE = TOTAL_SCORE + GOVERNOR.SOURCES(IDX).SHANNON_ENTROPY_VALUE;
+        END;
+        
+        GOVERNOR.GLOBAL_ENTROPY_INDEX = TOTAL_SCORE / 4.0;
+        
+        IF NOT STATUS_OK THEN
+            GOVERNOR.SYSTEM_ENCRYPTION_HALTED = TRUE;
+        END;
+    END AUDIT_ENTROPY_STABILITY;
+
+END SANCTUM_ENTROPY_GOVERNOR;

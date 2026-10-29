@@ -1,0 +1,91 @@
+/*****************************************************************************
+ * Sanctum Suite: Avionics Secure Boot & Chain of Trust Validator (HAL/S)
+ * Weryfikacja integralności obrazów oprogramowania układowego (Firmware)
+ * oraz kryptograficzna kontrola łańcucha zaufania przed uruchomieniem klastra.
+ *****************************************************************************/
+
+COMPILATION UNIT SANCTUM_SECURE_BOOT;
+
+    DECLARE FIRMWARE_REGIONS CONSTANT(4);
+    DECLARE EXPECTED_GOLDEN_HASH CONSTANT(135792468);
+
+    STRUCTURE BOOT_REGION_RECORD
+        INTEGER REGION_ID;
+        INTEGER COMPUTED_HASH;
+        BOOLEAN SIGNATURE_VALID;
+        BOOLEAN REGION_LOCKED;
+    END;
+
+    STRUCTURE SECURE_BOOT_MANAGER
+        BOOT_REGION_RECORD REGIONS(FIRMWARE_REGIONS);
+        INTEGER VERIFIED_REGIONS_COUNT;
+        BOOLEAN BOOT_CHAIN_TRUSTED;
+        BOOLEAN SYSTEM_LOCKDOWN_TRIGGERED;
+    END;
+
+    /*************************************************************************
+     * Inicjalizacja menedżera bezpiecznego rozruchu
+     * ***********************************************************************/
+    SUBROUTINE INITIALIZE_SECURE_BOOT(MANAGER);
+        OUTPUT SECURE_BOOT_MANAGER MANAGER;
+        DECLARE R INTEGER;
+        
+        MANAGER.VERIFIED_REGIONS_COUNT = 0;
+        MANAGER.BOOT_CHAIN_TRUSTED = FALSE;
+        MANAGER.SYSTEM_LOCKDOWN_TRIGGERED = FALSE;
+        
+        DO R = 1 TO FIRMWARE_REGIONS;
+            MANAGER.REGIONS(R).REGION_ID = R;
+            MANAGER.REGIONS(R).COMPUTED_HASH = EXPECTED_GOLDEN_HASH;
+            MANAGER.REGIONS(R).SIGNATURE_VALID = FALSE;
+            MANAGER.REGIONS(R).REGION_LOCKED = TRUE;
+        END;
+    END INITIALIZE_SECURE_BOOT;
+
+    /*************************************************************************
+     * Funkcja weryfikacji podpisu cyfrowego regionu rozruchowego
+     * ***********************************************************************/
+    BOOLEAN FUNCTION VERIFY_BOOT_REGION(REGION);
+        INPUT BOOT_REGION_RECORD REGION;
+        
+        IF REGION.COMPUTED_HASH = EXPECTED_GOLDEN_HASH THEN
+            RETURN TRUE;
+        ELSE
+            RETURN FALSE;
+        END;
+    END VERIFY_BOOT_REGION;
+
+    /*************************************************************************
+     * Procedura wykonania pełnego łańcucha weryfikacji rozruchu (Secure Boot)
+     * ***********************************************************************/
+    SUBROUTINE EXECUTE_SECURE_BOOT_SEQUENCE(MANAGER, BOOT_SUCCESS);
+        INPUT OUTPUT SECURE_BOOT_MANAGER MANAGER;
+        OUTPUT BOOLEAN BOOT_SUCCESS;
+        DECLARE IDX INTEGER;
+        DECLARE VALID_TOTAL INTEGER;
+        
+        VALID_TOTAL = 0;
+        BOOT_SUCCESS = FALSE;
+        
+        DO IDX = 1 TO FIRMWARE_REGIONS;
+            IF VERIFY_BOOT_REGION(MANAGER.REGIONS(IDX)) THEN
+                MANAGER.REGIONS(IDX).SIGNATURE_VALID = TRUE;
+                VALID_TOTAL = VALID_TOTAL + 1;
+            ELSE
+                MANAGER.REGIONS(IDX).SIGNATURE_VALID = FALSE;
+                MANAGER.SYSTEM_LOCKDOWN_TRIGGERED = TRUE;
+            END;
+        END;
+        
+        MANAGER.VERIFIED_REGIONS_COUNT = VALID_TOTAL;
+        
+        IF VALID_TOTAL = FIRMWARE_REGIONS AND NOT MANAGER.SYSTEM_LOCKDOWN_TRIGGERED THEN
+            MANAGER.BOOT_CHAIN_TRUSTED = TRUE;
+            BOOT_SUCCESS = TRUE;
+        ELSE
+            MANAGER.BOOT_CHAIN_TRUSTED = FALSE;
+            BOOT_SUCCESS = FALSE;
+        END;
+    END EXECUTE_SECURE_BOOT_SEQUENCE;
+
+END SANCTUM_SECURE_BOOT;

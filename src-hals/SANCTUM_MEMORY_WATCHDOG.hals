@@ -1,0 +1,96 @@
+/*****************************************************************************
+ * Sanctum Suite: Hardware RAM Integrity & ECC Watchdog Governor (HAL/S)
+ * Ciągłe sprawdzanie sum kontrolnych segmentów pamięci operacyjnej w celu
+ * zapobiegania atakom typu Rowhammer, błędom bitowym i wstrzykiwaniu kodu.
+ *****************************************************************************/
+
+COMPILATION UNIT SANCTUM_MEMORY_WATCHDOG;
+
+    DECLARE MEMORY_SEGMENTS CONSTANT(16);
+    DECLARE MAX_CORRECTION_LIMIT CONSTANT(3);
+
+    STRUCTURE MEMORY_BANK_RECORD
+        INTEGER SEGMENT_ID;
+        INTEGER BASE_CHECKSUM;
+        INTEGER CURRENT_CHECKSUM;
+        INTEGER ECC_CORRECTION_COUNT;
+        BOOLEAN SEGMENT_CORRUPTED;
+        BOOLEAN SEGMENT_LOCKED;
+    END;
+
+    STRUCTURE MEMORY_WATCHDOG_MANAGER
+        MEMORY_BANK_RECORD SEGMENTS(MEMORY_SEGMENTS);
+        INTEGER TOTAL_CORRUPTED_SEGMENTS;
+        BOOLEAN SYSTEM_PANIC_TRIGGERED;
+    END;
+
+    /*************************************************************************
+     * Inicjalizacja menedżera integralności pamięci RAM
+     * ***********************************************************************/
+    SUBROUTINE INITIALIZE_MEMORY_WATCHDOG(MANAGER);
+        OUTPUT MEMORY_WATCHDOG_MANAGER MANAGER;
+        DECLARE S INTEGER;
+        
+        MANAGER.TOTAL_CORRUPTED_SEGMENTS = 0;
+        MANAGER.SYSTEM_PANIC_TRIGGERED = FALSE;
+        
+        DO S = 1 TO MEMORY_SEGMENTS;
+            MANAGER.SEGMENTS(S).SEGMENT_ID = S;
+            MANAGER.SEGMENTS(S).BASE_CHECKSUM = 123456789;
+            MANAGER.SEGMENTS(S).CURRENT_CHECKSUM = 123456789;
+            MANAGER.SEGMENTS(S).ECC_CORRECTION_COUNT = 0;
+            MANAGER.SEGMENTS(S).SEGMENT_CORRUPTED = FALSE;
+            MANAGER.SEGMENTS(S).SEGMENT_LOCKED = FALSE;
+        END;
+    END INITIALIZE_MEMORY_WATCHDOG;
+
+    /*************************************************************************
+     * Funkcja weryfikacji spójności hasha segmentu pamięci
+     * ***********************************************************************/
+    BOOLEAN FUNCTION VERIFY_MEMORY_SEGMENT(SEGMENT);
+        INPUT MEMORY_BANK_RECORD SEGMENT;
+        
+        IF SEGMENT.SEGMENT_LOCKED THEN
+            RETURN FALSE;
+        END;
+        
+        IF SEGMENT.CURRENT_CHECKSUM = SEGMENT.BASE_CHECKSUM THEN
+            RETURN TRUE;
+        ELSE
+            RETURN FALSE;
+        END;
+    END VERIFY_MEMORY_SEGMENT;
+
+    /*************************************************************************
+     * Procedura ciągłego audytu i kwarantanny uszkodzonych bloków pamięci
+     * ***********************************************************************/
+    SUBROUTINE EXECUTE_MEMORY_AUDIT_PASS(MANAGER, CORRUPTION_COUNT);
+        INPUT OUTPUT MEMORY_WATCHDOG_MANAGER MANAGER;
+        OUTPUT INTEGER CORRUPTION_COUNT;
+        DECLARE IDX INTEGER;
+        DECLARE CORRUPT_TOTAL INTEGER;
+        
+        CORRUPT_TOTAL = 0;
+        
+        DO IDX = 1 TO MEMORY_SEGMENTS;
+            IF NOT VERIFY_MEMORY_SEGMENT(MANAGER.SEGMENTS(IDX)) THEN
+                MANAGER.SEGMENTS(IDX).ECC_CORRECTION_COUNT = MANAGER.SEGMENTS(IDX).ECC_CORRECTION_COUNT + 1;
+                
+                IF MANAGER.SEGMENTS(IDX).ECC_CORRECTION_COUNT >= MAX_CORRECTION_LIMIT THEN
+                    MANAGER.SEGMENTS(IDX).SEGMENT_CORRUPTED = TRUE;
+                    MANAGER.SEGMENTS(IDX).SEGMENT_LOCKED = TRUE;
+                    CORRUPT_TOTAL = CORRUPT_TOTAL + 1;
+                END;
+            END;
+        END;
+        
+        MANAGER.TOTAL_CORRUPTED_SEGMENTS = CORRUPT_TOTAL;
+        
+        IF CORRUPT_TOTAL >= 2 THEN
+            MANAGER.SYSTEM_PANIC_TRIGGERED = TRUE;
+        END;
+        
+        CORRUPTION_COUNT = CORRUPT_TOTAL;
+    END EXECUTE_MEMORY_AUDIT_PASS;
+
+END SANCTUM_MEMORY_WATCHDOG;

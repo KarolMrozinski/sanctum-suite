@@ -1,0 +1,89 @@
+/*****************************************************************************
+ * Sanctum Suite: Quantum-Resistant Avionics Key Vault & Rotor (HAL/S)
+ * Zarządzanie rotacją kluczy kryptograficznych i weryfikacja sum stanu systemu
+ *****************************************************************************/
+
+COMPILATION UNIT SANCTUM_QUANTUM_KEY_VAULT;
+
+    DECLARE KEY_SLOTS CONSTANT(8);
+    DECLARE KEY_BLOCK_SIZE CONSTANT(64);
+
+    STRUCTURE CRYPTO_KEY_SLOT
+        INTEGER SLOT_ID;
+        INTEGER USAGE_COUNTER;
+        INTEGER MAX_OPERATIONS;
+        BOOLEAN SLOT_ACTIVE;
+        CHARACTER SECRET_HASH(KEY_BLOCK_SIZE);
+    END;
+
+    STRUCTURE KEY_VAULT_MANAGER
+        CRYPTO_KEY_SLOT SLOTS(KEY_SLOTS);
+        INTEGER ACTIVE_SLOT_INDEX;
+        BOOLEAN VAULT_COMPROMISED;
+    END;
+
+    /*************************************************************************
+     * Inicjalizacja bezpiecznego skarbca kluczy awionicznych
+     * ***********************************************************************/
+    SUBROUTINE INITIALIZE_KEY_VAULT(VAULT);
+        OUTPUT KEY_VAULT_MANAGER VAULT;
+        DECLARE S INTEGER;
+        
+        VAULT.ACTIVE_SLOT_INDEX = 1;
+        VAULT.VAULT_COMPROMISED = FALSE;
+        
+        DO S = 1 TO KEY_SLOTS;
+            VAULT.SLOTS(S).SLOT_ID = S;
+            VAULT.SLOTS(S).USAGE_COUNTER = 0;
+            VAULT.SLOTS(S).MAX_OPERATIONS = 1000;
+            VAULT.SLOTS(S).SLOT_ACTIVE = (S = 1);
+        END;
+    END INITIALIZE_KEY_VAULT;
+
+    /*************************************************************************
+     * Funkcja weryfikacji zużycia klucza i konieczności rotacji
+     * ***********************************************************************/
+    BOOLEAN FUNCTION CHECK_KEY_ROTATION_REQUIRED(VAULT, SLOT_IDX);
+        INPUT KEY_VAULT_MANAGER VAULT;
+        INPUT INTEGER SLOT_IDX;
+        
+        IF SLOT_IDX < 1 OR SLOT_IDX > KEY_SLOTS THEN
+            RETURN TRUE;
+        END;
+        
+        IF VAULT.SLOTS(SLOT_IDX).USAGE_COUNTER >= VAULT.SLOTS(SLOT_IDX).MAX_OPERATIONS THEN
+            RETURN TRUE;
+        END;
+        
+        RETURN FALSE;
+    END CHECK_KEY_ROTATION_REQUIRED;
+
+    /*************************************************************************
+     * Procedura bezpiecznej rotacji klucza aktywnego w warstwie awioniki
+     * ***********************************************************************/
+    SUBROUTINE ROTATE_ACTIVE_KEY_SLOT(VAULT, SUCCESS_FLAG);
+        INPUT OUTPUT KEY_VAULT_MANAGER VAULT;
+        OUTPUT BOOLEAN SUCCESS_FLAG;
+        DECLARE NEXT_SLOT INTEGER;
+        
+        SUCCESS_FLAG = FALSE;
+        
+        IF VAULT.VAULT_COMPROMISED THEN
+            RETURN;
+        END;
+        
+        NEXT_SLOT = VAULT.ACTIVE_SLOT_INDEX + 1;
+        
+        IF NEXT_SLOT > KEY_SLOTS THEN
+            NEXT_SLOT = 1; -- Zawinięcie bufora cyklicznego
+        END;
+        
+        VAULT.SLOTS(VAULT.ACTIVE_SLOT_INDEX).SLOT_ACTIVE = FALSE;
+        VAULT.SLOTS(NEXT_SLOT).SLOT_ACTIVE = TRUE;
+        VAULT.SLOTS(NEXT_SLOT).USAGE_COUNTER = 0;
+        
+        VAULT.ACTIVE_SLOT_INDEX = NEXT_SLOT;
+        SUCCESS_FLAG = TRUE;
+    END ROTATE_ACTIVE_KEY_SLOT;
+
+END SANCTUM_QUANTUM_KEY_VAULT;

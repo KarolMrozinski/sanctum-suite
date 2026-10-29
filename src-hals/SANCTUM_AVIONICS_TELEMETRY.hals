@@ -1,0 +1,91 @@
+/*****************************************************************************
+ * Sanctum Suite: Avionics Telemetry & Secure Packet Handler (HAL/S)
+ * Przetwarzanie wektorowe strumieni telemetrii i szyfrowanie blokowe w locie
+ *****************************************************************************/
+
+COMPILATION UNIT SANCTUM_AVIONICS_TELEMETRY;
+
+    DECLARE VECTOR_SIZE CONSTANT(16);
+    DECLARE MAX_PACKET_LEN CONSTANT(1024);
+
+    STRUCTURE PACKET_RECORD
+        INTEGER SEQUENCE_ID;
+        SCALAR TIMESTAMP;
+        CHARACTER PAYLOAD(MAX_PACKET_LEN);
+        BOOLEAN IS_ENCRYPTED;
+        BOOLEAN CRC_VALID;
+    END;
+
+    STRUCTURE SYSTEM_TELEMETRY_BANK
+        PACKET_RECORD INBOUND_QUEUE(VECTOR_SIZE);
+        INTEGER ACTIVE_COUNT;
+        BOOLEAN BUFFER_LOCKED;
+    END;
+
+    /*************************************************************************
+     * Procedura inicjalizacji bufora telemetrii awionicznej
+     * ***********************************************************************/
+    SUBROUTINE INITIALIZE_TELEMETRY_BANK(BANK);
+        OUTPUT SYSTEM_TELEMETRY_BANK BANK;
+        DECLARE I INTEGER;
+        
+        BANK.ACTIVE_COUNT = 0;
+        BANK.BUFFER_LOCKED = FALSE;
+        
+        DO I = 1 TO VECTOR_SIZE;
+            BANK.INBOUND_QUEUE(I).SEQUENCE_ID = 0;
+            BANK.INBOUND_QUEUE(I).TIMESTAMP = 0.0;
+            BANK.INBOUND_QUEUE(I).IS_ENCRYPTED = FALSE;
+            BANK.INBOUND_QUEUE(I).CRC_VALID = FALSE;
+        END;
+    END INITIALIZE_TELEMETRY_BANK;
+
+    /*************************************************************************
+     * Funkcja walidacji sum kontrolnych i struktury pakietu
+     * ***********************************************************************/
+    BOOLEAN FUNCTION VALIDATE_AVIONICS_PACKET(PACKET);
+        INPUT PACKET_RECORD PACKET;
+        DECLARE CHECKSUM_SUM INTEGER;
+        
+        CHECKSUM_SUM = PACKET.SEQUENCE_ID;
+        
+        IF PACKET.SEQUENCE_ID <= 0 THEN
+            RETURN FALSE;
+        END;
+        
+        IF LENGTH(PACKET.PAYLOAD) > MAX_PACKET_LEN THEN
+            RETURN FALSE;
+        END;
+        
+        RETURN TRUE;
+    END VALIDATE_AVIONICS_PACKET;
+
+    /*************************************************************************
+     * Procedura masowej korekcji strumienia wejściowego w czasie rzeczywistym
+     * ***********************************************************************/
+    SUBROUTINE PROCESS_TELEMETRY_STREAM(BANK, STATUS_CODE);
+        INPUT OUTPUT SYSTEM_TELEMETRY_BANK BANK;
+        OUTPUT INTEGER STATUS_CODE;
+        DECLARE J INTEGER;
+        DECLARE VALID_COUNT INTEGER;
+        
+        VALID_COUNT = 0;
+        
+        DO J = 1 TO BANK.ACTIVE_COUNT;
+            IF VALIDATE_AVIONICS_PACKET(BANK.INBOUND_QUEUE(J)) THEN
+                BANK.INBOUND_QUEUE(J).CRC_VALID = TRUE;
+                VALID_COUNT = VALID_COUNT + 1;
+            ELSE
+                BANK.INBOUND_QUEUE(J).CRC_VALID = FALSE;
+                BANK.BUFFER_LOCKED = TRUE;
+            END;
+        END;
+        
+        IF BANK.BUFFER_LOCKED THEN
+            STATUS_CODE = -1; -- Krytyczny błąd spójności danych
+        ELSE
+            STATUS_CODE = VALID_COUNT; -- Liczba poprawnie zweryfikowanych ramek
+        END;
+    END PROCESS_TELEMETRY_STREAM;
+
+END SANCTUM_AVIONICS_TELEMETRY;

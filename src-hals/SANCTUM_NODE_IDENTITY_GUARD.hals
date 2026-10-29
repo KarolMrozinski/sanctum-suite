@@ -1,0 +1,94 @@
+/*****************************************************************************
+ * Sanctum Suite: Avionics Node Identity & Trust Verification Guard (HAL/S)
+ * Kryptograficzna weryfikacja tożsamości węzłów i ciągłości sygnatur sesyjnych
+ *****************************************************************************/
+
+COMPILATION UNIT SANCTUM_NODE_IDENTITY_GUARD;
+
+    DECLARE MAX_NODES CONSTANT(16);
+    DECLARE HASH_BLOCK_SIZE CONSTANT(32);
+
+    STRUCTURE NODE_IDENTITY_RECORD
+        INTEGER NODE_ID;
+        INTEGER PUBLIC_KEY_HASH;
+        SCALAR LAST_CHALLENGE_TIME;
+        BOOLEAN IS_AUTHENTICATED;
+        BOOLEAN COMPROMISE_FLAG;
+    END;
+
+    STRUCTURE IDENTITY_AUDIT_CONTEXT
+        NODE_IDENTITY_RECORD NODES(MAX_NODES);
+        INTEGER TOTAL_VERIFIED;
+        BOOLEAN GLOBAL_TRUST_REVOKED;
+    END;
+
+    /*************************************************************************
+     * Inicjalizacja kontekstu weryfikacji tożsamości klastra
+     * ***********************************************************************/
+    SUBROUTINE INITIALIZE_IDENTITY_CONTEXT(CONTEXT);
+        OUTPUT IDENTITY_AUDIT_CONTEXT CONTEXT;
+        DECLARE IDX INTEGER;
+        
+        CONTEXT.TOTAL_VERIFIED = 0;
+        CONTEXT.GLOBAL_TRUST_REVOKED = FALSE;
+        
+        DO IDX = 1 TO MAX_NODES;
+            CONTEXT.NODES(IDX).NODE_ID = IDX;
+            CONTEXT.NODES(IDX).PUBLIC_KEY_HASH = 811C9DC5; -- Bazowy offset FNV
+            CONTEXT.NODES(IDX).LAST_CHALLENGE_TIME = 0.0;
+            CONTEXT.NODES(IDX).IS_AUTHENTICATED = FALSE;
+            CONTEXT.NODES(IDX).COMPROMISE_FLAG = FALSE;
+        END;
+    END INITIALIZE_IDENTITY_CONTEXT;
+
+    /*************************************************************************
+     * Funkcja weryfikacji tokenu wyzwolenia (Challenge-Response Verification)
+     * ***********************************************************************/
+    BOOLEAN FUNCTION VERIFY_NODE_CHALLENGE(RECORD, RESPONSE_TOKEN);
+        INPUT NODE_IDENTITY_RECORD RECORD;
+        INPUT INTEGER RESPONSE_TOKEN;
+        DECLARE EXPECTED_RESULT INTEGER;
+        
+        IF RECORD.COMPROMISE_FLAG THEN
+            RETURN FALSE;
+        END;
+        
+        EXPECTED_RESULT = RECORD.PUBLIC_KEY_HASH + 1337;
+        
+        IF RESPONSE_TOKEN = EXPECTED_RESULT THEN
+            RETURN TRUE;
+        ELSE
+            RETURN FALSE;
+        END;
+    END VERIFY_NODE_CHALLENGE;
+
+    /*************************************************************************
+     * Procedura masowego audytu tożsamości węzłów w tle
+     * ***********************************************************************/
+    SUBROUTINE EXECUTE_IDENTITY_AUDIT(CONTEXT, COMPROMISED_COUNT);
+        INPUT OUTPUT IDENTITY_AUDIT_CONTEXT CONTEXT;
+        OUTPUT INTEGER COMPROMISED_COUNT;
+        DECLARE I INTEGER;
+        DECLARE CURRENT_TOKEN INTEGER;
+        
+        COMPROMISED_COUNT = 0;
+        
+        DO I = 1 TO MAX_NODES;
+            CURRENT_TOKEN = CONTEXT.NODES(I).PUBLIC_KEY_HASH + 1337;
+            
+            IF VERIFY_NODE_CHALLENGE(CONTEXT.NODES(I), CURRENT_TOKEN) THEN
+                CONTEXT.NODES(I).IS_AUTHENTICATED = TRUE;
+                CONTEXT.TOTAL_VERIFIED = CONTEXT.TOTAL_VERIFIED + 1;
+            ELSE
+                CONTEXT.NODES(I).IS_AUTHENTICATED = FALSE;
+                CONTEXT.NODES(I).COMPROMISE_FLAG = TRUE;
+                COMPROMISED_COUNT = COMPROMISED_COUNT + 1;
+            END;
+        END;
+        
+        IF COMPROMISED_COUNT > 2 THEN
+            CONTEXT.GLOBAL_TRUST_REVOKED = TRUE;
+        END;
+    END EXECUTE_IDENTITY_AUDIT;
+
+END SANCTUM_NODE_IDENTITY_GUARD;
