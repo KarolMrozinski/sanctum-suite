@@ -36,10 +36,10 @@ The project is intended for controlled, high-assurance environments where govern
 
 Recent work has focused on making the repository more operationally grounded without pretending the platform is already deployed in production.
 
-- Expanded the capability registry to cover cloud, telemetry, attestation, mission, AI, graph, and emerging compute stacks while preserving a fail-closed readiness model.
-- Formalized the distinction between `PLAN_ONLY`, `CONFIGURED`, and `LIVE` states so adapters do not claim live integration without runtime evidence.
+- Expanded the capability registry to cover cloud, telemetry, attestation, mission, AI, graph, and emerging compute stacks while preserving a fail-closed readiness model, and to include Ada, APL, HALS, and Rust companion modules as runtime-capable extensions.
+- Formalized the distinction between `PLAN_ONLY`, `CONFIGURED`, and `LIVE` states so adapters do not claim live integration without runtime evidence, while aligning the Ada bundle with ALIRE project metadata.
 - Added deployment-oriented assets under [deployment/README.md](deployment/README.md), including AKS/GKE patterns, secret manager references, and phase-based rollout guidance.
-- Kept the project architecture-first: the repository now emphasizes real integration contracts, trust boundaries, and evidence handling rather than marketing-style capability claims.
+- Kept the project architecture-first: the repository now emphasizes real integration contracts, trust boundaries, evidence handling, and multi-language module composition rather than marketing-style capability claims.
 
 ## Security capability model
 
