@@ -4,7 +4,7 @@ set -e
 MODEL_DIR="$(dirname "$0")"
 SELECTED_MODEL="${1:-llama3}" # Domyślnie Llama 3.2 3B
 
-echo "=== SANCTUM SUITE: MENEDŽER POBIERANIA MODELI AI ==="
+echo "=== SANCTUM SUITE: MENEDŻER POBIERANIA MODELI AI ==="
 
 case "$SELECTED_MODEL" in
     "llama3")
@@ -27,9 +27,14 @@ case "$SELECTED_MODEL" in
         MODEL_URL="https://huggingface.co/bartowski/gemma-3-GGUF/resolve/main/gemma-3-model-Q4_K_M.gguf"
         echo "[INFO] Wybrano model: Google Gemma 3"
         ;;
+    "mistral24")
+        MODEL_FILE="$MODEL_DIR/mistral-large-24b.Q4_K_M.gguf"
+        MODEL_URL="https://huggingface.co/bartowski/Mistral-Large-Instruct-2407-GGUF/resolve/main/Mistral-Large-Instruct-2407-Q4_K_M.gguf"
+        echo "[INFO] Wybrano model: Mistral Large 24B Instruct"
+        ;;
     *)
         echo "[BŁĄD] Nieznany model: $SELECTED_MODEL"
-        echo "Dostępne opcje: llama3, gemma2, qwen25, gemma3"
+        echo "Dostępne opcje: llama3, gemma2, qwen25, gemma3, mistral24"
         exit 1
         ;;
 esac

@@ -10,7 +10,7 @@ help:
 	@echo "  make run-cycle               - Ręczne wyzwolenie cyklu agentów"
 	@echo "  make override-on             - Włączenie blokady nadzoru operatora"
 	@echo "  make override-off            - Wyłączenie blokady (tryb autonomiczny)"
-	@echo "  make model-download MODEL=x  - Pobranie modelu (opcje: llama3, gemma2, qwen25, gemma3)"
+	@echo "  make model-download MODEL=x  - Pobranie modelu (opcje: llama3, gemma2, qwen25, gemma3, mistral24)"
 	@echo "  make clean                   - Czyszczenie plików tymczasowych"
 
 install:
