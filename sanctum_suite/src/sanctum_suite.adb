@@ -1,7 +1,12 @@
 with Ada.Text_IO;
+with Interfaces; use Interfaces;
 
 procedure Sanctum_Suite is
    subtype Security_Level is Natural range 0 .. 5;
+
+   -- Deklaracja importu zewnętrznej funkcji niskopoziomowej napisanej w C
+   function Get_Hardware_Status return Unsigned_32;
+   pragma Import (C, Get_Hardware_Status, "sanctum_get_hardware_status");
 
    -- Obiekt chroniony: bezpieczny dostęp do stanu z poziomu wielu wątków
    protected type State_Manager (Initial_Level : Security_Level := 5) is
@@ -19,15 +24,15 @@ procedure Sanctum_Suite is
 
       function Get_Level return Security_Level is
       begin
-         -- Funkcja jest typu read-only, zwracamy stan bez jego modyfikacji
          return Current_Level;
       end Get_Level;
    end State_Manager;
 
    -- Instancja globalnego obiektu chronionego stanu
    Global_State : State_Manager;
+   HW_Status    : Unsigned_32;
 
-   -- Zadanie w tle korzystające z obiektu chronionego
+   -- Zadanie w tle monitorujące bezpieczeństwo
    task Monitor;
 
    task body Monitor is
@@ -43,6 +48,12 @@ procedure Sanctum_Suite is
 
 begin
    Ada.Text_IO.Put_Line ("[+] Sanctum Suite Advanced Core initialized.");
+
+   -- Wywołanie funkcji zintegrowanego modułu C
+   HW_Status := Get_Hardware_Status;
+   Ada.Text_IO.Put_Line
+     ("[+] C-Module Hardware Status: 16#" & Unsigned_32'Image (HW_Status) & "#");
+
    Ada.Text_IO.Put_Line
      ("[+] Initial Level: " &
       Security_Level'Image (Global_State.Get_Level));
