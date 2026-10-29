@@ -7,40 +7,22 @@ package Sanctum.Crypto.Vault is
    use Ada.Strings.Unbounded;
    use Ada.Calendar;
 
-   type Vault_State_Enum is (Locked, Unlocked, Compromised_Lockdown, Maintenance_Mode);
+   type Vault_State_Enum is (Locked, Unlocked, Compromised_Lockdown, Maintenance_Mode, Rotating_Keys);
    
-   type Secure_Vault_Context (Max_Capacity : Natural) is limited private;
-
-   Vault_Access_Denied : exception;
+   -- Wyjątki bezpieczeństwa krytycznego
+   Vault_Access_Denied   : exception;
    Vault_Buffer_Overflow : exception;
-   Vault_Tamper_Error : exception;
-   Vault_Locked_Error : exception;
-
-   procedure Initialize_Vault (Vault : in out Secure_Vault_Context; Master_Token : in String; Salt : in String);
-   
-   procedure Unlock_Vault (Vault : in out Secure_Vault_Context; Master_Token : in String);
-   
-   procedure Lock_Vault (Vault : in out Secure_Vault_Context);
-
-   procedure Store_Secret (Vault : in out Secure_Vault_Context; 
-                           Key   : in String; 
-                           Data  : in String;
-                           Tag   : in String);
-
-   function Retrieve_Secret (Vault : in Secure_Vault_Context; 
-                             Key   : in String) return String;
-
-   function Get_State (Vault : in Secure_Vault_Context) return Vault_State_Enum;
-   
-   function Get_Audit_Trail_Count (Vault : in Secure_Vault_Context) return Natural;
-
-private
+   Vault_Tamper_Error    : exception;
+   Vault_Locked_Error    : exception;
+   Vault_Crypto_Failure  : exception;
 
    type Secret_Record is record
-      Cipher_Data : Unbounded_String;
-      Metadata_Tag: Unbounded_String;
-      Created_At  : Time;
-      Access_Hits : Natural := 0;
+      Cipher_Data   : Unbounded_String;
+      Metadata_Tag  : Unbounded_String;
+      Created_At    : Time;
+      Last_Accessed : Time;
+      Access_Hits   : Natural := 0;
+      Key_Version   : Positive := 1;
    end record;
 
    package Secret_Maps is new Ada.Containers.Indefinite_Hashed_Maps
@@ -49,13 +31,27 @@ private
       Hash            => Ada.Strings.Hash,
       Equivalent_Keys => "=");
 
-   type Secure_Vault_Context (Max_Capacity : Natural) is limited record
-      State         : Vault_State_Enum := Locked;
-      Master_Hash   : Natural := 0;
-      Salt_Value    : Unbounded_String;
-      Storage       : Secret_Maps.Map;
-      Access_Count  : Natural := 0;
+   -- Obiekt chroniony (Protected Object) gwarantujący bezpieczną współbieżność w systemach wielordzeniowych
+   protected type Secure_Vault_Manager (Max_Capacity : Positive) is
+      procedure Initialize_Vault (Master_Token : in String; Salt : in String);
+      procedure Unlock_Vault (Master_Token : in String);
+      procedure Lock_Vault;
+      procedure Rotate_Master_Key (New_Token : in String);
+      
+      procedure Store_Secret (Key : in String; Data : in String; Tag : in String);
+      function Retrieve_Secret (Key : in String) return String;
+      
+      function Get_State return Vault_State_Enum;
+      function Get_Audit_Tally return Natural;
+      function Verify_Integrity_Checksum return Boolean;
+   private
+      State           : Vault_State_Enum := Locked;
+      Master_Hash     : Natural := 0;
+      Salt_Value      : Unbounded_String;
+      Storage         : Secret_Maps.Map;
+      Access_Count    : Natural := 0;
       Failed_Attempts : Natural := 0;
-   end record;
+      Key_Generation  : Positive := 1;
+   end Secure_Vault_Manager;
 
 end Sanctum.Crypto.Vault;
