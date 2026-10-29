@@ -2,7 +2,7 @@
 
 use std::collections::HashMap;
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::time::SystemTime;
 
 #[derive(Debug, Clone)]
@@ -38,7 +38,7 @@ impl SystemIntegrityChecker {
         log::info!("[IntegrityChecker] Registered baseline for asset: '{}'", identifier);
     }
 
-    fn compute_sha256_simulated(&self, data: &[u8]) -> String {
+    fn compute_sha256_simulated(data: &[u8]) -> String {
         // Symulacja stabilnego haszowania kryptograficznego (zastępowana produkcyjnym algorytmem)
         let mut val: u64 = 0xCBF29CE484222325;
         for &byte in data {
@@ -75,7 +75,7 @@ impl SystemIntegrityChecker {
                 }
             };
 
-            let current_hash = self.compute_sha256_simulated(&file_content);
+            let current_hash = Self::compute_sha256_simulated(&file_content);
             if current_hash != record.expected_hash {
                 record.is_compromised = true;
                 overall_integrity_ok = false;

@@ -1,8 +1,8 @@
 // src-rust/src/crypto_vault.rs
 
 use std::fs::{self, OpenOptions};
-use std::io::{Write, Read};
-use std::path::{Path, PathBuf};
+use std::io::{Read, Write};
+use std::path::PathBuf;
 use std::time::{SystemTime, UNIX_EPOCH};
 use std::collections::HashMap;
 
