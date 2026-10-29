@@ -71,8 +71,15 @@ Repository = "https://github.com/KarolMrozinski/sanctum-suite"
 Issues = "https://github.com/KarolMrozinski/sanctum-suite/issues"
 
 [tool.setuptools.packages.find]
-where = ["src"]
-include = ["sanctum_suite", "sanctum_suite.*"]
+where = ["src", "."]
+include = [
+    "sanctum_suite",
+    "sanctum_suite.*",
+    "src_ada",
+    "src_apl",
+    "src_hals",
+    "src_rust",
+]
 
 [tool.pytest.ini_options]
 pythonpath = ["."]

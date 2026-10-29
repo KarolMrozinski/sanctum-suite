@@ -17,6 +17,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+from sanctum_suite.capability.registry import discover_language_module_capabilities
+
 try:
     import requests
 except Exception:  # pragma: no cover - optional dependency
@@ -126,6 +128,34 @@ class BaseSecurityCapabilityAdapter:
         result["status"] = "PLAN_ONLY"
         result["integration_mode"] = "adapter_contract"
         return result
+
+
+class LanguageModuleCapabilityAdapter(BaseSecurityCapabilityAdapter):
+    """Expose a bundled Ada/APL/HALS/Rust module as a real capability adapter."""
+
+    def __init__(self, record: Any) -> None:
+        self.record = record
+        self.capability_id = record.capability_id
+        self.source_type = "embedded_language_module"
+        self.name = f"{record.language}-module:{record.module_name}"
+        self.description = (
+            f"Discovered {record.language.upper()} module bundle from the companion source tree."
+        )
+
+    def fetch_evidence(self, *, target: str, environment: str, **kwargs: Any) -> dict[str, Any]:
+        return {
+            "provider": self.record.language,
+            "module_name": self.record.module_name,
+            "source_dir": self.record.source_dir,
+            "source_path": self.record.source_path,
+            "target": target,
+            "environment": environment,
+            "source_type": self.source_type,
+            "status": "READY",
+            "integration_mode": "registered_bundle",
+            "sdk": "sanctum-suite-runtime",
+            "capability_id": self.capability_id,
+        }
 
 
 class GCPCloudAdapter(BaseSecurityCapabilityAdapter):
@@ -1573,6 +1603,14 @@ class SecurityCapabilityAdapterRegistry:
         self.register(RetentionPolicyAdapter())
         self.register(OperationalAuditReviewAdapter())
         self.register(ComplianceCutoverAdapter())
+        self.register_integrated_language_modules()
+
+    def register_integrated_language_modules(self) -> None:
+        """Register the Ada/APL/HALS/Rust companion modules as real capabilities."""
+        for record in discover_language_module_capabilities():
+            if record.capability_id in self._adapters:
+                continue
+            self.register(LanguageModuleCapabilityAdapter(record))
 
     @staticmethod
     def supported_wave_catalog() -> dict[str, list[str]]:
