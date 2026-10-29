@@ -40,3 +40,9 @@ clean:
 model-download:
 	@chmod +x models/download_model.sh
 	@./models/download_model.sh $(MODEL)
+
+circuit-compile:
+	@echo "=== SANCTUM SUITE: KOMPILACJA OBWODU CIRCOM ==="
+	mkdir -p circuits/build
+	circom circuits/config_verifier.circom --r1cs --wasm --sym -o circuits/build
+	@echo "[SUKCES] Obwód zk-SNARK został pomyślnie skompilowany!"
