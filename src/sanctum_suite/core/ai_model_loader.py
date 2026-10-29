@@ -13,12 +13,16 @@ logging.basicConfig(
 )
 logger = logging.getLogger("SecureAIModelManager")
 
+AI_MODELS_DIR = Path(os.getenv("SANCTUM_AI_MODELS_DIR", "/var/lib/sanctum/models"))
+
 class ModelSecurityError(Exception):
     pass
 
+SecurityError = ModelSecurityError
+
 class SecureAIModelManager:
 
-    def __init__(self, models_dir: Path = Path("/var/lib/sanctum/models")):
+    def __init__(self, models_dir: Path = AI_MODELS_DIR):
         self.models_dir = Path(models_dir)
         self._loaded_models: Dict[str, Any] = {}
         self.models_dir.mkdir(parents=True, exist_ok=True)
@@ -27,7 +31,7 @@ class SecureAIModelManager:
     def verify_model_integrity(self, model_filename: str, expected_sha256: str) -> Path:
         model_path = self.models_dir / model_filename
         if not model_path.exists():
-            raise FileNotFoundError(f"Model AI nie został odnaleziony w ścieżce systemowej: {model_path}")
+            raise SecurityError(f"Model AI nie został odnaleziony w ścieżce systemowej: {model_path}")
 
         logger.info(f"Weryfikacja kryptograficzna modelu ONNX: {model_filename}")
         
@@ -39,7 +43,7 @@ class SecureAIModelManager:
             calculated_hash = sha256_hash.hexdigest()
 
             if calculated_hash.lower() != expected_sha256.lower():
-                raise ModelSecurityError(
+                raise SecurityError(
                     f"Krytyczny błąd: Naruszenie nienaruszalności modelu AI {model_filename}! "
                     f"Oczekiwano: {expected_sha256}, Otrzymano: {calculated_hash}"
                 )
@@ -49,10 +53,13 @@ class SecureAIModelManager:
 
         except Exception as e:
             logger.error(f"Błąd podczas weryfikacji sumy kontrolnej modelu: {e}")
-            raise ModelSecurityError(f"Weryfikacja modelu nie powiodła się: {e}") from e
+            raise SecurityError(f"Weryfikacja modelu nie powiodła się: {e}") from e
 
     def load_heavy_model(self, model_filename: str, expected_sha256: str) -> Dict[str, Any]:
-        model_path = self.verify_model_integrity(model_filename, expected_sha256)
+        try:
+            model_path = self.verify_model_integrity(model_filename, expected_sha256)
+        except SecurityError:
+            raise
         
         if model_filename in self._loaded_models:
             logger.debug(f"Model {model_filename} jest już załadowany w pamięci.")

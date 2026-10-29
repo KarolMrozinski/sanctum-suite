@@ -15,12 +15,14 @@ logging.basicConfig(
 )
 logger = logging.getLogger("OfflineReleaseBundler")
 
+RELEASE_BUNDLE_DIR = Path(os.getenv("SANCTUM_RELEASE_BUNDLE_DIR", "/var/lib/sanctum/bundles"))
+
 class BundlerError(Exception):
     pass
 
 class OfflineReleaseBundler:
 
-    def __init__(self, output_dir: Path = Path("/var/lib/sanctum/bundles")):
+    def __init__(self, output_dir: Path = RELEASE_BUNDLE_DIR):
         self.output_dir = Path(output_dir)
         self.output_dir.mkdir(parents=True, exist_ok=True)
         logger.info(f"Inicjalizacja OfflineReleaseBundler z katalogiem wyjściowym: {self.output_dir}")

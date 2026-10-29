@@ -13,12 +13,14 @@ logging.basicConfig(
 )
 logger = logging.getLogger("SecureAssetLoader")
 
+SECURE_STORAGE_DIR = Path(os.getenv("SANCTUM_SECURE_STORAGE_DIR", "/var/lib/sanctum"))
+
 class AssetError(Exception):
     pass
 
 class SecureAssetLoader:
 
-    def __init__(self, root_dir: Path = Path("/var/lib/sanctum")):
+    def __init__(self, root_dir: Path = SECURE_STORAGE_DIR):
         self.root_dir = Path(root_dir)
         self.root_dir.mkdir(parents=True, exist_ok=True)
         logger.info(f"Inicjalizacja SecureAssetLoader z katalogiem głównym: {self.root_dir}")

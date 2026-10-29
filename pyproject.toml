@@ -73,3 +73,6 @@ Issues = "https://github.com/KarolMrozinski/sanctum-suite/issues"
 [tool.setuptools.packages.find]
 where = ["src"]
 include = ["sanctum_suite", "sanctum_suite.*"]
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
