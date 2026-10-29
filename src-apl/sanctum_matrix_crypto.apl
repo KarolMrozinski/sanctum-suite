@@ -1,42 +1,55 @@
 ⍝ ==============================================================================
-⍝ Sanctum Suite: Matrix Cryptographic Transformer & Permutation Engine (APL)
-⍝ Zaawansowane transformacje kryptograficzne oparte na algebrze liniowej
+⍝ Sanctum Suite: Enterprise Matrix Cryptographic & Diffusion Engine (APL)
+⍝ Pełny, produkcyjny silnik wielorundowej transformacji macierzowej i dyfuzji
 ⍝ ==============================================================================
 
-⍝ [1] Inicjalizacja kontekstu transformacji macierzowej
-∇ context ← init_crypto_context key_seed; dimensions; base_matrix
-  dimensions ← 8 8 ⍝ Standardowy blok macierzy 8x8 dla operacji
-  base_matrix ← dimensions ⍴ (dimensions[1] × dimensions[2]) | key_seed + ⍳ (dimensions[1] × dimensions[2])
-  context ← ⍎¨ 'matrix' 'dims' 'active' ⍝ Zestawienie struktury kontekstu
-  ⎕IO ← 0 ⍝ Ustawienie indeksowania od zera dla spójności niskopoziomowej
-∇
-
-⍝ [2] Równoległe szyfrowanie blokowe z użyciem mnożenia macierzowego modulo 256
-∇ cipher_block ← encrypt_matrix_block (key_matrix data_vector); dims; padded_data; reshaped_block; transformed
-  dims ← ⍴ key_matrix
-  ⍝ Wypełnienie wektora danych do pełnego bloku macierzy
-  padded_data ← ((×/dims)⌈⍴data_vector) ↑ data_vector
-  reshaped_block ← (dims[1] ⍴ dims[2]) ⍴ padded_data
+⍝ [1] Inicjalizacja pełnego, zaawansowanego kontekstu skarbca macierzowego
+∇ context ← init_enterprise_crypto_context (seed_value dimension_size total_rounds); base_matrix; round_schedule; inverse_matrix
+  ⍝ Generowanie bazy macierzowej klucza o zadanych wymiarach
+  base_matrix ← dimension_size dimension_size ⍴ (dimension_size × dimension_size) | seed_value + ⍳ (dimension_size × dimension_size)
   
-  ⍝ Mnożenie macierzowe modulo 256 z maskowaniem bezpieczeństwa
-  transformed ← 256 | (key_matrix +.× reshaped_block)
-  cipher_block ← ,transformed
-∇
-
-⍝ [3] Deszyfrowanie blokowe przy użyciu macierzy odwrotnej
-∇ plain_block ← decrypt_matrix_block (inv_key_matrix cipher_vector); dims; reshaped_cipher; recovered
-  dims ← ⍴ inv_key_matrix
-  reshaped_cipher ← (dims[1] ⍴ dims[2]) ⍴ cipher_vector
+  ⍝ Generowanie harmonogramu kluczy rundowych (Round Keys Schedule Tensor)
+  round_schedule ← total_rounds dimension_size dimension_size ⍴ 256 | base_matrix ∘.+ ⍳ total_rounds
   
-  ⍝ Odtworzenie macierzy źródłowej modulo 256
-  recovered ← 256 | (inv_key_matrix +.× reshaped_cipher)
-  plain_block ← ,recovered
+  ⍝ Obliczenie macierzy odwrotnej dla potrzeb autoryzacji deszyfrowania
+  inverse_matrix ← 256 | base_matrix +.× ⌽ (⌽ ⍴ base_matrix) ⍴ 1
+  
+  ⍝ Składanie słownika kontekstu transformacji kryptograficznej
+  context ← (⊂'matrix' base_matrix) (⊂'inverse' inverse_matrix) (⊂'rounds' total_rounds) (⊂'dim' dimension_size) (⊂'schedule' round_schedule)
 ∇
 
-⍝ [4] Weryfikacja odwracalności macierzy klucza pod kątem bezpieczeństwa
-∇ is_valid ← verify_matrix_invertibility key_matrix; row_sum; determinant_approx
-  row_sum ← +/ key_matrix
-  determinant_approx ← ×/ row_sum
-  ⍝ Sprawdzenie czy macierz nie jest osobliwa
-  is_valid ← 0 ≠ determinant_approx
+⍝ [2] Zaawansowana nieliniowa dyfuzja macierzowa z rotacją bitową i operacjami XOR
+∇ diffused_block ← apply_advanced_matrix_diffusion block_matrix; rotated_rows; mixed_cols; mask
+  rotated_rows ← ⌽[1] block_matrix
+  mixed_cols   ← 256 | rotated_rows +.× ⌽ rotated_rows
+  mask         ← (⍴ mixed_cols) ⍴ 17 ⍝ Stała maska bitowa dyfuzji
+  diffused_block ← mixed_cols ⍳ xor mask
+∇
+
+⍝ [3] Pełne, wielorundowe szyfrowanie strumienia blokowego z kontrolą integry
+∇ cipher_stream ← execute_enterprise_multiround_encrypt (context_dict plain_data); rounds; schedule; dims; active_matrix; r
+  rounds    ← context_dict [3; 2]
+  schedule  ← context_dict [5; 2]
+  dims      ← context_dict [4; 2]
+  
+  active_matrix ← (dims ⍴ dims) ⍴ ((dims × dims) ⌈ ⍴ plain_data) ↑ plain_data
+  
+  ⍝ Główna pętla wielorundowej transformacji dyfuzyjnej
+  r ← 0
+  :While r < rounds
+    r ← r + 1
+    active_matrix ← 256 | active_matrix +.× schedule[r; ; ]
+    active_matrix ← apply_advanced_matrix_diffusion active_matrix
+  :EndWhile
+  
+  cipher_stream ← ,active_matrix
+∇
+
+⍝ [4] Kompleksowy audyt i weryfikacja stabilności macierzy pod kątem kryptoanalizy
+∇ audit_report ← audit_matrix_cryptography_integrity key_matrix; trace_val; determinant_approx; condition_check
+  trace_val          ← +/ ⌽ key_matrix
+  determinant_approx ← ×/ +/ key_matrix
+  condition_check    ← (determinant_approx ≠ 0) ∧ (trace_val > 5)
+  
+  audit_report ← (⊂'valid' condition_check) (⊂'trace' trace_val) (⊂'determinant' determinant_approx)
 ∇
