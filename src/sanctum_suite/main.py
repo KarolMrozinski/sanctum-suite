@@ -5,6 +5,7 @@ import hmac
 import ipaddress
 import json
 import os
+import subprocess
 import sys
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -186,6 +187,55 @@ def list_modules_cmd() -> None:
         "modules": catalog,
     }
     _print_json_report(report)
+
+
+@app.command(name="rust-module-check")
+def rust_module_check_cmd(
+    release: bool = typer.Option(False, "--release", help="Build the Rust bundle in release mode."),
+    run_demo: bool = typer.Option(False, "--run-demo", help="Execute a minimal Rust smoke test after building."),
+) -> None:
+    """Build and optionally run the embedded Rust bundle as a real runtime component."""
+    root = Path(__file__).resolve().parents[2]
+    cargo_manifest = root / "src-rust" / "Cargo.toml"
+    if not cargo_manifest.exists():
+        raise typer.BadParameter("Rust companion bundle is missing from src-rust/Cargo.toml")
+
+    command = ["cargo", "check"]
+    if release:
+        command = ["cargo", "build", "--release"]
+    cargo_dir = root / "src-rust"
+    result = subprocess.run(command, cwd=cargo_dir, capture_output=True, text=True)
+    if result.returncode != 0:
+        if result.stdout:
+            typer.echo(result.stdout)
+        if result.stderr:
+            typer.echo(result.stderr, err=True)
+        raise typer.Exit(code=result.returncode)
+
+    if run_demo:
+        demo = subprocess.run(
+            ["cargo", "run", "--example", "demo"],
+            cwd=cargo_dir,
+            capture_output=True,
+            text=True,
+        )
+        if demo.returncode != 0:
+            if demo.stdout:
+                typer.echo(demo.stdout)
+            if demo.stderr:
+                typer.echo(demo.stderr, err=True)
+            raise typer.Exit(code=demo.returncode)
+
+    _print_json_report({
+        "bundle": "src-rust",
+        "workspace": str(root),
+        "mode": "release" if release else "check",
+        "compiled": True,
+        "run_demo": run_demo,
+        "modules": sorted(
+            path.stem for path in (cargo_dir / "src").iterdir() if path.is_file() and path.suffix == ".rs"
+        ),
+    })
 
 
 @app.command(name="dashboard")

@@ -15,6 +15,7 @@ import logging
 import os
 import re
 import sqlite3
+import subprocess
 import uuid
 from collections.abc import Mapping, Sequence
 from pathlib import Path
@@ -1599,6 +1600,50 @@ async def get_language_module_group(language: str) -> Dict[str, Any]:
         "language": normalized,
         "total_modules": len(items),
         "modules": items,
+    }
+
+
+@app.get("/api/v1/modules/rust/status", tags=["integrated-modules"], dependencies=[Security(verify_api_key)])
+async def get_rust_bundle_status() -> Dict[str, Any]:
+    """Report the embedded Rust bundle runtime status, build state, and module inventory."""
+    bundle_root = Path(__file__).resolve().parents[2] / "src-rust"
+    cargo_manifest = bundle_root / "Cargo.toml"
+    entry = describe_integrated_language_modules().get("rust", [])
+    build_status = {
+        "bundle_root": str(bundle_root),
+        "cargo_manifest_present": cargo_manifest.exists(),
+        "module_count": len(entry),
+        "modules": entry,
+        "build_ready": cargo_manifest.exists(),
+    }
+    if cargo_manifest.exists():
+        try:
+            result = subprocess.run(
+                ["cargo", "check"],
+                cwd=bundle_root,
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+            build_status.update(
+                {
+                    "cargo_check_exit_code": result.returncode,
+                    "cargo_check_ok": result.returncode == 0,
+                    "cargo_check_stdout": result.stdout.strip(),
+                    "cargo_check_stderr": result.stderr.strip(),
+                }
+            )
+        except FileNotFoundError:
+            build_status.update({
+                "cargo_check_exit_code": None,
+                "cargo_check_ok": False,
+                "cargo_check_stdout": "",
+                "cargo_check_stderr": "cargo command not available in runtime environment",
+            })
+    return {
+        "language": "rust",
+        "status": "READY" if build_status.get("cargo_check_ok") else "NOT_CONFIGURED",
+        "bundle": build_status,
     }
 
 
