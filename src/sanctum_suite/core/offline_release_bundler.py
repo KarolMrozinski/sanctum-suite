@@ -81,12 +81,29 @@ class OfflineReleaseBundler:
 
         try:
             with tarfile.open(tar_path, "r:gz") as tar:
-                # Zabezpieczenie przed Directory Traversal podczas rozpakowywania
-                for member in tar.getmembers():
-                    member_path = target_extraction_dir / member.name
-                    if not str(member_path.resolve()).startswith(str(target_extraction_dir.resolve())):
+                members = tar.getmembers()
+                for member in members:
+                    if member.islnk() or member.issym():
+                        raise BundlerError(f"Wykryto niebezpieczny link w archiwum: {member.name}")
+                    member_path = (target_extraction_dir / member.name).resolve()
+                    extraction_root = target_extraction_dir.resolve()
+                    if not str(member_path).startswith(str(extraction_root)):
                         raise BundlerError(f"Wykryto próbę Path Traversal w archiwum: {member.name}")
-                tar.extractall(path=target_extraction_dir)
+
+                for member in members:
+                    destination = target_extraction_dir / member.name
+                    destination.parent.mkdir(parents=True, exist_ok=True)
+                    if member.isdir():
+                        destination.mkdir(parents=True, exist_ok=True)
+                        continue
+                    if member.isfile():
+                        extracted_file = tar.extractfile(member)
+                        if extracted_file is None:
+                            raise BundlerError(f"Nie udało się odczytać pliku z archiwum: {member.name}")
+                        with extracted_file, open(destination, "wb") as output_stream:
+                            output_stream.write(extracted_file.read())
+                        continue
+                    raise BundlerError(f"Wykryto nieobsługiwany typ wpisu archiwum: {member.name}")
 
             logger.info(f"Paczka {bundle_filename} została pomyślnie rozpakowana.")
             return target_extraction_dir
