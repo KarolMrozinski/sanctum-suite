@@ -5,7 +5,7 @@ version = "0.1.0-dev"
 authors = ["Karol Mrozinski"]
 maintainers = ["Karol Mrozinski <example@example.com>"]
 maintainers-logins = ["KarolMrozinski"]
-licenses = "Proprietary"
+licenses = "MIT"
 website = ""
 tags = []
 
