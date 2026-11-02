@@ -17,7 +17,7 @@ MarkupSafe==3.0.4
 networkx==3.7
 opentelemetry-api==1.45.1
 pydantic==2.14.1
-pydantic_core==2.50.1
+pydantic_core==2.50.2
 annotated-types==0.8.0
 pytest==9.2.0
 pluggy==1.7.0
