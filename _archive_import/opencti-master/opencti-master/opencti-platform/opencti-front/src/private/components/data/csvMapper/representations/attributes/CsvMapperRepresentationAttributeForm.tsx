@@ -1,0 +1,135 @@
+import React, { FunctionComponent, useEffect, useState } from 'react';
+import { Combobox, ComboboxContent, ComboboxControls, ComboboxField, ComboboxInput, ComboboxLabel, ComboboxTrigger } from '@filigran/design-system';
+import CsvMapperRepresentationAttributeOptions from '@components/data/csvMapper/representations/attributes/CsvMapperRepresentationAttributeOptions';
+import { alphabet } from '@components/data/csvMapper/representations/attributes/AttributeUtils';
+import { FieldProps } from 'formik';
+import CsvMapperRepresentationDialogOption from '@components/data/csvMapper/representations/attributes/CsvMapperRepresentationDialogOption';
+import CsvMapperRepresentionAttributeSelectedConfigurations from '@components/data/csvMapper/representations/attributes/CsvMapperRepresentionAttributeSelectedConfigurations';
+import { CsvMapperRepresentationAttributeFormData } from '@components/data/csvMapper/representations/attributes/Attribute';
+import { SchemaAttribute } from '@components/data/csvMapper/representations/attributes/CsvMapperRepresentationAttributesForm';
+import { useFormatter } from '../../../../../../components/i18n';
+import { isEmptyField } from '../../../../../../utils/utils';
+import { styled, useTheme } from '@mui/material/styles';
+import Box from '@mui/material/Box';
+import { Theme } from '../../../../../../components/Theme';
+
+const Container = styled('div')({
+  width: '100%',
+  display: 'inline-grid',
+  gridTemplateColumns: '2fr 3fr 50px',
+  alignItems: 'center',
+  marginTop: '10px',
+  gap: '10px',
+});
+
+export type RepresentationAttributeForm = CsvMapperRepresentationAttributeFormData | undefined;
+
+interface CsvMapperRepresentationAttributeFormProps
+  extends FieldProps<RepresentationAttributeForm> {
+  schemaAttribute: SchemaAttribute;
+  label: string;
+  handleErrors: (key: string, value: string | null) => void;
+}
+
+const CsvMapperRepresentationAttributeForm: FunctionComponent<
+  CsvMapperRepresentationAttributeFormProps
+> = ({ form, field, schemaAttribute, label, handleErrors }) => {
+  const { t_i18n } = useFormatter();
+  const theme = useTheme<Theme>();
+  const { name, value } = field;
+  const { setFieldValue } = form;
+
+  const options = alphabet(26);
+
+  // -- ERRORS --
+
+  const hasErrors = () => {
+    const missMandatoryValue = schemaAttribute.mandatory && isEmptyField(value?.column_name);
+    const missSettingsDefaultValue = isEmptyField(schemaAttribute.defaultValues);
+    const missDefaultValue = isEmptyField(value?.default_values);
+    return missMandatoryValue && missSettingsDefaultValue && missDefaultValue;
+  };
+
+  const [errors, setErrors] = useState(hasErrors());
+
+  // -- EVENTS --
+
+  useEffect(() => {
+    setErrors(hasErrors());
+  }, [value, schemaAttribute]);
+
+  useEffect(() => {
+    if (errors) {
+      handleErrors(schemaAttribute.name, 'This attribute is required');
+    } else {
+      handleErrors(schemaAttribute.name, null);
+    }
+  }, [errors]);
+
+  const onColumnChange = async (column: string | null) => {
+    if (!value) {
+      // this attribute was not set yet, initialize
+      const newAttribute: CsvMapperRepresentationAttributeFormData = {
+        key: schemaAttribute.name,
+        column_name: column ?? undefined,
+      };
+      await setFieldValue(name, newAttribute);
+    } else {
+      const updateAttribute: CsvMapperRepresentationAttributeFormData = {
+        ...value,
+        column_name: column ?? undefined,
+      };
+      await setFieldValue(name, updateAttribute);
+    }
+  };
+
+  return (
+    <Container>
+      <div>
+        {label}
+        {schemaAttribute.mandatory && <Box component="span" sx={{ color: theme.palette.designSystem.tertiary.red[400], marginLeft: '5px' }}>*</Box>}
+      </div>
+      <div>
+        <Combobox
+          selectOnFocus
+          openOnFocus
+          options={options}
+          // attribute might be unselected yet, but we need value=null as this is a controlled component
+          value={value?.column_name ?? null}
+          onValueChange={(val) => onColumnChange(val as string | null)}
+          error={errors}
+        >
+          <ComboboxLabel>{t_i18n('Column index')}</ComboboxLabel>
+          <ComboboxField>
+            <ComboboxInput />
+            <ComboboxControls>
+              <ComboboxTrigger />
+            </ComboboxControls>
+          </ComboboxField>
+          <ComboboxContent
+            listAriaLabel={t_i18n('Column index')}
+          />
+        </Combobox>
+      </div>
+      <div style={{ alignSelf: 'end', marginBottom: '0px' }}>
+        {
+          (schemaAttribute.type === 'date' || schemaAttribute.multiple || schemaAttribute.editDefault)
+          && (
+            <CsvMapperRepresentationDialogOption configuration={value}>
+              <CsvMapperRepresentationAttributeOptions
+                schemaAttribute={schemaAttribute}
+                attributeName={name}
+                form={form}
+              />
+            </CsvMapperRepresentationDialogOption>
+          )
+        }
+      </div>
+      <CsvMapperRepresentionAttributeSelectedConfigurations
+        configuration={value}
+      />
+    </Container>
+  );
+};
+
+export default CsvMapperRepresentationAttributeForm;

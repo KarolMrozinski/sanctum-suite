@@ -1,0 +1,183 @@
+import React from 'react';
+import { describe, it, expect, vi, beforeEach, Mock } from 'vitest';
+import { act, render, screen, waitFor } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
+import { BrowserRouter } from 'react-router';
+import { createTheme, ThemeOptions, ThemeProvider } from '@mui/material/styles';
+import AppIntlProvider from '../../../../components/AppIntlProvider';
+import ThemeDark from '../../../../components/ThemeDark';
+import { LoginContextProvider } from '../loginContext';
+import ForcePasswordChange from '../ForcePasswordChange';
+
+// Mock useApiMutation so we don't need a full relay environment
+const commitFnMock = vi.fn();
+vi.mock('../../../../utils/hooks/useApiMutation', () => ({
+  default: () => [commitFnMock, false],
+}));
+
+vi.mock('../../../../relay/environment', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../../../relay/environment')>();
+  return {
+    ...actual,
+    handleErrorInForm: vi.fn(),
+  };
+});
+
+const renderWithLoginContext = (ui: React.ReactNode) => {
+  const user = userEvent.setup();
+  const result = render(
+    <BrowserRouter useTransitions={false}>
+      <AppIntlProvider settings={{ platform_language: 'auto', platform_translations: '{}' }}>
+        <ThemeProvider theme={createTheme(ThemeDark() as ThemeOptions)}>
+          <LoginContextProvider>
+            {ui}
+          </LoginContextProvider>
+        </ThemeProvider>
+      </AppIntlProvider>
+    </BrowserRouter>,
+  );
+  return { user, ...result };
+};
+
+describe('ForcePasswordChange (public login)', () => {
+  const basePolicies = {};
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('renders new password and confirmation fields', () => {
+    renderWithLoginContext(<ForcePasswordChange policies={basePolicies} />);
+    expect(screen.getByLabelText('New password')).toBeDefined();
+    expect(screen.getByLabelText('Confirmation')).toBeDefined();
+  });
+
+  it('renders Back to login and Update buttons', () => {
+    renderWithLoginContext(<ForcePasswordChange policies={basePolicies} />);
+    expect(screen.getByRole('button', { name: 'Back to login' })).toBeDefined();
+    expect(screen.getByRole('button', { name: 'Update' })).toBeDefined();
+  });
+
+  it('Update button is disabled when form is empty', async () => {
+    renderWithLoginContext(<ForcePasswordChange policies={basePolicies} />);
+    const submitBtn = screen.getByRole('button', { name: 'Update' });
+
+    // Initial form validation can be async with Formik/Yup.
+    await waitFor(() => {
+      expect((submitBtn as HTMLButtonElement).disabled).toBeTruthy();
+    });
+  });
+
+  it('submits mutation with correct variables on valid form', async () => {
+    const { user } = renderWithLoginContext(<ForcePasswordChange policies={basePolicies} />);
+
+    await user.type(screen.getByLabelText('New password'), 'NewPass1!');
+    await user.type(screen.getByLabelText('Confirmation'), 'NewPass1!');
+    await user.click(screen.getByRole('button', { name: 'Update' }));
+
+    expect(commitFnMock).toHaveBeenCalledWith(expect.objectContaining({
+      variables: {
+        input: [{ key: 'password', value: ['NewPass1!'] }],
+      },
+    }));
+  });
+
+  it('calls window.location.reload on success', async () => {
+    const reloadMock = vi.fn();
+    vi.stubGlobal('location', { ...window.location, reload: reloadMock });
+
+    const { user } = renderWithLoginContext(<ForcePasswordChange policies={basePolicies} />);
+    await user.type(screen.getByLabelText('New password'), 'NewPass1!');
+    await user.type(screen.getByLabelText('Confirmation'), 'NewPass1!');
+    await user.click(screen.getByRole('button', { name: 'Update' }));
+
+    const config = (commitFnMock as Mock).mock.calls[0][0];
+    config.onCompleted?.();
+    expect(reloadMock).toHaveBeenCalled();
+  });
+
+  it('handles mutation errors', async () => {
+    const { handleErrorInForm } = await import('../../../../relay/environment');
+    const { user } = renderWithLoginContext(<ForcePasswordChange policies={basePolicies} />);
+    await user.type(screen.getByLabelText('New password'), 'NewPass1!');
+    await user.type(screen.getByLabelText('Confirmation'), 'NewPass1!');
+    await user.click(screen.getByRole('button', { name: 'Update' }));
+
+    const config = (commitFnMock as Mock).mock.calls[0][0];
+    config.onError?.({ res: { errors: [{ message: 'boom' }] } });
+    expect(handleErrorInForm).toHaveBeenCalled();
+  });
+
+  it('clears both fields and explains a recently used password under the first one', async () => {
+    const { handleErrorInForm } = await import('../../../../relay/environment');
+    const { user } = renderWithLoginContext(<ForcePasswordChange policies={basePolicies} />);
+    await user.type(screen.getByLabelText('New password'), 'OldPass1!');
+    await user.type(screen.getByLabelText('Confirmation'), 'OldPass1!');
+    await user.click(screen.getByRole('button', { name: 'Update' }));
+
+    const config = (commitFnMock as Mock).mock.calls[0][0];
+    act(() => {
+      config.onError?.({ res: { errors: [{ message: 'reused', name: 'PASSWORD_REUSED', extensions: { code: 'PASSWORD_REUSED' } }] } });
+    });
+    expect(await screen.findByText('This password has already been used recently. Please choose a different one.')).toBeDefined();
+    expect((screen.getByLabelText('New password') as HTMLInputElement).value).toBe('');
+    expect((screen.getByLabelText('Confirmation') as HTMLInputElement).value).toBe('');
+    expect(handleErrorInForm).not.toHaveBeenCalled();
+  });
+
+  it('shows no error once a new password is accepted after a recently used one was refused', async () => {
+    vi.stubGlobal('location', { ...window.location, reload: vi.fn() });
+    const reusedMessage = 'This password has already been used recently. Please choose a different one.';
+    const { user } = renderWithLoginContext(<ForcePasswordChange policies={basePolicies} />);
+    await user.type(screen.getByLabelText('New password'), 'OldPass1!');
+    await user.type(screen.getByLabelText('Confirmation'), 'OldPass1!');
+    await user.click(screen.getByRole('button', { name: 'Update' }));
+    act(() => {
+      (commitFnMock as Mock).mock.calls[0][0].onError?.({ res: { errors: [{ message: 'reused', name: 'PASSWORD_REUSED', extensions: { code: 'PASSWORD_REUSED' } }] } });
+    });
+    expect(await screen.findByText(reusedMessage)).toBeDefined();
+
+    await user.type(screen.getByLabelText('New password'), 'NewPass2!');
+    await user.type(screen.getByLabelText('Confirmation'), 'NewPass2!');
+    await user.click(screen.getByRole('button', { name: 'Update' }));
+    await waitFor(() => expect(commitFnMock).toHaveBeenCalledTimes(2));
+    act(() => {
+      (commitFnMock as Mock).mock.calls[1][0].onCompleted?.();
+    });
+
+    // The refusal was not the starting state of the form: emptying it after the success does not bring the message back
+    expect(screen.queryByText(reusedMessage)).toBeNull();
+    expect((screen.getByLabelText('New password') as HTMLInputElement).value).toBe('');
+    expect((screen.getByLabelText('Confirmation') as HTMLInputElement).value).toBe('');
+  });
+
+  it('does not ask for the confirmation while the user types a new password after a recently used one was refused', async () => {
+    const { user } = renderWithLoginContext(<ForcePasswordChange policies={basePolicies} />);
+    await user.type(screen.getByLabelText('New password'), 'OldPass1!');
+    await user.type(screen.getByLabelText('Confirmation'), 'OldPass1!');
+    await user.click(screen.getByRole('button', { name: 'Update' }));
+    act(() => {
+      (commitFnMock as Mock).mock.calls[0][0].onError?.({ res: { errors: [{ message: 'reused', name: 'PASSWORD_REUSED', extensions: { code: 'PASSWORD_REUSED' } }] } });
+    });
+    expect(await screen.findByText('This password has already been used recently. Please choose a different one.')).toBeDefined();
+
+    await user.type(screen.getByLabelText('New password'), 'N');
+
+    // The emptied confirmation is not touched any more: it waits for the user to reach it
+    await waitFor(() => expect((screen.getByLabelText('New password') as HTMLInputElement).value).toBe('N'));
+    expect(screen.queryByText('This field is required')).toBeNull();
+  });
+
+  it('shows the password history rule when the platform enforces it', () => {
+    renderWithLoginContext(<ForcePasswordChange policies={{ historyCount: 3 }} />);
+    expect(screen.getByText('Must be different from your last 3 passwords')).toBeDefined();
+  });
+
+  it('Back to login resets forcePasswordChange context flag', async () => {
+    const { user } = renderWithLoginContext(<ForcePasswordChange policies={basePolicies} />);
+    // Should not throw - clicking back to login resets context
+    await user.click(screen.getByRole('button', { name: 'Back to login' }));
+    // Still renders (didn't crash)
+    expect(screen.getByRole('button', { name: 'Back to login' })).toBeDefined();
+  });
+});

@@ -1,0 +1,348 @@
+/**
+ * Tests for WorkflowTransitions.tsx — focusing on pending/error state branches
+ * that are not covered by WorkflowStatus.test.tsx (which tests the normal transition UI).
+ */
+import React from 'react';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { screen } from '@testing-library/react';
+import { useMutation } from 'react-relay';
+import { WorkflowTransitions } from './WorkflowTransitions';
+import testRender from '../../../../utils/tests/test-render';
+import type { WorkflowStatus_data$key } from './__generated__/WorkflowStatus_data.graphql';
+
+// ---------------------------------------------------------------------------
+// Relay + router mocks (same pattern as WorkflowStatus.test.tsx)
+// ---------------------------------------------------------------------------
+const mockCommit = vi.fn();
+const mockCommitClear = vi.fn();
+const mocks = vi.hoisted(() => ({ isBypass: false }));
+
+vi.mock('react-relay', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('react-relay')>();
+  return {
+    ...actual,
+    createFragmentContainer: (component: React.ComponentType) => component,
+    useFragment: (_fragment: unknown, data: unknown) => data,
+    useMutation: vi.fn()
+      .mockImplementationOnce(() => [mockCommit, false])
+      .mockImplementationOnce(() => [mockCommitClear, false])
+      .mockImplementation(() => [vi.fn(), false]),
+  };
+});
+
+vi.mock('../../drafts/useSwitchDraft', () => ({
+  default: () => ({ exitDraft: vi.fn() }),
+}));
+
+vi.mock('react-router', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('react-router')>();
+  return { ...actual, useNavigate: () => vi.fn() };
+});
+
+vi.mock('../../../../utils/hooks/useGranted', () => ({
+  default: () => false,
+  isBypassUser: () => mocks.isBypass,
+  KNOWLEDGE_KNUPDATE_KNBYPASSFIELDS: 'KNOWLEDGE_KNUPDATE_KNBYPASSFIELDS',
+}));
+
+vi.mock('../../../../relay/environment', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../../../relay/environment')>();
+  return {
+    ...actual,
+    MESSAGING$: { notifySuccess: vi.fn(), notifyError: vi.fn() },
+  };
+});
+
+// ---------------------------------------------------------------------------
+// Fixtures
+// ---------------------------------------------------------------------------
+const makeStatus = () => ({
+  id: 'status-1',
+  template: { name: 'In review', color: '#ff0000' },
+});
+
+const makeDraft = (overrides: Record<string, unknown> = {}): WorkflowStatus_data$key => ({
+  id: 'draft-1',
+  entity_id: 'entity-1',
+  processingCount: 0,
+  workflowInstance: {
+    id: 'instance-1',
+    currentState: 'in_review',
+    currentStatus: makeStatus(),
+    lastHistoryEntry: null,
+    allowedTransitions: [],
+    pendingStatus: null,
+    pendingTransition: null,
+    pendingError: null,
+  },
+  ...overrides,
+} as unknown as WorkflowStatus_data$key);
+
+const makePendingDraft = (asyncActions = [{ id: 's1', workId: 'w1', type: 'asyncBulkAction', status: 'pending', expectedCount: 20, processedCount: 5 }]) =>
+  makeDraft({
+    workflowInstance: {
+      id: 'instance-1',
+      currentState: 'in_review',
+      currentStatus: makeStatus(),
+      lastHistoryEntry: null,
+      allowedTransitions: [],
+      pendingStatus: 'pending',
+      pendingError: null,
+      pendingTransition: {
+        event: 'Sharing with partners',
+        toState: 'shared',
+        triggeredAt: new Date().toISOString(),
+        asyncActions,
+      },
+    },
+  });
+
+const makeErrorDraft = (pendingError?: string) =>
+  makeDraft({
+    workflowInstance: {
+      id: 'instance-1',
+      currentState: 'in_review',
+      currentStatus: makeStatus(),
+      lastHistoryEntry: null,
+      allowedTransitions: [],
+      pendingStatus: 'error',
+      pendingError: pendingError ?? null,
+      pendingTransition: null,
+    },
+  });
+
+// ---------------------------------------------------------------------------
+// Tests
+// ---------------------------------------------------------------------------
+
+describe('WorkflowTransitions – pending state UI', () => {
+  beforeEach(() => {
+    mockCommit.mockReset();
+    mockCommitClear.mockReset();
+  });
+
+  it('renders null when workflowInstance is absent', () => {
+    const { container } = testRender(
+      <WorkflowTransitions data={makeDraft({ workflowInstance: null })} />,
+    );
+    expect(container.firstChild).toBeNull();
+  });
+
+  it('renders the event name and a spinner when a transition is pending', () => {
+    testRender(<WorkflowTransitions data={makePendingDraft()} />);
+    expect(screen.getByText('Sharing with partners')).toBeDefined();
+    // CircularProgress renders an svg with role="progressbar"
+    expect(document.querySelector('[role="progressbar"]')).not.toBeNull();
+  });
+
+  it('renders the progress counter (processedCount / expectedCount) when expectedCount > 0', () => {
+    testRender(<WorkflowTransitions data={makePendingDraft()} />);
+    expect(screen.getByText('5 / 20')).toBeDefined();
+  });
+
+  it('hides the progress counter when expectedCount is 0', () => {
+    const draft = makePendingDraft([{ id: 's1', workId: 'w1', type: 'asyncBulkAction', status: 'pending', expectedCount: 0, processedCount: 0 }]);
+    testRender(<WorkflowTransitions data={draft} />);
+    expect(screen.queryByText(/\//)).toBeNull();
+  });
+
+  it('does NOT render transition buttons while pending', () => {
+    const pendingDraft = makePendingDraft();
+    testRender(<WorkflowTransitions data={pendingDraft} />);
+    // No "approve" or similar buttons
+    expect(screen.queryByRole('button')).toBeNull();
+  });
+});
+
+describe('WorkflowTransitions – error state UI', () => {
+  beforeEach(() => {
+    mockCommit.mockReset();
+    mockCommitClear.mockReset();
+  });
+
+  it('renders "Transition failed" text and an error icon when pendingStatus is error', () => {
+    testRender(<WorkflowTransitions data={makeErrorDraft()} />);
+    expect(screen.getByText('Transition failed')).toBeDefined();
+  });
+
+  it('hides Clear from users without bypass permission in the error state', () => {
+    testRender(<WorkflowTransitions data={makeErrorDraft()} />);
+    expect(screen.queryByText('Clear')).toBeNull();
+    expect(screen.queryByText('Retry')).toBeNull();
+  });
+});
+
+describe('WorkflowTransitions – validate draft dialog', () => {
+  beforeEach(() => {
+    mockCommit.mockReset();
+    mockCommitClear.mockReset();
+  });
+
+  it('shows the validate draft dialog when currentStep is validate', async () => {
+    const draft = makeDraft({
+      workflowInstance: {
+        id: 'instance-1',
+        currentState: 'in_review',
+        currentStatus: makeStatus(),
+        lastHistoryEntry: null,
+        pendingStatus: null,
+        pendingError: null,
+        pendingTransition: null,
+        allowedTransitions: [
+          {
+            event: 'approve',
+            toState: 'approved',
+            actions: ['validateDraft'],
+            comment: null,
+            requiresShareOrganizationInput: false,
+            requiresUnshareOrganizationInput: false,
+            toStatus: makeStatus(),
+          },
+        ],
+      },
+    });
+
+    const { user } = testRender(<WorkflowTransitions data={draft} />);
+    await user.click(screen.getByText('approve'));
+    expect(await screen.findByText('Do you want to approve this draft and send it to ingestion?')).toBeDefined();
+  });
+
+  it('focuses the comment field when the transition dialog opens', async () => {
+    const draft = makeDraft({
+      workflowInstance: {
+        id: 'instance-1',
+        currentState: 'in_review',
+        currentStatus: makeStatus(),
+        lastHistoryEntry: null,
+        pendingStatus: null,
+        pendingError: null,
+        pendingTransition: null,
+        allowedTransitions: [
+          {
+            event: 'publish',
+            toState: 'published',
+            actions: [],
+            comment: 'required',
+            requiresShareOrganizationInput: false,
+            requiresUnshareOrganizationInput: false,
+            toStatus: makeStatus(),
+          },
+        ],
+      },
+    });
+
+    const { user } = testRender(<WorkflowTransitions data={draft} />);
+    await user.click(screen.getByText('publish'));
+    // Not the dialog's close button, which Radix would focus first
+    expect(await screen.findByLabelText(/Comment/)).toHaveFocus();
+  });
+
+  it('shows a warning Alert when processingCount > 0 in the validate dialog', async () => {
+    const draft = {
+      ...makeDraft({
+        processingCount: 3,
+        workflowInstance: {
+          id: 'instance-1',
+          currentState: 'in_review',
+          currentStatus: makeStatus(),
+          lastHistoryEntry: null,
+          pendingStatus: null,
+          pendingError: null,
+          pendingTransition: null,
+          allowedTransitions: [
+            {
+              event: 'approve',
+              toState: 'approved',
+              actions: ['validateDraft'],
+              comment: null,
+              requiresShareOrganizationInput: false,
+              requiresUnshareOrganizationInput: false,
+              toStatus: makeStatus(),
+            },
+          ],
+        },
+      }),
+    };
+
+    const { user } = testRender(<WorkflowTransitions data={draft} />);
+    await user.click(screen.getByText('approve'));
+    expect(await screen.findByText('Ongoing processes')).toBeDefined();
+  });
+});
+
+describe('WorkflowTransitions — next status menu', () => {
+  const makeTransition = (event: string, actions: string[] = []) => ({
+    event,
+    toState: event,
+    actions,
+    comment: null,
+    requiresShareOrganizationInput: false,
+    requiresUnshareOrganizationInput: false,
+    toStatus: makeStatus(),
+  });
+
+  it('opens a menu listing every transition when there are three or more', async () => {
+    const draft = makeDraft({
+      workflowInstance: {
+        id: 'instance-1',
+        currentState: 'in_review',
+        currentStatus: makeStatus(),
+        lastHistoryEntry: null,
+        pendingStatus: null,
+        pendingError: null,
+        pendingTransition: null,
+        allowedTransitions: [makeTransition('approve', ['validateDraft']), makeTransition('reject'), makeTransition('archive')],
+      },
+    });
+
+    const { user } = testRender(<WorkflowTransitions data={draft} />);
+    await user.click(screen.getByRole('button', { name: 'Next status' }));
+    expect(screen.getAllByRole('menuitem')).toHaveLength(3);
+    await user.click(screen.getByRole('menuitem', { name: /^approve/ }));
+    expect(await screen.findByText('Do you want to approve this draft and send it to ingestion?')).toBeDefined();
+  });
+});
+
+describe('WorkflowTransitions – status out of sync with the workflow', () => {
+  const makeDivergedDraft = () => makeDraft({
+    workflowInstance: {
+      id: 'instance-1',
+      currentState: 'in_review',
+      currentStatus: makeStatus(),
+      lastHistoryEntry: null,
+      pendingStatus: null,
+      pendingError: 'x_opencti_workflow_id was set to Status "status-2", which does not map to any state of the published workflow',
+      pendingTransition: null,
+      allowedTransitions: [],
+    },
+  });
+
+  beforeEach(() => {
+    mocks.isBypass = false;
+    mockCommitClear.mockReset();
+    vi.mocked(useMutation).mockImplementation(() => [mockCommitClear, false]);
+  });
+
+  afterEach(() => {
+    vi.mocked(useMutation).mockImplementation(() => [vi.fn(), false]);
+  });
+
+  it('shows the divergence when pendingError is set without a pending transition', () => {
+    testRender(<WorkflowTransitions data={makeDivergedDraft()} />);
+    expect(screen.getByText('Status out of sync with the workflow')).toBeDefined();
+    expect(screen.queryByText('Clear')).toBeNull();
+  });
+
+  it('opens the divergence reason from the keyboard', async () => {
+    const { user } = testRender(<WorkflowTransitions data={makeDivergedDraft()} />);
+    await user.tab();
+    expect((await screen.findByRole('tooltip')).textContent).toContain('does not map to any state of the published workflow');
+  });
+
+  it('lets a bypass user clear the divergence', async () => {
+    mocks.isBypass = true;
+    const { user } = testRender(<WorkflowTransitions data={makeDivergedDraft()} />);
+    await user.click(screen.getByRole('button', { name: 'Clear' }));
+    expect(mockCommitClear).toHaveBeenCalledWith(expect.objectContaining({ variables: { entityId: 'draft-1' } }));
+  });
+});

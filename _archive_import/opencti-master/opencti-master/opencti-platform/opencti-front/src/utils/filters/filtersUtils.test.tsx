@@ -1,0 +1,2539 @@
+import { describe, expect, it } from 'vitest';
+import {
+  buildFiltersAndOptionsForWidgets,
+  buildFiltersForCustomView,
+  cloneFilterGroup,
+  emptyFilterGroup,
+  ensureFilterIds,
+  findFilterFromKey,
+  findFiltersFromKeys,
+  formatFiltersInPirContext,
+  getAvailableOperatorForFilter,
+  getEntityTypeThreeFirstLevelsFilterValues,
+  getSelectedOptions,
+  isDraftWorkspaceFilterGroup,
+  isFilterGroupFormatCorrect,
+  isFilterGroupNotEmpty,
+  isRegardingOfFilterWarning,
+  normalizeFilterGroupForBackend,
+  normalizeFilterGroupForFrontend,
+  pruneEmptyFiltersAndGroups,
+  removeEmptyFiltersFromList,
+  removeFrontendIdAndEmptyFiltersFromFilterGroupObject,
+  removeIdAndIncorrectKeysFromFilterGroupObject,
+  sanitizeFiltersStructure,
+  serializeFilterGroupForBackend,
+  canonicalizeFilterGroupForBackend,
+  useBuildEntityTypeBasedFilterContext,
+  useBuildFilterKeysMapFromEntityType,
+  useStixFilters,
+  getStixFiltersDisplayedKeys,
+  GqlFilterGroup,
+} from './filtersUtils';
+import { createMockUserContext, testRenderHook } from '../tests/test-render';
+import { expectNoFrontendIds } from '../tests/filtersTestHelpers';
+import filterKeysSchema from '../tests/FilterUtilsConstants';
+import { FilterGroup } from './filtersHelpers-types';
+import { FilterDefinition } from '../hooks/useAuth';
+
+describe('Filters utils', () => {
+  describe('removeEmptyFiltersFromList', () => {
+    it('should remove filters with empty values when operator requires values', () => {
+      const filtersList = [
+        { key: 'name', values: [], operator: 'eq' },
+        { key: 'entity_type', values: ['Malware'], operator: 'eq' },
+      ];
+
+      expect(removeEmptyFiltersFromList(filtersList)).toEqual([
+        { key: 'entity_type', values: ['Malware'], operator: 'eq' },
+      ]);
+    });
+
+    it('should keep filters with no-value operators even when values are empty', () => {
+      const filtersList = [
+        { key: 'description', values: [], operator: 'nil' },
+        { key: 'objectMarking', values: [], operator: 'not_nil' },
+        { key: 'confidence', values: [], operator: 'has_changed' },
+        { key: 'workflow_id', values: [], operator: 'not_has_changed' },
+      ];
+
+      expect(removeEmptyFiltersFromList(filtersList)).toEqual(filtersList);
+    });
+
+    it('should treat missing operator as eq and remove empty filter', () => {
+      const filtersList = [
+        { key: 'name', values: [] },
+        { key: 'entity_type', values: ['Report'] },
+      ];
+
+      expect(removeEmptyFiltersFromList(filtersList)).toEqual([
+        { key: 'entity_type', values: ['Report'] },
+      ]);
+    });
+  });
+
+  describe('useBuildFilterKeysMapFromEntityType', () => {
+    it('should list filter definitions by given entity types attributes', () => {
+      const stixCoreObjectKey = 'Stix-Core-Object';
+      const entityTypes = [stixCoreObjectKey];
+      const { hook } = testRenderHook(
+        () => useBuildFilterKeysMapFromEntityType(entityTypes),
+        {
+          userContext: createMockUserContext({
+            schema: {
+              scos: [{ id: '', label: '' }],
+              sdos: [{ id: '', label: '' }],
+              smos: [{ id: '', label: '' }],
+              scrs: [{ id: '', label: '' }],
+              schemaRelationsTypesMapping: new Map<string, readonly string[]>(),
+              schemaRelationsRefTypesMapping: new Map<string, readonly { name: string; toTypes: string[] }[]>(),
+              filterKeysSchema,
+            },
+          }),
+        },
+      );
+      expect(hook.result.current).toStrictEqual(filterKeysSchema.get(stixCoreObjectKey));
+    });
+  });
+
+  describe('removeFrontendIdAndEmptyFiltersFromFilterGroupObject', () => {
+    it('should remove id from filters', () => {
+      expect(removeFrontendIdAndEmptyFiltersFromFilterGroupObject(emptyFilterGroup)).toStrictEqual(emptyFilterGroup);
+      const filters = {
+        mode: 'and',
+        filters: [
+          { id: 'id-1', key: 'objectLabel', values: [], operator: 'nil' },
+          { id: 'id-2', key: 'objectMarking', values: ['M1', 'M2'], operator: 'eq', mode: 'or' },
+          { id: 'id-3',
+            key: 'dynamicRegardingOf',
+            values: [
+              { key: 'false_key', values: ['test'] },
+              { key: 'dynamic',
+                values: [
+                  { mode: 'and', filters: [{ id: 'id-3.1', key: 'entity_type', values: ['Malware'] }], filterGroups: [] },
+                ],
+              },
+              { key: 'relationship_type', values: ['related-to'] },
+            ],
+          },
+        ],
+        filterGroups: [
+          {
+            mode: 'and',
+            filters: [
+              { id: 'id-4', key: ['creator_id'], values: ['XX'], operator: 'not_eq' },
+            ],
+            filterGroups: [],
+          },
+        ],
+      };
+      const filtersResult = {
+        mode: 'and',
+        filters: [
+          { key: 'objectLabel', values: [], operator: 'nil' },
+          { key: 'objectMarking', values: ['M1', 'M2'], operator: 'eq', mode: 'or' },
+          { key: 'dynamicRegardingOf',
+            values: [
+              { key: 'dynamic',
+                values: [
+                  { mode: 'and', filters: [{ key: 'entity_type', values: ['Malware'] }], filterGroups: [] },
+                ],
+              },
+              { key: 'relationship_type', values: ['related-to'] },
+            ],
+          },
+        ],
+        filterGroups: [
+          {
+            mode: 'and',
+            filters: [
+              { key: ['creator_id'], values: ['XX'], operator: 'not_eq' },
+            ],
+            filterGroups: [],
+          },
+        ],
+      };
+      expect(removeFrontendIdAndEmptyFiltersFromFilterGroupObject(filters as unknown as FilterGroup)).toStrictEqual(filtersResult);
+    });
+
+    it('should preserve filters with has_changed/not_has_changed operators despite empty values', () => {
+      const filters = {
+        mode: 'and',
+        filters: [
+          { id: 'id-1', key: 'confidence', values: [], operator: 'has_changed' },
+          { id: 'id-2', key: 'x_opencti_workflow_id', values: [], operator: 'not_has_changed' },
+          { id: 'id-3', key: 'objectMarking', values: [], operator: 'eq' },
+          { id: 'id-4', key: 'entity_type', values: ['Report'], operator: 'eq' },
+        ],
+        filterGroups: [],
+      };
+      const filtersResult = {
+        mode: 'and',
+        filters: [
+          { key: 'confidence', values: [], operator: 'has_changed' },
+          { key: 'x_opencti_workflow_id', values: [], operator: 'not_has_changed' },
+          { key: 'entity_type', values: ['Report'], operator: 'eq' },
+        ],
+        filterGroups: [],
+      };
+      expect(removeFrontendIdAndEmptyFiltersFromFilterGroupObject(filters as unknown as FilterGroup)).toStrictEqual(filtersResult);
+    });
+  });
+
+  describe('removeIdAndIncorrectKeysFromFilterGroupObject', () => {
+    it('should remove id and incorrect filter keys from filters', () => {
+      const availableFilterKeys = ['objectLabel', 'objectMarking', 'creator_id', 'entity_type', 'dynamicRegardingOf', 'published'];
+      const filters = {
+        mode: 'and',
+        filters: [
+          { id: 'id-1', key: 'objectLabel', values: [], operator: 'nil' }, // id to remove
+          { id: 'id-2', key: 'ids', values: ['i1', 'i2'], operator: 'eq', mode: 'or' }, // id to remove, key to keep because 'ids' is a not cleanable key
+          { id: 'id-3', // id to remove
+            key: 'dynamicRegardingOf',
+            values: [
+              { key: 'false_key', values: ['test'] }, // to remove because not authorized in dynamicRegardingOf filter
+              { key: 'dynamic',
+                values: [
+                  { mode: 'and', filters: [{ id: 'id-3.1', key: 'entity_type', values: ['Malware'] }], filterGroups: [] },
+                ],
+              },
+              { key: 'relationship_type', values: ['related-to'] },
+            ],
+          },
+        ],
+        filterGroups: [
+          {
+            mode: 'and',
+            filters: [
+              { id: 'id-4', key: 'creator_id', values: ['XX'], operator: 'not_eq' }, // id to remove
+              { id: 'id-5', key: 'false_key', values: ['YY'] }, // to remove because key not in availableFilterKeys
+            ],
+            filterGroups: [],
+          },
+        ],
+      };
+      const filtersResult = {
+        mode: 'and',
+        filters: [
+          { key: 'objectLabel', values: [], operator: 'nil' },
+          { key: 'ids', values: ['i1', 'i2'], operator: 'eq', mode: 'or' },
+          { key: 'dynamicRegardingOf',
+            values: [
+              { key: 'dynamic',
+                values: [
+                  { mode: 'and', filters: [{ key: 'entity_type', values: ['Malware'] }], filterGroups: [] },
+                ],
+              },
+              { key: 'relationship_type', values: ['related-to'] },
+            ],
+          },
+        ],
+        filterGroups: [
+          {
+            mode: 'and',
+            filters: [
+              { key: 'creator_id', values: ['XX'], operator: 'not_eq' },
+            ],
+            filterGroups: [],
+          },
+        ],
+      };
+      expect(removeIdAndIncorrectKeysFromFilterGroupObject(filters as unknown as FilterGroup, availableFilterKeys)).toStrictEqual(filtersResult);
+    });
+
+    it('should return undefined for null or undefined input', () => {
+      expect(removeIdAndIncorrectKeysFromFilterGroupObject(null, ['entity_type'])).toBeUndefined();
+      expect(removeIdAndIncorrectKeysFromFilterGroupObject(undefined, ['entity_type'])).toBeUndefined();
+    });
+
+    it('should strip filters with empty values (non-nil operator)', () => {
+      const filters: FilterGroup = {
+        mode: 'and',
+        filters: [
+          { id: 'f1', key: 'entity_type', values: [], operator: 'eq', mode: 'or' },
+          { id: 'f2', key: 'entity_type', values: ['Malware'], operator: 'eq', mode: 'or' },
+        ],
+        filterGroups: [],
+      };
+      const result = removeIdAndIncorrectKeysFromFilterGroupObject(filters, ['entity_type']);
+      expect(result!.filters.length).toEqual(1);
+      expect(result!.filters[0].values).toEqual(['Malware']);
+    });
+
+    it('should keep filters with nil/not_nil operator even with empty values', () => {
+      const filters: FilterGroup = {
+        mode: 'and',
+        filters: [
+          { id: 'f1', key: 'objectLabel', values: [], operator: 'nil', mode: 'or' },
+          { id: 'f2', key: 'objectLabel', values: [], operator: 'not_nil', mode: 'or' },
+        ],
+        filterGroups: [],
+      };
+      const result = removeIdAndIncorrectKeysFromFilterGroupObject(filters, ['objectLabel']);
+      expect(result!.filters.length).toEqual(2);
+    });
+
+    it('should remove all filters if none match the available keys', () => {
+      const filters: FilterGroup = {
+        mode: 'and',
+        filters: [
+          { id: 'f1', key: 'unknown_key', values: ['val'], operator: 'eq', mode: 'or' },
+          { id: 'f2', key: 'another_bad_key', values: ['val'], operator: 'eq', mode: 'or' },
+        ],
+        filterGroups: [],
+      };
+      const result = removeIdAndIncorrectKeysFromFilterGroupObject(filters, ['entity_type']);
+      expect(result!.filters.length).toEqual(0);
+    });
+
+    it('should strip empty or undefined imbricated filterGroups', () => {
+      const filters: FilterGroup = {
+        mode: 'and',
+        filters: [
+          { id: 'f1', key: 'entity_type', values: ['Malware'], operator: 'eq', mode: 'or' },
+        ],
+        filterGroups: [
+          emptyFilterGroup, // empty group, should be removed
+          {
+            mode: 'or',
+            filters: [
+              { id: 'f2', key: 'objectLabel', values: ['label1'], operator: 'eq', mode: 'or' },
+            ],
+            filterGroups: [],
+          },
+        ],
+      };
+      const result = removeIdAndIncorrectKeysFromFilterGroupObject(filters, ['entity_type', 'objectLabel']);
+      expect(result!.filterGroups.length).toEqual(1);
+      expect(result!.filterGroups[0].filters[0].key).toEqual('objectLabel');
+    });
+  });
+
+  describe('getEntityTypeTwoFirstLevelsFilterValues', () => {
+    it('should return only observable subtypes when filter with AND Observables', () => {
+      // filters: Observable AND Domain-Name
+      // result: Domain-Name
+      const filters = {
+        mode: 'and',
+        filters: [{ key: 'entity_type', operator: 'eq', values: ['Stix-Cyber-Observable'] }],
+        filterGroups: [
+          {
+            mode: 'and',
+            filters: [{ key: 'entity_type', operator: 'eq', values: ['Domain-Name'] }],
+            filterGroups: [],
+          },
+        ],
+      };
+      const result = getEntityTypeThreeFirstLevelsFilterValues(filters, ['Domain-Name', 'File']);
+      expect(result).toEqual(['Domain-Name']);
+    });
+
+    it('should return both the observable subtypes and observable when filter with OR Observables and filter groups', () => {
+      // filters: Observable OR Domain-Name
+      // result: Observable, Domain-Name
+      const filters = {
+        mode: 'or',
+        filters: [{ key: 'entity_type', operator: 'eq', values: ['Stix-Cyber-Observable'] }],
+        filterGroups: [
+          {
+            mode: 'and',
+            filters: [
+              { key: 'entity_type', operator: 'eq', values: ['Domain-Name'] },
+            ],
+            filterGroups: [],
+          },
+        ],
+      };
+      const result = getEntityTypeThreeFirstLevelsFilterValues(filters, ['Domain-Name', 'File'], ['Stix-Domain-Object']);
+      expect(result).toEqual(['Stix-Cyber-Observable', 'Domain-Name']);
+    });
+
+    it('should return both the observable subtypes and observable when filter with OR Observables', () => {
+      // filters: Domain-Name OR Observable
+      // result: Domain-Name, Observable
+      const filters = {
+        mode: 'or',
+        filters: [{ key: 'entity_type', operator: 'eq', values: ['Domain-Name', 'Stix-Cyber-Observable'] }],
+        filterGroups: [],
+      };
+      const result = getEntityTypeThreeFirstLevelsFilterValues(filters, ['Domain-Name', 'File'], ['Stix-Domain-Object']);
+      expect(result).toEqual(['Domain-Name', 'Stix-Cyber-Observable']);
+    });
+
+    it('should return only observable subtypes when filter with AND Observables and filter groups', () => {
+      // filters: Observable AND (Domain-Name AND label=label1)
+      // result: Domain-Name
+      const filters = {
+        mode: 'and',
+        filters: [{ key: 'entity_type', operator: 'eq', values: ['Stix-Cyber-Observable'] }],
+        filterGroups: [
+          {
+            mode: 'and',
+            filters: [
+              { key: 'entity_type', operator: 'eq', values: ['Domain-Name'] },
+              { key: 'objectLabel', operator: 'eq', values: ['label1'] },
+            ],
+            filterGroups: [],
+          },
+        ],
+      };
+      const result = getEntityTypeThreeFirstLevelsFilterValues(filters, ['Domain-Name', 'File']);
+      expect(result).toEqual(['Domain-Name']);
+    });
+
+    it('should return only observable when filter with OR Observables and filter groups', () => {
+      // filters: Observable AND (Domain-Name OR label=label1)
+      // result: Observable
+      const filters = {
+        mode: 'and',
+        filters: [{ key: 'entity_type', operator: 'eq', values: ['Stix-Cyber-Observable'] }],
+        filterGroups: [
+          {
+            mode: 'or',
+            filters: [
+              { key: 'entity_type', operator: 'eq', values: ['Domain-Name'] },
+              { key: 'objectLabel', operator: 'eq', values: ['label1'] },
+            ],
+            filterGroups: [],
+          },
+        ],
+      };
+      const result = getEntityTypeThreeFirstLevelsFilterValues(filters, ['Domain-Name', 'File'], ['Report', 'Malware']);
+      expect(result).toEqual(['Stix-Cyber-Observable']);
+    });
+
+    it('should return only observable subtypes when filter with AND Observables', () => {
+      // filters: Observable AND (Domain-Name OR File)
+      // result: Domain-Name, File
+      const filters = {
+        mode: 'and',
+        filters: [
+          { key: 'entity_type', operator: 'eq', values: ['Stix-Cyber-Observable'] },
+        ],
+        filterGroups: [
+          {
+            mode: 'and',
+            filters: [
+              { key: 'entity_type', operator: 'eq', values: ['Domain-Name', 'File'] },
+            ],
+            filterGroups: [],
+          },
+        ],
+      };
+      const result = getEntityTypeThreeFirstLevelsFilterValues(filters, ['Domain-Name', 'File'], ['Report', 'Malware']);
+      expect(result).toEqual(['Domain-Name', 'File']);
+    });
+
+    it('should return only the domain subtype when filter with OR and only one type is provided', () => {
+      // filters: Stix-Domain-Object AND Malware
+      // result: Malware
+      const filters = {
+        mode: 'and',
+        filters: [{ key: 'entity_type', operator: 'eq', values: ['Stix-Domain-Object'] }],
+        filterGroups: [
+          {
+            mode: 'or',
+            filters: [{ key: 'entity_type', operator: 'eq', values: ['Malware'] }],
+            filterGroups: [],
+          },
+        ],
+      };
+      const result = getEntityTypeThreeFirstLevelsFilterValues(filters, ['Domain-Name', 'File'], ['Malware', 'Artifact', 'Country', 'City']);
+      expect(result).toEqual(['Malware']);
+    });
+
+    it('should return all the types if several entity types filters', () => {
+      // filters: Report OR Malware
+      // result: Report, Malware
+      const filters = {
+        mode: 'or',
+        filters: [
+          { key: 'entity_type', operator: 'eq', values: ['Report'] },
+          { key: 'entity_type', operator: 'eq', values: ['Malware'] },
+        ],
+        filterGroups: [],
+      };
+      const result = getEntityTypeThreeFirstLevelsFilterValues(filters, [], ['Malware', 'Report', 'Country', 'City']);
+      expect(result).toEqual(['Report', 'Malware']);
+    });
+
+    it('should return all the types if both entity type and relationship type filters', () => {
+      // filters: Report OR related-to
+      // result: Report, related-to
+      const filters = {
+        mode: 'or',
+        filters: [
+          { key: 'entity_type', operator: 'eq', values: ['Report'] },
+          { key: 'relationship_type', operator: 'eq', values: ['related-to'] },
+        ],
+        filterGroups: [],
+      };
+      const result = getEntityTypeThreeFirstLevelsFilterValues(filters, []);
+      expect(result).toEqual(['Report', 'related-to']);
+    });
+
+    it('should return all the types if several entity types filters', () => {
+      // filters: (Entity OR File) AND Malware
+      // result: Malware
+      const filters = {
+        mode: 'and',
+        filters: [
+          { key: 'entity_type', operator: 'eq', values: ['Report', 'File'] },
+          { key: 'entity_type', operator: 'eq', values: ['Malware'] },
+        ],
+        filterGroups: [],
+      };
+      const result = getEntityTypeThreeFirstLevelsFilterValues(filters, ['File'], ['Malware', 'Report', 'Country', 'City']);
+      expect(result).toEqual(['Report', 'File', 'Malware']);
+    });
+
+    it('should return correct types if there are filter groups with no entity types', () => {
+      // filters: (Malware) OR (label=label1 AND marking=marking1)
+      // result: []
+      const filters = {
+        mode: 'or',
+        filters: [
+          { key: 'entity_type', operator: 'eq', values: ['Malware'] },
+        ],
+        filterGroups: [{
+          mode: 'and',
+          filters: [
+            { key: 'objectLabel', operator: 'eq', values: ['label1-id'] },
+            { key: 'objectMarking', operator: 'eq', values: ['marking1-id'] },
+          ],
+          filterGroups: [],
+        }],
+      };
+      const result = getEntityTypeThreeFirstLevelsFilterValues(filters, [], []);
+      expect(result).toEqual([]);
+      // filters: (Malware) AND (label=label1 OR marking=marking1)
+      // result: Malware
+      const filters2 = {
+        mode: 'and',
+        filters: [
+          { key: 'entity_type', operator: 'eq', values: ['Malware'] },
+        ],
+        filterGroups: [{
+          mode: 'or',
+          filters: [
+            { key: 'objectLabel', operator: 'eq', values: ['label1-id'] },
+            { key: 'objectMarking', operator: 'eq', values: ['marking1-id'] },
+          ],
+          filterGroups: [],
+        }],
+      };
+      const result2 = getEntityTypeThreeFirstLevelsFilterValues(filters2, [], []);
+      expect(result2).toEqual(['Malware']);
+    });
+
+    it('should return correct types if there are filter groups with entity types', () => {
+      // filters: (Malware) OR (City AND label=label1 AND marking=marking1)
+      // result: Malware, City
+      const filters = {
+        mode: 'or',
+        filters: [
+          { key: 'entity_type', operator: 'eq', values: ['Malware'] },
+        ],
+        filterGroups: [{
+          mode: 'and',
+          filters: [
+            { key: 'entity_type', operator: 'eq', values: ['City'] },
+            { key: 'objectLabel', operator: 'eq', values: ['label1-id'] },
+            { key: 'objectMarking', operator: 'eq', values: ['marking1-id'] },
+          ],
+          filterGroups: [],
+        }],
+      };
+      const result = getEntityTypeThreeFirstLevelsFilterValues(filters, [], []);
+      expect(result).toEqual(['Malware', 'City']);
+      // filters: (Malware) AND (City OR label=label1)
+      // result: Malware
+      const filters2 = {
+        mode: 'and',
+        filters: [
+          { key: 'entity_type', operator: 'eq', values: ['Malware'] },
+        ],
+        filterGroups: [{
+          mode: 'or',
+          filters: [
+            { key: 'entity_type', operator: 'eq', values: ['City'] },
+            { key: 'objectLabel', operator: 'eq', values: ['label1-id'] },
+          ],
+          filterGroups: [],
+        }],
+      };
+      const result2 = getEntityTypeThreeFirstLevelsFilterValues(filters2, [], []);
+      expect(result2).toEqual(['Malware']);
+    });
+
+    it('should return correct types if there are filter groups with sub entity types', () => {
+      // filters: (Stix-Cyber-Observable) AND (File OR label=label1)
+      // result: Stix-Cyber-Observable
+      const filters = {
+        mode: 'and',
+        filters: [
+          { key: 'entity_type', operator: 'eq', values: ['Stix-Cyber-Observable'] },
+        ],
+        filterGroups: [{
+          mode: 'or',
+          filters: [
+            { key: 'entity_type', operator: 'eq', values: ['File'] },
+            { key: 'objectLabel', operator: 'eq', values: ['label1-id'] },
+          ],
+          filterGroups: [],
+        }],
+      };
+      const result = getEntityTypeThreeFirstLevelsFilterValues(filters, ['File', 'Domain-Name'], []);
+      expect(result).toEqual(['Stix-Cyber-Observable']);
+      // filters: (Stix-Cyber-Observable) AND (File)
+      // result: File
+      const filters2 = {
+        mode: 'and',
+        filters: [
+          { key: 'entity_type', operator: 'eq', values: ['Stix-Cyber-Observable'] },
+        ],
+        filterGroups: [{
+          mode: 'or',
+          filters: [
+            { key: 'entity_type', operator: 'eq', values: ['File'] },
+          ],
+          filterGroups: [],
+        }],
+      };
+      const result2 = getEntityTypeThreeFirstLevelsFilterValues(filters2, ['File', 'Domain-Name'], []);
+      expect(result2).toEqual(['File']);
+      // filters: (Stix-Cyber-Observable) OR (File AND label=label1)
+      // result: Stix-Cyber-Observable
+      const filters3 = {
+        mode: 'or',
+        filters: [
+          { key: 'entity_type', operator: 'eq', values: ['Stix-Cyber-Observable'] },
+        ],
+        filterGroups: [{
+          mode: 'and',
+          filters: [
+            { key: 'entity_type', operator: 'eq', values: ['File'] },
+            { key: 'objectLabel', operator: 'eq', values: ['label1-id'] },
+          ],
+          filterGroups: [],
+        }],
+      };
+      const result3 = getEntityTypeThreeFirstLevelsFilterValues(filters3, ['File', 'Domain-Name'], []);
+      expect(result3).toEqual(['Stix-Cyber-Observable', 'File']);
+    });
+    it('should return only observable subtypes when filter with AND  in third level', () => {
+      // filters: Observable AND (labels AND (Domain-Name OR File))
+      // result: Domain-Name, File
+      const filters = {
+        mode: 'and',
+        filters: [
+          { key: 'entity_type', operator: 'eq', values: ['Stix-Cyber-Observable'] },
+        ],
+        filterGroups: [
+          {
+            mode: 'and',
+            filters: [
+              { key: 'objectLabel', operator: 'eq', values: ['label1-id'] },
+            ],
+            filterGroups: [
+              {
+                mode: 'and',
+                filters: [
+                  { key: 'entity_type', operator: 'eq', values: ['Domain-Name', 'File'] },
+                ],
+                filterGroups: [],
+              },
+            ],
+          },
+        ],
+      };
+      const result = getEntityTypeThreeFirstLevelsFilterValues(filters, ['Domain-Name', 'File'], ['Report', 'Malware']);
+      expect(result).toEqual(['Domain-Name', 'File']);
+    });
+  });
+
+  describe('useBuildEntityTypeBasedFilterContext', () => {
+    const userContext = createMockUserContext({
+      schema: {
+        scos: [{ id: '', label: '' }],
+        sdos: [{ id: '', label: '' }],
+        smos: [{ id: '', label: '' }],
+        scrs: [{ id: '', label: '' }],
+        schemaRelationsTypesMapping: new Map<string, readonly string[]>(),
+        schemaRelationsRefTypesMapping: new Map<string, readonly { name: string; toTypes: string[] }[]>(),
+        filterKeysSchema,
+      },
+    });
+    it('should return filters with added entity type context', () => {
+      const filters: FilterGroup = {
+        mode: 'and',
+        filters: [{ key: 'objectLabel', operator: 'not_eq', values: ['label1'] }],
+        filterGroups: [],
+      };
+      const contextFilters = {
+        mode: 'and',
+        filters: [
+          { key: 'entity_type', values: ['Stix-Core-Object'], operator: 'eq', mode: 'or' },
+        ],
+        filterGroups: [filters],
+      };
+      const { hook } = testRenderHook(
+        () => useBuildEntityTypeBasedFilterContext('Stix-Core-Object', filters),
+        { userContext },
+      );
+      expect(hook.result.current).toEqual(contextFilters);
+    });
+
+    it('should return filters with added entity type and draft context', () => {
+      const draftId = 'draft1-id';
+      const filters: FilterGroup = {
+        mode: 'and',
+        filters: [{ key: 'objectLabel', operator: 'not_eq', values: ['label1'] }],
+        filterGroups: [
+          {
+            mode: 'and',
+            filters: [
+              { key: 'objectMarking', values: ['marking1', 'marking2'] },
+              { key: 'created_at', values: ['now-1d'], operator: 'gt' },
+              { key: 'fake_filter_key', values: ['test'] }, // to be removed in the result
+            ],
+            filterGroups: [],
+          },
+        ],
+      };
+      const contextFilters = {
+        mode: 'and',
+        filters: [
+          { key: 'entity_type', values: ['Stix-Core-Object'], operator: 'eq', mode: 'or' },
+          { key: 'entity_type', values: ['Report'], operator: 'not_eq', mode: 'and' },
+          { key: 'draft_ids', values: [draftId] },
+          { key: 'draft_change', operator: 'not_nil', values: [] },
+        ],
+        filterGroups: [{
+          mode: 'and',
+          filters: [{ key: 'objectLabel', operator: 'not_eq', values: ['label1'] }],
+          filterGroups: [
+            {
+              mode: 'and',
+              filters: [
+                { key: 'objectMarking', values: ['marking1', 'marking2'] },
+                { key: 'created_at', values: ['now-1d'], operator: 'gt' },
+              ],
+              filterGroups: [],
+            },
+          ],
+        }],
+      };
+      const { hook } = testRenderHook(
+        () => useBuildEntityTypeBasedFilterContext(['Stix-Core-Object'], filters, { excludedEntityTypesParam: ['Report'], draftId }),
+        { userContext },
+      );
+      expect(hook.result.current).toEqual(contextFilters);
+    });
+  });
+});
+
+describe('Function findFilterFromKey', () => {
+  it('findFilterFromKey should return the first filter matching key and operator', () => {
+    const filtersList = [
+      { key: 'name', values: ['name1'], operator: 'eq' },
+      { key: 'name', values: ['name2'], operator: 'eq' },
+      { key: 'name', values: ['name3'], operator: 'not_eq' },
+    ];
+    const result = findFilterFromKey(filtersList, 'name');
+    expect(result).toEqual({ key: 'name', values: ['name1'], operator: 'eq' });
+  });
+
+  it('findFilterFromKey should return null when key is not found', () => {
+    const filtersList = [
+      { key: 'value', values: ['value1'], operator: 'eq' },
+    ];
+    const result = findFilterFromKey(filtersList, 'name');
+    expect(result).toBeNull();
+  });
+
+  it('findFilterFromKey should treat missing operator as eq', () => {
+    const filtersList = [
+      { key: 'name', values: ['name1'] },
+      { key: 'name', values: ['name2'], operator: 'not_eq' },
+    ];
+    const result = findFilterFromKey(filtersList, 'name');
+    expect(result).toEqual({ key: 'name', values: ['name1'] });
+  });
+});
+
+describe('Function findFiltersFromKeys: should return the filters of the specified keys among a filters list', () => {
+  it('findFiltersFromKeys without specifying an operator', () => {
+    const filtersList = [
+      { key: 'value', values: [], operator: 'nil' },
+      { key: 'name', values: ['name1', 'name2'], operator: 'eq' },
+    ];
+    const result = findFiltersFromKeys(filtersList, ['value']);
+    expect(result).toEqual([]);
+  });
+  it('findFiltersFromKeys with several results', () => {
+    const filtersList = [
+      { key: 'value', values: [], operator: 'nil' },
+      { key: 'name', values: ['name1', 'name2'], operator: 'eq' },
+      { key: 'name', values: ['name3'], operator: 'eq' },
+    ];
+    const result = findFiltersFromKeys(filtersList, ['name']);
+    expect(result).toEqual([{ key: 'name', values: ['name1', 'name2'], operator: 'eq' },
+      { key: 'name', values: ['name3'], operator: 'eq' }]);
+  });
+  it('findFiltersFromKeys with operator specified', () => {
+    const filtersList = [
+      { key: 'value', values: [], operator: 'nil' },
+      { key: 'name', values: ['name1', 'name2'], operator: 'eq' },
+    ];
+    const result = findFiltersFromKeys(filtersList, ['value'], 'nil');
+    expect(result).toEqual([{ key: 'value', values: [], operator: 'nil' }]);
+  });
+  it('findFiltersFromKeys with several keys', () => {
+    const filtersList = [
+      { key: 'value', values: ['value1'], operator: 'eq' },
+      { key: 'created_at', values: ['XX', 'YY'], mode: 'or' },
+      { key: 'created_at', values: ['ZZ'], operator: 'not_eq' },
+      { key: 'name', values: ['name1', 'name2'], operator: 'eq' },
+    ];
+    const result = findFiltersFromKeys(filtersList, ['value', 'test', 'created_at']);
+    expect(result).toEqual([{ key: 'value', values: ['value1'], operator: 'eq' },
+      { key: 'created_at', values: ['XX', 'YY'], mode: 'or' }]);
+  });
+});
+
+describe('Function normalizeFilterGroupForBackend', () => {
+  it('should not return null/undefined when an empty filter group is used as input', () => {
+    const result = normalizeFilterGroupForBackend(emptyFilterGroup);
+    expect(result).not.toBeNull();
+    expect(result).not.toBeUndefined();
+    expect(result).toStrictEqual({
+      mode: 'and',
+      filters: [],
+      filterGroups: [],
+    });
+  });
+
+  it('should convert string keys to arrays', () => {
+    const input: FilterGroup = {
+      mode: 'and',
+      filters: [
+        { id: 'f1', key: 'entity_type', values: ['Malware'], operator: 'eq', mode: 'or' },
+      ],
+      filterGroups: [],
+    };
+    const result = normalizeFilterGroupForBackend(input);
+    expect(result?.filters[0].key).toEqual(['entity_type']);
+  });
+
+  it('should keep keys that are already arrays', () => {
+    const input = {
+      mode: 'and',
+      filters: [
+        { id: 'f1', key: ['objectMarking'], values: ['marking1'], operator: 'eq', mode: 'or' },
+      ],
+      filterGroups: [],
+    } as unknown as FilterGroup;
+    const result = normalizeFilterGroupForBackend(input);
+    expect(result?.filters[0].key).toEqual(['objectMarking']);
+  });
+
+  it('should remove filter IDs', () => {
+    const input: FilterGroup = {
+      mode: 'and',
+      filters: [
+        { id: 'should-be-removed', key: 'name', values: ['test'], operator: 'eq', mode: 'or' },
+      ],
+      filterGroups: [],
+    };
+    const result = normalizeFilterGroupForBackend(input);
+    expect(result?.filters[0]).not.toHaveProperty('id');
+  });
+
+  it('should strip filters with empty values and no nil operator', () => {
+    const input: FilterGroup = {
+      mode: 'and',
+      filters: [
+        { id: 'f1', key: 'name', values: [], operator: 'eq', mode: 'or' },
+        { id: 'f2', key: 'entity_type', values: ['Report'], operator: 'eq', mode: 'or' },
+      ],
+      filterGroups: [],
+    };
+    const result = normalizeFilterGroupForBackend(input);
+    expect(result?.filters.length).toEqual(1);
+    expect(result?.filters[0].key).toEqual(['entity_type']);
+  });
+
+  it('should keep filters with nil/not_nil operator even if values are empty', () => {
+    const input: FilterGroup = {
+      mode: 'and',
+      filters: [
+        { id: 'f1', key: 'description', values: [], operator: 'nil', mode: 'or' },
+        { id: 'f2', key: 'name', values: [], operator: 'not_nil', mode: 'or' },
+      ],
+      filterGroups: [],
+    };
+    const result = normalizeFilterGroupForBackend(input);
+    expect(result?.filters.length).toEqual(2);
+  });
+
+  it('should recursively process nested filterGroups', () => {
+    const input: FilterGroup = {
+      mode: 'and',
+      filters: [
+        { id: 'f1', key: 'entity_type', values: ['Malware'], operator: 'eq', mode: 'or' },
+      ],
+      filterGroups: [
+        {
+          mode: 'or',
+          filters: [
+            { id: 'f2', key: 'name', values: ['test'], operator: 'eq', mode: 'or' },
+          ],
+          filterGroups: [],
+        },
+      ],
+    };
+    const result = normalizeFilterGroupForBackend(input);
+    expect(result?.filterGroups![0].filters[0].key).toEqual(['name']);
+    expect(result?.filterGroups![0].filters[0]).not.toHaveProperty('id');
+  });
+
+  it('should ignore imbricated empty filter groups', () => {
+    const input: FilterGroup = {
+      mode: 'and',
+      filters: [
+        { id: 'f1', key: 'entity_type', values: ['Malware'], operator: 'eq', mode: 'or' },
+      ],
+      filterGroups: [emptyFilterGroup],
+    };
+    const result = normalizeFilterGroupForBackend(input);
+    expect(result).toEqual({
+      mode: 'and',
+      filters: [
+        { key: ['entity_type'], values: ['Malware'], operator: 'eq', mode: 'or' },
+      ],
+      filterGroups: [],
+    });
+  });
+});
+
+describe('Function serializeFilterGroupForBackend', () => {
+  it('serializeFilterGroupForBackend: empty filter group', () => {
+    const result = serializeFilterGroupForBackend(undefined);
+    expect(result).toEqual(JSON.stringify(emptyFilterGroup));
+  });
+  it('serializeFilterGroupForBackend: complex filters', () => {
+    const inputFilters = {
+      mode: 'or',
+      filters: [
+        { id: 'XX', key: ['value'], values: ['value1'], operator: 'eq' },
+        { key: 'name', values: ['name1, name2'] },
+      ],
+      filterGroups: [
+        {
+          mode: 'and',
+          filters: [
+            { id: 'YY', key: 'name', values: [], operator: 'nil' },
+          ],
+          filterGroups: [],
+        },
+      ],
+    };
+    const resultFilters = {
+      mode: 'or',
+      filters: [
+        { key: ['value'], values: ['value1'], operator: 'eq' },
+        { key: ['name'], values: ['name1, name2'] },
+      ],
+      filterGroups: [
+        {
+          mode: 'and',
+          filters: [
+            { key: ['name'], values: [], operator: 'nil' },
+          ],
+          filterGroups: [],
+        },
+      ],
+    };
+    const result = serializeFilterGroupForBackend(inputFilters as FilterGroup);
+    expect(result).toEqual(JSON.stringify(resultFilters));
+  });
+});
+
+describe('isRegardingOfFilterWarning', () => {
+  it('should return if the filter combination is a warning one', () => {
+    const filtersRepresentativesMap = new Map([
+      ['reportId', { representativeId: 'reportId', value: 'MyReport', entity_type: 'Report', color: 'red' }],
+      ['malwareId', { representativeId: 'malwareId', value: 'MyMalware', entity_type: 'Malware', color: 'red' }],
+      ['observableId', { representativeId: 'observableId', value: 'MyObservable', entity_type: 'Software', color: 'red' }],
+      ['indicatorId', { representativeId: 'indicatorId', value: 'MyIndicator', entity_type: 'Indicator', color: 'red' }],
+    ]);
+    const filter1 = { key: 'objectMarking', values: ['marking1'], operator: 'eq' };
+    const isWarning1 = isRegardingOfFilterWarning(filter1, [], filtersRepresentativesMap);
+    expect(isWarning1).toEqual(false);
+    const filter2 = {
+      key: 'regardingOf',
+      values: [
+        { key: 'relationship_type', values: ['targets'] },
+      ],
+    };
+    const isWarning2 = isRegardingOfFilterWarning(filter2, [], filtersRepresentativesMap);
+    expect(isWarning2).toEqual(false);
+    const filter3 = {
+      key: 'regardingOf',
+      values: [
+        { key: 'id', values: ['malwareId'] },
+      ],
+    };
+    const isWarning3 = isRegardingOfFilterWarning(filter3, [], filtersRepresentativesMap);
+    expect(isWarning3).toEqual(false);
+    const filter5 = {
+      key: 'regardingOf',
+      values: [
+        { key: 'relationship_type', values: ['targets'] },
+        { key: 'id', values: ['reportId'] },
+      ],
+    };
+    const isWarning5 = isRegardingOfFilterWarning(filter5, [], filtersRepresentativesMap);
+    expect(isWarning5).toEqual(false);
+    const filter6 = {
+      key: 'regardingOf',
+      values: [
+        { key: 'relationship_type', values: ['related-to'] },
+        { key: 'id', values: ['observableId'] },
+      ],
+    };
+    const isWarning6 = isRegardingOfFilterWarning(filter6, ['Software', 'Domain-Name'], filtersRepresentativesMap);
+    expect(isWarning6).toEqual(true);
+    const filter7 = {
+      key: 'regardingOf',
+      values: [
+        { key: 'relationship_type', values: ['uses', 'related-to'] },
+        { key: 'id', values: ['reportId', 'observableId'] },
+      ],
+    };
+    const isWarning7 = isRegardingOfFilterWarning(filter7, ['Software', 'Domain-Name'], filtersRepresentativesMap);
+    expect(isWarning7).toEqual(true);
+    const filter8 = {
+      key: 'regardingOf',
+      values: [
+        { key: 'relationship_type', values: ['indicates', 'related-to'] },
+        { key: 'id', values: ['reportId'] },
+      ],
+    };
+    const isWarning8 = isRegardingOfFilterWarning(filter8, ['Software', 'Domain-Name'], filtersRepresentativesMap);
+    expect(isWarning8).toEqual(false);
+    const filter9 = {
+      key: 'regardingOf',
+      values: [
+        { key: 'relationship_type', values: ['indicates', 'related-to'] },
+        { key: 'id', values: ['indicatorId'] },
+      ],
+    };
+    const isWarning9 = isRegardingOfFilterWarning(filter9, ['Software', 'Domain-Name'], filtersRepresentativesMap);
+    expect(isWarning9).toEqual(true);
+  });
+});
+
+describe('buildFiltersAndOptionsForWidgets', () => {
+  it('should return filters with start date', () => {
+    const startDate = '2025-10-15T00:00:00+02:00';
+    const inputFilters = {
+      mode: 'and',
+      filters: [{ key: 'entity_type', values: ['Report'] }],
+      filterGroups: [
+        {
+          mode: 'or',
+          filters: [
+            { key: 'objectMarking', values: ['marking1'] },
+            { key: 'entity_type', values: ['Country', 'City'] },
+          ],
+          filterGroups: [],
+        },
+      ],
+    };
+    const expectedFilters = {
+      mode: 'and',
+      filters: [{ key: 'created_at', values: [startDate], operator: 'gt', mode: 'or' }],
+      filterGroups: [
+        {
+          mode: 'and',
+          filters: [{ key: 'entity_type', values: ['Report'] }],
+          filterGroups: [
+            {
+              mode: 'or',
+              filters: [
+                { key: 'objectMarking', values: ['marking1'] },
+                { key: 'entity_type', values: ['Country', 'City'] },
+              ],
+              filterGroups: [],
+            },
+          ],
+        },
+      ],
+    };
+    const { filters } = buildFiltersAndOptionsForWidgets(inputFilters, { startDate });
+    expect(filters).toStrictEqual(expectedFilters);
+  });
+
+  it('should return filters with start date, end date, and a date attribute', () => {
+    const startDate = '2025-10-15T00:00:00+02:00';
+    const endDate = '2025-10-21T00:00:00+02:00';
+    const dateAttribute = 'modified';
+    const inputFilters = {
+      mode: 'and',
+      filters: [{ key: 'entity_type', values: ['Report'] }],
+      filterGroups: [],
+    };
+    const expectedFilters = {
+      mode: 'and',
+      filters: [
+        { key: dateAttribute, values: [startDate], operator: 'gt', mode: 'or' },
+        { key: dateAttribute, values: [endDate], operator: 'lt', mode: 'or' },
+      ],
+      filterGroups: [
+        {
+          mode: 'and',
+          filters: [{ key: 'entity_type', values: ['Report'] }],
+          filterGroups: [],
+        },
+      ],
+    };
+    const { filters } = buildFiltersAndOptionsForWidgets(inputFilters, { startDate, endDate, dateAttribute });
+    expect(filters).toStrictEqual(expectedFilters);
+  });
+
+  it('should return filters for relationships widgets', () => {
+    const inputFilters = {
+      mode: 'and',
+      filters: [{ key: 'createdBy', values: ['user1'] }],
+      filterGroups: [],
+    };
+    const expectedFilters = {
+      mode: 'and',
+      filters: [{ key: 'entity_type', values: ['stix-core-relationship', 'stix-sighting-relationship', 'object', 'object-label'], operator: 'eq', mode: 'or' }],
+      filterGroups: [inputFilters],
+    };
+    const { filters } = buildFiltersAndOptionsForWidgets(inputFilters, { isKnowledgeRelationshipWidget: true });
+    expect(filters).toStrictEqual(expectedFilters);
+  });
+});
+
+describe('formatFiltersInPirContext', () => {
+  it('should format filters in a PIR context', () => {
+    const initialFilters = {
+      mode: 'and',
+      filters: [
+        { key: 'entity_type', values: ['Malware'] },
+        { key: 'pir_score', values: ['50'], operator: 'gt' },
+      ],
+      filterGroups: [
+        {
+          mode: 'or',
+          filters: [
+            { key: 'objectLabel', values: ['label-1'] },
+            { key: 'last_pir_score_date', values: ['now-7d', 'now'], operator: 'within' },
+          ],
+          filterGroups: [],
+        },
+      ],
+    };
+    const expectedFormattedFilters = {
+      mode: 'and',
+      filters: [
+        { key: 'entity_type', values: ['Malware'] },
+        { key: 'pir_score',
+          values: [
+            { key: 'score', values: ['50'], operator: 'gt' },
+            { key: 'pir_ids', values: ['pir-id-1'] },
+          ] },
+      ],
+      filterGroups: [
+        {
+          mode: 'or',
+          filters: [
+            { key: 'objectLabel', values: ['label-1'] },
+            { key: 'last_pir_score_date',
+              values: [
+                { key: 'date', values: ['now-7d', 'now'], operator: 'within' },
+                { key: 'pir_ids', values: ['pir-id-1'] },
+              ] },
+          ],
+          filterGroups: [],
+        },
+      ],
+    };
+    const result = formatFiltersInPirContext(initialFilters, 'pir-id-1');
+    expect(result).toEqual(expectedFormattedFilters);
+  });
+});
+
+describe('isFilterGroupFormatCorrect', () => {
+  it('should return true for a valid filter group', () => {
+    expect(isFilterGroupFormatCorrect({ mode: 'and', filters: [], filterGroups: [] })).toBe(true);
+    expect(isFilterGroupFormatCorrect({ mode: 'or', filters: [], filterGroups: [] })).toBe(true);
+    expect(isFilterGroupFormatCorrect({
+      mode: 'and',
+      filters: [{ key: 'entity_type', values: ['Malware'], operator: 'eq', mode: 'or' }],
+      filterGroups: [{ mode: 'or', filters: [{ key: 'objectLabel', values: [], operator: 'nil' }], filterGroups: [] }],
+    })).toBe(true);
+  });
+
+  it('should return false for null or undefined or empty object', () => {
+    expect(isFilterGroupFormatCorrect(null)).toBe(false);
+    expect(isFilterGroupFormatCorrect(undefined)).toBe(false);
+    expect(isFilterGroupFormatCorrect({})).toBe(false);
+  });
+
+  it('should return false for a non-object value', () => {
+    expect(isFilterGroupFormatCorrect('string')).toBe(false);
+    expect(isFilterGroupFormatCorrect(42)).toBe(false);
+  });
+
+  it('should return false when mode is missing or invalid', () => {
+    expect(isFilterGroupFormatCorrect({ filters: [], filterGroups: [] })).toBe(false);
+    expect(isFilterGroupFormatCorrect({ mode: 'xor', filters: [], filterGroups: [] })).toBe(false);
+  });
+
+  it('should return false when filters or filterGroups is not an array', () => {
+    expect(isFilterGroupFormatCorrect({ mode: 'and', filters: 'bad', filterGroups: [] })).toBe(false);
+    expect(isFilterGroupFormatCorrect({ mode: 'and', filters: [], filterGroups: {} })).toBe(false);
+  });
+});
+
+describe('buildFiltersForCustomView', () => {
+  it('returns null when null input', () => {
+    expect(buildFiltersForCustomView(null)).toBe(null);
+  });
+
+  it('returns undefined when undefined input', () => {
+    expect(buildFiltersForCustomView(undefined)).toBe(undefined);
+  });
+
+  it('does not touch filter object when no changes are made', () => {
+    const entityId = 'the-entity-id';
+    const filterObject = {
+      mode: 'and',
+      filters: [{
+        id: '0d135be3-2878-441a-a222-0499108e7f7f',
+        key: 'regardingOf',
+        values: [{
+          key: 'id',
+          values: [entityId],
+        }],
+        operator: 'eq',
+        mode: 'or',
+      }, {
+        id: 'cc9af5a6-77a8-4b71-99bc-26d67e90fb78',
+        key: 'dynamicRegardingOf',
+        values: [{
+          key: 'dynamic',
+          values: [{
+            mode: 'and',
+            filters: [{
+              // Not sure this is a valid case but we still want to test
+              // that we replace values deeply nested
+              key: 'regardingOf',
+              values: [{
+                key: 'id',
+                values: [entityId],
+              }],
+            }],
+          }],
+        }],
+      }],
+      filterGroups: [{
+        mode: 'and',
+        filterGroups: [],
+        filters: [{
+          id: '0d135be3-2878-441a-a222-0499108e7f7f',
+          key: 'regardingOf',
+          values: [{
+            key: 'id',
+            values: [entityId],
+          }],
+          operator: 'eq',
+          mode: 'or',
+        }, {
+          id: 'cc9af5a6-77a8-4b71-99bc-26d67e90fb78',
+          key: 'dynamicRegardingOf',
+          values: [{
+            key: 'dynamic',
+            values: [{
+              mode: 'and',
+              filters: [{
+                // Not sure this is a valid case but we still want to test
+                // that we replace values deeply nested
+                key: 'regardingOf',
+                values: [{
+                  key: 'id',
+                  values: [entityId],
+                }],
+              }],
+            }],
+          }],
+        }],
+      }],
+    };
+    expect(buildFiltersForCustomView(filterObject)).toStrictEqual(filterObject);
+  });
+
+  it('replaces occurences of SELF_ID everywhere in the filter structure with given entityId', () => {
+    expect(buildFiltersForCustomView({
+      mode: 'and',
+      filters: [{
+        id: '0d135be3-2878-441a-a222-0499108e7f7f',
+        key: 'regardingOf',
+        values: [{
+          key: 'id',
+          values: ['SELF_ID'],
+        }],
+        operator: 'eq',
+        mode: 'or',
+      }, {
+        id: 'cc9af5a6-77a8-4b71-99bc-26d67e90fb78',
+        key: 'dynamicRegardingOf',
+        values: [{
+          key: 'dynamic',
+          values: [{
+            mode: 'and',
+            filters: [{
+              // Not sure this is a valid case but we still want to test
+              // that we replace values deeply nested
+              key: 'regardingOf',
+              values: [{
+                key: 'id',
+                values: ['SELF_ID'],
+              }],
+            }],
+          }],
+        }],
+      }],
+      filterGroups: [{
+        mode: 'and',
+        filterGroups: [],
+        filters: [{
+          id: '0d135be3-2878-441a-a222-0499108e7f7f',
+          key: 'regardingOf',
+          values: [{
+            key: 'id',
+            values: ['SELF_ID'],
+          }],
+          operator: 'eq',
+          mode: 'or',
+        }, {
+          id: 'cc9af5a6-77a8-4b71-99bc-26d67e90fb78',
+          key: 'dynamicRegardingOf',
+          values: [{
+            key: 'dynamic',
+            values: [{
+              mode: 'and',
+              filters: [{
+                // Not sure this is a valid case but we still want to test
+                // that we replace values deeply nested
+                key: 'regardingOf',
+                values: [{
+                  key: 'id',
+                  values: ['SELF_ID'],
+                }],
+              }],
+            }],
+          }],
+        }],
+      }],
+    }, 'the-entity-id')).toStrictEqual({
+      mode: 'and',
+      filters: [{
+        id: '0d135be3-2878-441a-a222-0499108e7f7f',
+        key: 'regardingOf',
+        values: [{
+          key: 'id',
+          values: ['the-entity-id'],
+        }],
+        operator: 'eq',
+        mode: 'or',
+      }, {
+        id: 'cc9af5a6-77a8-4b71-99bc-26d67e90fb78',
+        key: 'dynamicRegardingOf',
+        values: [{
+          key: 'dynamic',
+          values: [{
+            mode: 'and',
+            filters: [{
+              // Not sure this is a valid case but we still want to test
+              // that we replace values deeply nested
+              key: 'regardingOf',
+              values: [{
+                key: 'id',
+                values: ['the-entity-id'],
+              }],
+            }],
+          }],
+        }],
+      }],
+      filterGroups: [{
+        mode: 'and',
+        filterGroups: [],
+        filters: [{
+          id: '0d135be3-2878-441a-a222-0499108e7f7f',
+          key: 'regardingOf',
+          values: [{
+            key: 'id',
+            values: ['the-entity-id'],
+          }],
+          operator: 'eq',
+          mode: 'or',
+        }, {
+          id: 'cc9af5a6-77a8-4b71-99bc-26d67e90fb78',
+          key: 'dynamicRegardingOf',
+          values: [{
+            key: 'dynamic',
+            values: [{
+              mode: 'and',
+              filters: [{
+                // Not sure this is a valid case but we still want to test
+                // that we replace values deeply nested
+                key: 'regardingOf',
+                values: [{
+                  key: 'id',
+                  values: ['the-entity-id'],
+                }],
+              }],
+            }],
+          }],
+        }],
+      }],
+    });
+  });
+});
+
+describe('Function normalizeFilterGroupForFrontend', () => {
+  it('should convert array keys to single string keys', () => {
+    const input: GqlFilterGroup = {
+      mode: 'and',
+      filters: [
+        { key: ['entity_type'], values: ['Malware'], operator: 'eq', mode: 'or' },
+        { key: ['objectMarking'], values: ['marking1'], operator: 'eq', mode: 'or' },
+      ],
+      filterGroups: [],
+    };
+    const result = normalizeFilterGroupForFrontend(input);
+    expect(result.filters[0].key).toEqual('entity_type');
+    expect(result.filters[1].key).toEqual('objectMarking');
+    expect(result.filters[0].id).toBeDefined();
+    expect(typeof result.filters[0].id).toBe('string');
+    expect(result.filters[0].id!.length).toBeGreaterThan(0);
+  });
+
+  it('should recursively process nested filterGroups', () => {
+    const input: GqlFilterGroup = {
+      mode: 'and',
+      filters: [
+        { key: ['entity_type'], values: ['Report'], operator: 'eq', mode: 'or' },
+      ],
+      filterGroups: [
+        {
+          mode: 'or',
+          filters: [
+            { key: ['objectLabel'], values: ['label1'], operator: 'eq', mode: 'or' },
+          ],
+          filterGroups: [],
+        },
+      ],
+    };
+    const result = normalizeFilterGroupForFrontend(input);
+    expect(result.filterGroups[0].filters[0].key).toEqual('objectLabel');
+    expect(result.filterGroups[0].filters[0].id).toBeDefined();
+  });
+
+  it('should handle key that is already a string (non-array)', () => {
+    const input = {
+      mode: 'and',
+      filters: [
+        { key: 'entity_type', values: ['Malware'], operator: 'eq', mode: 'or' },
+      ],
+      filterGroups: [],
+    } as unknown as GqlFilterGroup;
+    const result = normalizeFilterGroupForFrontend(input);
+    expect(result.filters[0].key).toEqual('entity_type');
+  });
+
+  it('should preserve mode and other filter properties', () => {
+    const input: GqlFilterGroup = {
+      mode: 'or',
+      filters: [
+        { key: ['name'], values: ['val1', 'val2'], operator: 'not_eq', mode: 'and' },
+      ],
+      filterGroups: [],
+    };
+    const result = normalizeFilterGroupForFrontend(input);
+    expect(result.mode).toEqual('or');
+    expect(result.filters[0].operator).toEqual('not_eq');
+    expect(result.filters[0].mode).toEqual('and');
+    expect(result.filters[0].values).toEqual(['val1', 'val2']);
+  });
+
+  it('should normalize nested filter groups inside dynamicRegardingOf dynamic values', () => {
+    const input = {
+      mode: 'and',
+      filters: [
+        {
+          key: ['dynamicRegardingOf'],
+          operator: 'eq',
+          mode: 'or',
+          values: [
+            { key: 'relationship_type', values: ['targets'] },
+            {
+              key: 'dynamic',
+              values: [
+                {
+                  mode: 'and',
+                  filters: [
+                    { key: ['entity_type'], values: ['Malware'], operator: 'eq', mode: 'or' },
+                  ],
+                  filterGroups: [],
+                },
+              ],
+            },
+          ],
+        },
+      ],
+      filterGroups: [],
+    } as unknown as GqlFilterGroup;
+    const result = normalizeFilterGroupForFrontend(input);
+    expect(result.filters[0].key).toEqual('dynamicRegardingOf');
+    expect(result.filters[0].id).toBeDefined();
+    const values = result.filters[0].values as unknown as Array<{ key: string; values: unknown[] }>;
+    // non-dynamic sub-value is preserved untouched
+    expect(values[0]).toEqual({ key: 'relationship_type', values: ['targets'] });
+    // dynamic sub-value has its nested filter groups normalized (array key -> string key + id added)
+    const dynamicValue = values[1];
+    expect(dynamicValue.key).toEqual('dynamic');
+    const nestedFilterGroup = dynamicValue.values[0] as FilterGroup;
+    expect(nestedFilterGroup.filters[0].key).toEqual('entity_type');
+    expect(nestedFilterGroup.filters[0].id).toBeDefined();
+    expect(typeof nestedFilterGroup.filters[0].id).toBe('string');
+  });
+
+  it.each(['dynamicFrom', 'dynamicTo'])('should normalize the nested group of a standalone %s filter', (key) => {
+    const input = {
+      mode: 'and',
+      filters: [{
+        key: [key],
+        operator: 'eq',
+        mode: 'or',
+        values: [{
+          mode: 'and',
+          filters: [{ key: ['entity_type'], values: ['Malware'], operator: 'eq', mode: 'or' }],
+          filterGroups: [],
+        }],
+      }],
+      filterGroups: [],
+    } as unknown as GqlFilterGroup;
+    const result = normalizeFilterGroupForFrontend(input);
+    expect(result.filters[0].key).toEqual(key);
+    const nestedGroup = result.filters[0].values[0] as FilterGroup;
+    expect(typeof nestedGroup.id).toBe('string');
+    expect(nestedGroup.filters[0].key).toEqual('entity_type');
+    expect(typeof nestedGroup.filters[0].id).toBe('string');
+  });
+});
+
+describe('isDraftWorkspaceFilterGroup', () => {
+  it('should return false for null', () => {
+    expect(isDraftWorkspaceFilterGroup(null)).toBe(false);
+  });
+
+  it('should return false for undefined', () => {
+    expect(isDraftWorkspaceFilterGroup(undefined)).toBe(false);
+  });
+
+  it('should return false when there is no entity_type filter', () => {
+    const filters: FilterGroup = { mode: 'and', filters: [{ key: 'name', values: ['test'] }], filterGroups: [] };
+    expect(isDraftWorkspaceFilterGroup(filters)).toBe(false);
+  });
+
+  it('should return false when entity_type filter has no values', () => {
+    const filters: FilterGroup = { mode: 'and', filters: [{ key: 'entity_type', values: [] }], filterGroups: [] };
+    expect(isDraftWorkspaceFilterGroup(filters)).toBe(false);
+  });
+
+  it('should return false when entity_type is not DraftWorkspace', () => {
+    const filters: FilterGroup = { mode: 'and', filters: [{ key: 'entity_type', values: ['Report'] }], filterGroups: [] };
+    expect(isDraftWorkspaceFilterGroup(filters)).toBe(false);
+  });
+
+  it('should return false when entity_type has mixed values including DraftWorkspace', () => {
+    const filters: FilterGroup = { mode: 'and', filters: [{ key: 'entity_type', values: ['DraftWorkspace', 'Report'] }], filterGroups: [] };
+    expect(isDraftWorkspaceFilterGroup(filters)).toBe(false);
+  });
+
+  it('should return true when all entity_type values are DraftWorkspace (string)', () => {
+    const filters: FilterGroup = { mode: 'and', filters: [{ key: 'entity_type', values: ['DraftWorkspace'] }], filterGroups: [] };
+    expect(isDraftWorkspaceFilterGroup(filters)).toBe(true);
+  });
+
+  it('should return true when entity_type value is an object with value property', () => {
+    const filters: FilterGroup = { mode: 'and', filters: [{ key: 'entity_type', values: [{ value: 'DraftWorkspace', label: 'Draft Workspace' }] }], filterGroups: [] };
+    expect(isDraftWorkspaceFilterGroup(filters)).toBe(true);
+  });
+
+  it('should return true when entity_type value is an object with id property', () => {
+    const filters: FilterGroup = { mode: 'and', filters: [{ key: 'entity_type', values: [{ id: 'DraftWorkspace' }] }], filterGroups: [] };
+    expect(isDraftWorkspaceFilterGroup(filters)).toBe(true);
+  });
+});
+
+describe('getStixFiltersDisplayedKeys', () => {
+  const availableKeys = ['entity_type', 'x_opencti_cf_score'];
+  const filterGroup = (keys: string[], nestedKeys: string[] = []): FilterGroup => ({
+    mode: 'and',
+    filters: keys.map((key) => ({ id: key, key, values: ['a'], operator: 'eq', mode: 'or' })),
+    filterGroups: nestedKeys.length > 0 ? [filterGroup(nestedKeys)] : [],
+  }) as unknown as FilterGroup;
+
+  it('keeps the available keys when no stored filter uses a deleted custom field', () => {
+    expect(getStixFiltersDisplayedKeys(availableKeys, undefined)).toBe(availableKeys);
+    expect(getStixFiltersDisplayedKeys(availableKeys, filterGroup(['entity_type', 'x_opencti_cf_score']))).toBe(availableKeys);
+  });
+
+  it('adds the stored filters on a deleted custom field, even nested, so that they can be removed', () => {
+    expect(getStixFiltersDisplayedKeys(availableKeys, filterGroup(['x_opencti_cf_deleted'], ['x_opencti_cf_nested', 'x_opencti_cf_deleted'])))
+      .toEqual([...availableKeys, 'x_opencti_cf_nested', 'x_opencti_cf_deleted']);
+  });
+
+  it('never adds an unavailable standard key', () => {
+    expect(getStixFiltersDisplayedKeys(availableKeys, filterGroup(['objectLabel']))).toBe(availableKeys);
+  });
+});
+
+describe('useStixFilters', () => {
+  it('should include the SSVC filter keys', () => {
+    const { hook } = testRenderHook(
+      () => useStixFilters(),
+      { userContext: createMockUserContext({ settings: { platform_feature_flags: [] } }) },
+    );
+    expect(hook.result.current).toContain('x_opencti_ssvc_exploitation');
+    expect(hook.result.current).toContain('x_opencti_ssvc_automatable');
+    expect(hook.result.current).toContain('x_opencti_ssvc_technical_impact');
+  });
+
+  it('should include the closing reason filter key', () => {
+    const { hook } = testRenderHook(
+      () => useStixFilters(),
+      { userContext: createMockUserContext({ settings: { platform_feature_flags: [] } }) },
+    );
+    expect(hook.result.current).toContain('x_opencti_closing_reason');
+  });
+});
+
+describe('getAvailableOperatorForFilter', () => {
+  const buildFilterDefinition = (definition: Partial<FilterDefinition>): FilterDefinition => ({
+    filterKey: 'name',
+    label: 'Name',
+    type: 'string',
+    multiple: false,
+    subEntityTypes: [],
+    elementsForFilterValuesSearch: [],
+    ...definition,
+  });
+  const changeOperators = ['has_changed', 'not_has_changed'];
+
+  it('should only allow eq when there is no filter definition', () => {
+    expect(getAvailableOperatorForFilter(undefined)).toEqual(['eq']);
+    expect(getAvailableOperatorForFilter(undefined, 'relationship_type')).toEqual(['eq']);
+  });
+
+  describe('with a subKey', () => {
+    it('should only allow eq and not_eq on the relationship_type subKey of regardingOf filters', () => {
+      ['regardingOf', 'dynamicRegardingOf'].forEach((filterKey) => {
+        const filterDefinition = buildFilterDefinition({ filterKey, type: 'nested' });
+        expect(getAvailableOperatorForFilter(filterDefinition, 'relationship_type')).toEqual(['eq', 'not_eq']);
+      });
+    });
+
+    it('should allow no operator on the other subKeys of regardingOf filters', () => {
+      const filterDefinition = buildFilterDefinition({ filterKey: 'regardingOf', type: 'nested' });
+      expect(getAvailableOperatorForFilter(filterDefinition, 'id')).toEqual([]);
+    });
+
+    it('should allow the default operators on the subKeys of other filters', () => {
+      const filterDefinition = buildFilterDefinition({ filterKey: 'dynamic', type: 'nested' });
+      expect(getAvailableOperatorForFilter(filterDefinition, 'id')).toEqual(['eq', 'not_eq', 'nil', 'not_nil']);
+    });
+
+    it('should ignore the stix filtering option', () => {
+      const filterDefinition = buildFilterDefinition({ filterKey: 'dynamic', type: 'nested' });
+      expect(getAvailableOperatorForFilter(filterDefinition, 'id', { isStixFiltering: true }))
+        .toEqual(['eq', 'not_eq', 'nil', 'not_nil']);
+    });
+  });
+
+  describe('without a subKey', () => {
+    it('should only allow eq on the connectedToId filter, even in stix filtering', () => {
+      const filterDefinition = buildFilterDefinition({ filterKey: 'connectedToId', type: 'id' });
+      expect(getAvailableOperatorForFilter(filterDefinition)).toEqual(['eq']);
+      expect(getAvailableOperatorForFilter(filterDefinition, undefined, { isStixFiltering: true })).toEqual(['eq']);
+    });
+
+    it('should return the date operators for a date filter', () => {
+      const filterDefinition = buildFilterDefinition({ filterKey: 'created', type: 'date' });
+      const dateOperators = ['gt', 'gte', 'lt', 'lte', 'nil', 'not_nil', 'within'];
+      expect(getAvailableOperatorForFilter(filterDefinition)).toEqual(dateOperators);
+      expect(getAvailableOperatorForFilter(filterDefinition, undefined, { isStixFiltering: true }))
+        .toEqual([...dateOperators, ...changeOperators]);
+    });
+
+    it('should return the numeric operators for integer and float filters', () => {
+      const numericOperators = ['gt', 'gte', 'lt', 'lte', 'eq', 'not_eq'];
+      ['integer', 'float'].forEach((type) => {
+        const filterDefinition = buildFilterDefinition({ filterKey: 'confidence', type });
+        expect(getAvailableOperatorForFilter(filterDefinition)).toEqual(numericOperators);
+        expect(getAvailableOperatorForFilter(filterDefinition, undefined, { isStixFiltering: true }))
+          .toEqual([...numericOperators, ...changeOperators]);
+      });
+    });
+
+    it('should return eq and not_eq for a boolean filter', () => {
+      const filterDefinition = buildFilterDefinition({ filterKey: 'revoked', type: 'boolean' });
+      expect(getAvailableOperatorForFilter(filterDefinition)).toEqual(['eq', 'not_eq']);
+      expect(getAvailableOperatorForFilter(filterDefinition, undefined, { isStixFiltering: true }))
+        .toEqual(['eq', 'not_eq', ...changeOperators]);
+    });
+
+    const stringOperators = ['eq', 'not_eq', 'nil', 'not_nil', 'contains', 'not_contains',
+      'starts_with', 'not_starts_with', 'ends_with', 'not_ends_with', 'search'];
+
+    it('should return all the string operators for a string filter', () => {
+      const filterDefinition = buildFilterDefinition({ filterKey: 'name', type: 'string' });
+      expect(getAvailableOperatorForFilter(filterDefinition)).toEqual(stringOperators);
+      expect(getAvailableOperatorForFilter(filterDefinition, undefined, { isStixFiltering: true }))
+        .toEqual([...stringOperators, ...changeOperators]);
+    });
+
+    it('should restrict a text filter to search and nil operators, except in stix filtering', () => {
+      const filterDefinition = buildFilterDefinition({ filterKey: 'description', type: 'text' });
+      expect(getAvailableOperatorForFilter(filterDefinition)).toEqual(['search', 'nil', 'not_nil']);
+      expect(getAvailableOperatorForFilter(filterDefinition, undefined, { isStixFiltering: true }))
+        .toEqual([...stringOperators, ...changeOperators]);
+    });
+
+    it('should not treat entity type filters as text filters', () => {
+      const filterDefinition = buildFilterDefinition({ filterKey: 'entity_type', type: 'string', multiple: true });
+      expect(getAvailableOperatorForFilter(filterDefinition))
+        .toEqual(['eq', 'not_eq', 'only_eq_to', 'not_only_eq_to', 'nil', 'not_nil']);
+    });
+
+    it('should add the only_eq_to operators for a multiple filter', () => {
+      const multipleOperators = ['eq', 'not_eq', 'only_eq_to', 'not_only_eq_to', 'nil', 'not_nil'];
+      const filterDefinition = buildFilterDefinition({ filterKey: 'objectLabel', type: 'id', multiple: true });
+      expect(getAvailableOperatorForFilter(filterDefinition)).toEqual(multipleOperators);
+      expect(getAvailableOperatorForFilter(filterDefinition, undefined, { isStixFiltering: true }))
+        .toEqual([...multipleOperators, ...changeOperators]);
+    });
+
+    it('should return the default operators for a single value filter', () => {
+      const defaultOperators = ['eq', 'not_eq', 'nil', 'not_nil'];
+      const filterDefinition = buildFilterDefinition({ filterKey: 'createdBy', type: 'id', multiple: false });
+      expect(getAvailableOperatorForFilter(filterDefinition)).toEqual(defaultOperators);
+      expect(getAvailableOperatorForFilter(filterDefinition, undefined, { isStixFiltering: true }))
+        .toEqual([...defaultOperators, ...changeOperators]);
+    });
+  });
+});
+
+describe('emptyFilterGroup immutability', () => {
+  it('should be frozen, including its arrays', () => {
+    expect(Object.isFrozen(emptyFilterGroup)).toBe(true);
+    expect(Object.isFrozen(emptyFilterGroup.filters)).toBe(true);
+    expect(Object.isFrozen(emptyFilterGroup.filterGroups)).toBe(true);
+  });
+});
+
+describe('cloneFilterGroup', () => {
+  it('should deep copy a filter group without sharing any array instance', () => {
+    const source: FilterGroup = {
+      mode: 'and',
+      filters: [{ key: 'entity_type', values: ['Report'], operator: 'eq', mode: 'or' }],
+      filterGroups: [{
+        mode: 'or',
+        filters: [{ key: 'objectLabel', values: ['label-1'] }],
+        filterGroups: [],
+      }],
+    };
+    const clone = cloneFilterGroup(source);
+    expect(clone).toStrictEqual(source);
+    expect(clone).not.toBe(source);
+    expect(clone.filters).not.toBe(source.filters);
+    expect(clone.filters[0]).not.toBe(source.filters[0]);
+    expect(clone.filters[0].values).not.toBe(source.filters[0].values);
+    expect(clone.filterGroups).not.toBe(source.filterGroups);
+    expect(clone.filterGroups[0].filters).not.toBe(source.filterGroups[0].filters);
+  });
+
+  it('should produce a mutable copy of the frozen emptyFilterGroup', () => {
+    const clone = cloneFilterGroup(emptyFilterGroup);
+    expect(Object.isFrozen(clone)).toBe(false);
+    expect(() => clone.filters.push({ key: 'entity_type', values: ['Report'] })).not.toThrow();
+    expect(emptyFilterGroup.filters).toHaveLength(0);
+  });
+});
+
+describe('canonicalizeFilterGroupForBackend', () => {
+  it('should remove ids at every level of a 3-level-deep filter group', () => {
+    const input = {
+      id: 'root-id',
+      mode: 'and',
+      filters: [{ id: 'f1', key: 'entity_type', values: ['Report'], operator: 'eq', mode: 'or' }],
+      filterGroups: [{
+        id: 'g1',
+        mode: 'or',
+        filters: [{ id: 'f2', key: 'objectLabel', values: ['label-1'] }],
+        filterGroups: [{
+          id: 'g2',
+          mode: 'and',
+          filters: [{ id: 'f3', key: 'createdBy', values: ['author-1'], operator: 'eq' }],
+          filterGroups: [],
+        }],
+      }],
+    } as unknown as FilterGroup;
+    const result = canonicalizeFilterGroupForBackend(input);
+    expectNoFrontendIds(result);
+    expect(result).toStrictEqual({
+      mode: 'and',
+      filters: [{ key: 'entity_type', values: ['Report'], operator: 'eq', mode: 'or' }],
+      filterGroups: [{
+        mode: 'or',
+        filters: [{ key: 'objectLabel', values: ['label-1'] }],
+        filterGroups: [{
+          mode: 'and',
+          filters: [{ key: 'createdBy', values: ['author-1'], operator: 'eq' }],
+          filterGroups: [],
+        }],
+      }],
+    });
+  });
+
+  it('should emit properties in the exact order mode/filters/filterGroups and key/values/operator/mode', () => {
+    const input = {
+      filterGroups: [],
+      filters: [{ mode: 'or', operator: 'eq', values: ['Report'], key: 'entity_type', id: 'f1' }],
+      mode: 'and',
+    } as unknown as FilterGroup;
+    const result = canonicalizeFilterGroupForBackend(input);
+    expect(JSON.stringify(result)).toEqual(
+      '{"mode":"and","filters":[{"key":"entity_type","values":["Report"],"operator":"eq","mode":"or"}],"filterGroups":[]}',
+    );
+  });
+
+  it('should never emit undefined optional properties', () => {
+    const input = {
+      mode: 'and',
+      filters: [{ key: 'objectLabel', values: ['label-1'], operator: undefined, mode: undefined }],
+      filterGroups: [],
+    } as unknown as FilterGroup;
+    const result = canonicalizeFilterGroupForBackend(input);
+    expect(result).toStrictEqual({
+      mode: 'and',
+      filters: [{ key: 'objectLabel', values: ['label-1'] }],
+      filterGroups: [],
+    });
+    expect(Object.keys(result.filters[0])).toEqual(['key', 'values']);
+  });
+
+  it('should not mutate its input and should work on a frozen filter group', () => {
+    const result = canonicalizeFilterGroupForBackend(emptyFilterGroup);
+    expect(result).toStrictEqual({ mode: 'and', filters: [], filterGroups: [] });
+    expect(result).not.toBe(emptyFilterGroup);
+    const input = {
+      mode: 'and',
+      filters: [{ id: 'f1', key: 'objectLabel', values: ['label-1'] }],
+      filterGroups: [],
+    } as unknown as FilterGroup;
+    canonicalizeFilterGroupForBackend(input);
+    expect(JSON.stringify(input)).toContain('"id":"f1"');
+  });
+
+  it('should reorder dynamicRegardingOf values as [...dynamic, ...relationship_type], drop other value keys and strip nested filter groups', () => {
+    const input = {
+      mode: 'and',
+      filters: [{
+        id: 'f1',
+        key: 'dynamicRegardingOf',
+        values: [
+          { key: 'relationship_type', values: ['targets'] },
+          { key: 'id', values: ['some-id'] },
+          {
+            key: 'dynamic',
+            values: [{
+              id: 'nested-group-id',
+              mode: 'and',
+              filters: [{ id: 'nested-filter-id', key: 'entity_type', values: ['Malware'], operator: 'eq' }],
+              filterGroups: [],
+            }],
+          },
+        ],
+        operator: 'eq',
+      }],
+      filterGroups: [],
+    } as unknown as FilterGroup;
+    const result = canonicalizeFilterGroupForBackend(input);
+    expectNoFrontendIds(result);
+    expect(result.filters[0].values.map((v: { key: string }) => v.key)).toEqual(['dynamic', 'relationship_type']);
+    expect(result).toStrictEqual({
+      mode: 'and',
+      filters: [{
+        key: 'dynamicRegardingOf',
+        values: [
+          {
+            key: 'dynamic',
+            values: [{
+              mode: 'and',
+              filters: [{ key: 'entity_type', values: ['Malware'], operator: 'eq' }],
+              filterGroups: [],
+            }],
+          },
+          { key: 'relationship_type', values: ['targets'] },
+        ],
+        operator: 'eq',
+      }],
+      filterGroups: [],
+    });
+  });
+});
+
+describe('canonicalizeFilterGroupForBackend on standalone dynamicFrom/dynamicTo', () => {
+  it.each(['dynamicFrom', 'dynamicTo'])('should strip the frontend ids of the nested group of a %s filter', (key) => {
+    const input = {
+      mode: 'and',
+      filters: [{
+        id: 'f1',
+        key,
+        values: [{
+          id: 'nested-group-id',
+          mode: 'and',
+          filters: [{ id: 'nested-filter-id', key: 'entity_type', values: ['Malware'], operator: 'eq' }],
+          filterGroups: [],
+        }],
+      }],
+      filterGroups: [],
+    } as unknown as FilterGroup;
+    const result = canonicalizeFilterGroupForBackend(input);
+    expectNoFrontendIds(result);
+    expect(result.filters[0].values).toStrictEqual([{
+      mode: 'and',
+      filters: [{ key: 'entity_type', values: ['Malware'], operator: 'eq' }],
+      filterGroups: [],
+    }]);
+  });
+});
+
+describe('pruneEmptyFiltersAndGroups', () => {
+  it('should remove empty descendant groups recursively', () => {
+    const input: FilterGroup = {
+      mode: 'and',
+      filters: [{ key: 'entity_type', values: ['Report'] }],
+      filterGroups: [
+        { mode: 'or', filters: [{ key: 'objectLabel', values: [] }], filterGroups: [] },
+        {
+          mode: 'or',
+          filters: [],
+          filterGroups: [{ mode: 'and', filters: [{ key: 'createdBy', values: [] }], filterGroups: [] }],
+        },
+        { mode: 'or', filters: [{ key: 'createdBy', values: ['author-1'] }], filterGroups: [] },
+      ],
+    };
+    const result = pruneEmptyFiltersAndGroups(input);
+    expect(result).toStrictEqual({
+      mode: 'and',
+      filters: [{ key: 'entity_type', values: ['Report'] }],
+      filterGroups: [
+        { mode: 'or', filters: [{ key: 'createdBy', values: ['author-1'] }], filterGroups: [] },
+      ],
+    });
+  });
+
+  it('should preserve the root group even when it becomes empty', () => {
+    const input: FilterGroup = {
+      mode: 'or',
+      filters: [{ key: 'objectLabel', values: [] }],
+      filterGroups: [{ mode: 'and', filters: [{ key: 'createdBy', values: [] }], filterGroups: [] }],
+    };
+    expect(pruneEmptyFiltersAndGroups(input)).toStrictEqual({ mode: 'or', filters: [], filterGroups: [] });
+  });
+
+  it('should descend into dynamicRegardingOf dynamic values', () => {
+    const input: FilterGroup = {
+      mode: 'and',
+      filters: [{
+        key: 'dynamicRegardingOf',
+        values: [
+          {
+            key: 'dynamic',
+            values: [{
+              mode: 'and',
+              filters: [
+                { key: 'objectLabel', values: [] },
+                { key: 'entity_type', values: ['Malware'] },
+              ],
+              filterGroups: [{ mode: 'or', filters: [{ key: 'createdBy', values: [] }], filterGroups: [] }],
+            }],
+          },
+          { key: 'relationship_type', values: ['targets'] },
+        ],
+      }],
+      filterGroups: [],
+    };
+    const result = pruneEmptyFiltersAndGroups(input);
+    expect(result).toStrictEqual({
+      mode: 'and',
+      filters: [{
+        key: 'dynamicRegardingOf',
+        values: [
+          {
+            key: 'dynamic',
+            values: [{
+              mode: 'and',
+              filters: [{ key: 'entity_type', values: ['Malware'] }],
+              filterGroups: [],
+            }],
+          },
+          { key: 'relationship_type', values: ['targets'] },
+        ],
+      }],
+      filterGroups: [],
+    });
+  });
+
+  it.each(['dynamicFrom', 'dynamicTo'])('should descend into the nested group of a standalone %s filter', (key) => {
+    const input: FilterGroup = {
+      mode: 'and',
+      filters: [{
+        key,
+        values: [{
+          mode: 'and',
+          filters: [
+            { key: 'objectLabel', values: [] },
+            { key: 'entity_type', values: ['Malware'] },
+          ],
+          filterGroups: [],
+        }],
+      }],
+      filterGroups: [],
+    };
+    expect(pruneEmptyFiltersAndGroups(input).filters[0].values).toStrictEqual([{
+      mode: 'and',
+      filters: [{ key: 'entity_type', values: ['Malware'] }],
+      filterGroups: [],
+    }]);
+  });
+
+  it('should not mutate its input and should work on a frozen filter group', () => {
+    expect(pruneEmptyFiltersAndGroups(emptyFilterGroup)).toStrictEqual({ mode: 'and', filters: [], filterGroups: [] });
+    const input: FilterGroup = {
+      mode: 'and',
+      filters: [{ key: 'objectLabel', values: [] }],
+      filterGroups: [],
+    };
+    pruneEmptyFiltersAndGroups(input);
+    expect(input.filters).toHaveLength(1);
+  });
+});
+
+describe('Filter group cleaning compositions', () => {
+  const nestedFilterGroupWithIds = {
+    id: 'group-root',
+    mode: 'and',
+    filters: [
+      { id: 'f1', key: 'entity_type', values: ['Malware'], operator: 'eq', mode: 'or' },
+      {
+        id: 'f2',
+        key: 'dynamicRegardingOf',
+        values: [
+          {
+            key: 'dynamic',
+            values: [{
+              id: 'group-dynamic',
+              mode: 'and',
+              filters: [{ id: 'f3', key: 'objectLabel', values: ['label1'] }],
+              filterGroups: [],
+            }],
+          },
+          { key: 'relationship_type', values: ['targets'] },
+        ],
+      },
+    ],
+    filterGroups: [
+      {
+        id: 'group-child',
+        mode: 'or',
+        filters: [{ id: 'f4', key: 'createdBy', values: ['author-1'], operator: 'eq' }],
+        filterGroups: [
+          {
+            id: 'group-grand-child',
+            mode: 'and',
+            filters: [{ id: 'f5', key: 'objectMarking', values: ['marking-1'] }],
+            filterGroups: [],
+          },
+        ],
+      },
+    ],
+  } as unknown as FilterGroup;
+
+  it('should drop a subgroup whose only filter has an unavailable key', () => {
+    const input = {
+      mode: 'and',
+      filters: [{ id: 'f1', key: 'entity_type', values: ['Malware'], operator: 'eq' }],
+      filterGroups: [
+        {
+          mode: 'or',
+          filters: [{ id: 'f2', key: 'unavailable_key', values: ['XX'], operator: 'eq' }],
+          filterGroups: [],
+        },
+        {
+          mode: 'and',
+          filters: [{ id: 'f3', key: 'objectLabel', values: ['label1'], operator: 'eq' }],
+          filterGroups: [],
+        },
+      ],
+    } as unknown as FilterGroup;
+    const result = removeIdAndIncorrectKeysFromFilterGroupObject(input, ['entity_type', 'objectLabel']);
+    expect(result).toStrictEqual({
+      mode: 'and',
+      filters: [{ key: 'entity_type', values: ['Malware'], operator: 'eq' }],
+      filterGroups: [
+        {
+          mode: 'and',
+          filters: [{ key: 'objectLabel', values: ['label1'], operator: 'eq' }],
+          filterGroups: [],
+        },
+      ],
+    });
+  });
+
+  it('should drop a deeply nested subgroup whose only filter has an unavailable key', () => {
+    const input = {
+      mode: 'and',
+      filters: [{ id: 'f1', key: 'entity_type', values: ['Malware'], operator: 'eq' }],
+      filterGroups: [
+        {
+          mode: 'or',
+          filters: [],
+          filterGroups: [
+            {
+              mode: 'and',
+              filters: [{ id: 'f2', key: 'unavailable_key', values: ['XX'], operator: 'eq' }],
+              filterGroups: [],
+            },
+          ],
+        },
+      ],
+    } as unknown as FilterGroup;
+    const result = removeIdAndIncorrectKeysFromFilterGroupObject(input, ['entity_type']);
+    expect(result!.filterGroups).toStrictEqual([]);
+  });
+
+  it('should not leave any frontend id after removeFrontendIdAndEmptyFiltersFromFilterGroupObject', () => {
+    expectNoFrontendIds(removeFrontendIdAndEmptyFiltersFromFilterGroupObject(nestedFilterGroupWithIds) as FilterGroup);
+  });
+
+  it('should not leave any frontend id after removeIdAndIncorrectKeysFromFilterGroupObject', () => {
+    const availableFilterKeys = ['entity_type', 'dynamicRegardingOf', 'createdBy', 'objectMarking', 'objectLabel'];
+    expectNoFrontendIds(removeIdAndIncorrectKeysFromFilterGroupObject(nestedFilterGroupWithIds, availableFilterKeys) as FilterGroup);
+  });
+
+  it('should not leave any frontend id after normalizeFilterGroupForBackend', () => {
+    expectNoFrontendIds(normalizeFilterGroupForBackend(nestedFilterGroupWithIds) as unknown as FilterGroup);
+  });
+
+  it('should sanitize the structure of the nested filter groups recursively', () => {
+    const input = {
+      mode: 'and',
+      filters: [
+        { key: 'entity_type', values: ['Malware'] },
+        { key: 'objectLabel', values: [] },
+      ],
+      filterGroups: [
+        {
+          mode: 'or',
+          filters: [
+            { key: 'createdBy', values: [] },
+            { key: 'objectMarking', values: ['marking-1'] },
+          ],
+          filterGroups: [
+            {
+              mode: 'and',
+              filters: [{ key: 'name', values: [] }],
+              filterGroups: [],
+            },
+          ],
+        },
+      ],
+    } as unknown as FilterGroup;
+    expect(sanitizeFiltersStructure(input)).toStrictEqual({
+      mode: 'and',
+      filters: [{ key: 'entity_type', values: ['Malware'] }],
+      filterGroups: [
+        {
+          mode: 'or',
+          filters: [{ key: 'objectMarking', values: ['marking-1'] }],
+          filterGroups: [
+            {
+              mode: 'and',
+              filters: [],
+              filterGroups: [],
+            },
+          ],
+        },
+      ],
+    });
+  });
+});
+
+// Characterization tests (issue 12062): they PIN DOWN the CURRENT behaviour of
+// getEntityTypeThreeFirstLevelsFilterValues when USER-MADE nested groups are present.
+// This function was designed for the "context" groups built by
+// useBuildEntityTypeBasedFilterContext, not for arbitrary user parentheses.
+// Decision: no behaviour change - these tests only make any future change explicit.
+describe('getEntityTypeThreeFirstLevelsFilterValues with user-made nested groups', () => {
+  const observableTypes = ['Domain-Name', 'File'];
+  const domainObjectTypes = ['Report', 'Malware'];
+
+  it('should ignore an entity_type sitting in a user-made OR group with several filters', () => {
+    // filters: Report AND (Malware OR Indicator)
+    const filters = {
+      mode: 'and',
+      filters: [{ key: 'entity_type', operator: 'eq', values: ['Report'] }],
+      filterGroups: [
+        {
+          mode: 'or',
+          filters: [
+            { key: 'entity_type', operator: 'eq', values: ['Malware'] },
+            { key: 'entity_type', operator: 'eq', values: ['Indicator'] },
+          ],
+          filterGroups: [],
+        },
+      ],
+    };
+    const result = getEntityTypeThreeFirstLevelsFilterValues(filters, observableTypes, domainObjectTypes);
+    // For the user: the mass-operations toolbar / widget scope only sees "Report".
+    // Malware and Indicator are invisible to the scope, which is the safe (widest) answer
+    // since an OR branch does not restrict the result set.
+    expect(result).toEqual(['Report']);
+  });
+
+  it('should treat a user-made OR group holding a SINGLE filter as an AND group', () => {
+    // filters: Stix-Cyber-Observable AND (Domain-Name) where the group mode is 'or'
+    const filters = {
+      mode: 'and',
+      filters: [{ key: 'entity_type', operator: 'eq', values: ['Stix-Cyber-Observable'] }],
+      filterGroups: [
+        {
+          mode: 'or',
+          filters: [{ key: 'entity_type', operator: 'eq', values: ['Domain-Name'] }],
+          filterGroups: [],
+        },
+      ],
+    };
+    const result = getEntityTypeThreeFirstLevelsFilterValues(filters, observableTypes, domainObjectTypes);
+    // For the user: a one-filter OR group is semantically an AND, so the scope narrows
+    // to Domain-Name and the parent Stix-Cyber-Observable is dropped from the toolbar scope.
+    expect(result).toEqual(['Domain-Name']);
+  });
+
+  it('should pick up an entity_type located at the third level of user-made groups', () => {
+    // filters: Report AND ( ( Malware ) )
+    const filters = {
+      mode: 'and',
+      filters: [{ key: 'entity_type', operator: 'eq', values: ['Report'] }],
+      filterGroups: [
+        {
+          mode: 'and',
+          filters: [],
+          filterGroups: [
+            {
+              mode: 'and',
+              filters: [{ key: 'entity_type', operator: 'eq', values: ['Malware'] }],
+              filterGroups: [],
+            },
+          ],
+        },
+      ],
+    };
+    const result = getEntityTypeThreeFirstLevelsFilterValues(filters, observableTypes, domainObjectTypes);
+    // For the user: the toolbar scope is Report + Malware (third level IS explored).
+    expect(result).toEqual(['Report', 'Malware']);
+  });
+
+  it('should ignore an entity_type located at the fourth level of user-made groups', () => {
+    // filters: Report AND ( ( ( Malware ) ) )
+    const filters = {
+      mode: 'and',
+      filters: [{ key: 'entity_type', operator: 'eq', values: ['Report'] }],
+      filterGroups: [
+        {
+          mode: 'and',
+          filters: [],
+          filterGroups: [
+            {
+              mode: 'and',
+              filters: [],
+              filterGroups: [
+                {
+                  mode: 'and',
+                  filters: [{ key: 'entity_type', operator: 'eq', values: ['Malware'] }],
+                  filterGroups: [],
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    };
+    const result = getEntityTypeThreeFirstLevelsFilterValues(filters, observableTypes, domainObjectTypes);
+    // For the user: with 4 levels of parentheses the scope stays at Report only; deeper
+    // restrictions are never taken into account (hard 3-level limit).
+    expect(result).toEqual(['Report']);
+  });
+
+  it('should return an empty result when the root group is in OR mode and only deep groups hold entity_type', () => {
+    // filters: Report OR ( ( Malware ) )
+    const filters = {
+      mode: 'or',
+      filters: [{ key: 'entity_type', operator: 'eq', values: ['Report'] }],
+      filterGroups: [
+        {
+          mode: 'and',
+          filters: [],
+          filterGroups: [
+            {
+              mode: 'and',
+              filters: [{ key: 'entity_type', operator: 'eq', values: ['Malware'] }],
+              filterGroups: [],
+            },
+          ],
+        },
+      ],
+    };
+    const result = getEntityTypeThreeFirstLevelsFilterValues(filters, observableTypes, domainObjectTypes);
+    // For the user: the root OR short-circuits and even the first-level "Report" is lost,
+    // so the toolbar/widget scope falls back to "no known entity type" (all types).
+    expect(result).toEqual([]);
+  });
+
+  it('should still return second level values even when the root group is in OR mode', () => {
+    // filters: Report OR ( Malware )
+    const filters = {
+      mode: 'or',
+      filters: [{ key: 'entity_type', operator: 'eq', values: ['Report'] }],
+      filterGroups: [
+        {
+          mode: 'and',
+          filters: [{ key: 'entity_type', operator: 'eq', values: ['Malware'] }],
+          filterGroups: [],
+        },
+      ],
+    };
+    const result = getEntityTypeThreeFirstLevelsFilterValues(filters, observableTypes, domainObjectTypes);
+    // For the user: the OR short-circuit happens AFTER the second level check, so here the
+    // scope is Report + Malware although the two are combined with OR - inconsistent with
+    // the previous test, but that is today's behaviour.
+    expect(result).toEqual(['Report', 'Malware']);
+  });
+
+  it('should not remove the parent type when the narrowing group is in OR mode at the root', () => {
+    // filters: Stix-Domain-Object OR ( Malware )
+    const filters = {
+      mode: 'or',
+      filters: [{ key: 'entity_type', operator: 'eq', values: ['Stix-Domain-Object'] }],
+      filterGroups: [
+        {
+          mode: 'and',
+          filters: [{ key: 'entity_type', operator: 'eq', values: ['Malware'] }],
+          filterGroups: [],
+        },
+      ],
+    };
+    const result = getEntityTypeThreeFirstLevelsFilterValues(filters, observableTypes, domainObjectTypes);
+    // For the user: with an OR root the abstract parent type is kept, so the toolbar scope
+    // is the union Stix-Domain-Object + Malware (widest scope, no narrowing).
+    expect(result).toEqual(['Stix-Domain-Object', 'Malware']);
+  });
+});
+
+describe('ensureFilterIds', () => {
+  const nested = {
+    mode: 'and',
+    filters: [{ id: 'filter-1', key: 'entity_type', values: ['Report'], operator: 'eq', mode: 'or' }],
+    filterGroups: [
+      {
+        mode: 'or',
+        filters: [{ key: 'objectLabel', values: ['label'], operator: 'eq', mode: 'or' }],
+        filterGroups: [
+          { mode: 'and', filters: [], filterGroups: [] },
+        ],
+      },
+    ],
+  } as unknown as FilterGroup;
+
+  it('should give an id to every group at every depth', () => {
+    const result = ensureFilterIds(nested);
+    expect(result.id).toBeDefined();
+    expect(result.filterGroups[0].id).toBeDefined();
+    expect(result.filterGroups[0].filterGroups[0].id).toBeDefined();
+    const ids = [result.id, result.filterGroups[0].id, result.filterGroups[0].filterGroups[0].id];
+    expect(new Set(ids).size).toEqual(3);
+  });
+
+  it('should give an id to every filter at every depth, preserving already-set filter ids', () => {
+    const result = ensureFilterIds(nested);
+    expect(result.filters[0].id).toEqual('filter-1'); // already set: preserved
+    expect(result.filterGroups[0].filters[0].id).toBeDefined(); // missing: hydrated
+    expect(result.filterGroups[0].filters[0].id).not.toEqual('filter-1');
+  });
+
+  it('should be idempotent: keep the existing ids and return the same object on a second call', () => {
+    const once = ensureFilterIds(nested);
+    const twice = ensureFilterIds(once);
+    expect(twice).toEqual(once);
+    expect(twice).toBe(once); // referential stability: no new uuid, no state change
+    expect(twice.id).toEqual(once.id);
+    expect(twice.filterGroups[0].id).toEqual(once.filterGroups[0].id);
+    expect(twice.filterGroups[0].filters[0].id).toEqual(once.filterGroups[0].filters[0].id);
+  });
+
+  it('should preserve the ids already present in a partially identified group', () => {
+    const partial = {
+      mode: 'and',
+      filters: [],
+      filterGroups: [{ id: 'existing-group', mode: 'or', filters: [], filterGroups: [] }],
+    } as unknown as FilterGroup;
+    const result = ensureFilterIds(partial);
+    expect(result.filterGroups[0].id).toEqual('existing-group');
+    expect(result.id).toBeDefined();
+  });
+
+  it('should work on the frozen emptyFilterGroup without modifying it', () => {
+    const result = ensureFilterIds(emptyFilterGroup);
+    expect(result.id).toBeDefined();
+    expect(emptyFilterGroup.id).toBeUndefined();
+    expect(result).not.toBe(emptyFilterGroup);
+  });
+
+  it('should not leak any id once stripped for the backend', () => {
+    expectNoFrontendIds(canonicalizeFilterGroupForBackend(ensureFilterIds(nested)));
+  });
+
+  it('should return the very same references when every id is already unique', () => {
+    const unique = {
+      id: 'g0',
+      mode: 'and',
+      filters: [{ id: 'f0', key: 'entity_type', values: ['Report'], operator: 'eq', mode: 'or' }],
+      filterGroups: [
+        {
+          id: 'g1',
+          mode: 'or',
+          filters: [{ id: 'f1', key: 'objectLabel', values: ['label'], operator: 'eq', mode: 'or' }],
+          filterGroups: [{ id: 'g2', mode: 'and', filters: [], filterGroups: [] }],
+        },
+      ],
+    } as unknown as FilterGroup;
+    const result = ensureFilterIds(unique);
+    expect(result).toBe(unique);
+    expect(result.filterGroups[0]).toBe(unique.filterGroups[0]);
+    expect(result.filterGroups[0].filterGroups[0]).toBe(unique.filterGroups[0].filterGroups[0]);
+    expect(result.filters[0]).toBe(unique.filters[0]);
+  });
+
+  it('should leave untouched the filter groups nested in a dynamicRegardingOf value', () => {
+    const dynamicGroup = { mode: 'and', filters: [], filterGroups: [] } as unknown as FilterGroup;
+    const withDynamic = {
+      id: 'root',
+      mode: 'and',
+      filters: [{
+        id: 'f-dynamic',
+        key: 'dynamicRegardingOf',
+        operator: 'eq',
+        mode: 'or',
+        values: [{ key: 'dynamic', values: [dynamicGroup] }],
+      }],
+      filterGroups: [],
+    } as unknown as FilterGroup;
+    const result = ensureFilterIds(withDynamic);
+    expect(result).toBe(withDynamic); // nothing to hydrate: values are not descended into
+    const resultDynamicGroup = (result.filters[0].values[0] as { values: FilterGroup[] }).values[0];
+    expect(resultDynamicGroup).toBe(dynamicGroup);
+    expect(resultDynamicGroup.id).toBeUndefined();
+  });
+});
+
+describe('isFilterGroupNotEmpty', () => {
+  it('should consider an undefined or empty filter group as empty', () => {
+    expect(isFilterGroupNotEmpty(undefined)).toBe(false);
+    expect(isFilterGroupNotEmpty({ mode: 'and', filters: [], filterGroups: [] })).toBe(false);
+  });
+
+  it('should consider a group holding only empty nested groups as empty', () => {
+    expect(isFilterGroupNotEmpty({
+      mode: 'and',
+      filters: [],
+      filterGroups: [{ mode: 'and', filters: [], filterGroups: [{ mode: 'or', filters: [], filterGroups: [] }] }],
+    })).toBe(false);
+  });
+
+  it('should consider a group holding only value-less filters as empty', () => {
+    expect(isFilterGroupNotEmpty({
+      mode: 'and',
+      filters: [{ key: 'objectLabel', values: [] }],
+      filterGroups: [],
+    })).toBe(false);
+  });
+
+  it('should consider a group holding a nested filter with values as not empty', () => {
+    expect(isFilterGroupNotEmpty({
+      mode: 'and',
+      filters: [],
+      filterGroups: [{ mode: 'and', filters: [{ key: 'name', values: ['a'] }], filterGroups: [] }],
+    })).toBe(true);
+  });
+});
+
+describe('getSelectedOptions with dashboard variable tokens', () => {
+  const t_i18n = (s: string) => s;
+  const variableId = '11111111-1111-4111-8111-111111111111';
+  const token = `$var:${variableId}`;
+  const deletedToken = '$var:99999999-9999-4999-8999-999999999999';
+  const variables = [{ id: variableId, name: 'Client label', type: 'label' as const, restriction: { mode: 'none' as const }, defaultValue: null }];
+  // What the representatives query answers for a token: the back cannot resolve it.
+  const representatives = new Map([
+    [token, { representativeId: token, value: null, entity_type: null, color: null }],
+    [deletedToken, { representativeId: deletedToken, value: null, entity_type: null, color: null }],
+    ['label-1', { representativeId: 'label-1', value: 'APT', entity_type: 'Label', color: '#ff0000' }],
+  ]);
+
+  it('shows a known variable token under the variable name, in the selected group', () => {
+    expect(getSelectedOptions([], [token], representatives, t_i18n, variables)).toEqual([
+      { value: token, label: 'Client label', type: 'Variable', parentTypes: [], group: 'Selected' },
+    ]);
+  });
+
+  it('shows a token of a variable that no longer exists as a deleted variable', () => {
+    expect(getSelectedOptions([], [deletedToken], representatives, t_i18n, variables)).toEqual([
+      { value: deletedToken, label: 'Deleted variable', type: 'Variable', parentTypes: [], group: 'Selected' },
+    ]);
+    // Even when every variable of the dashboard is gone.
+    expect(getSelectedOptions([], [deletedToken], representatives, t_i18n, [])[0].label).toBe('Deleted variable');
+  });
+
+  it('keeps the literal values unchanged next to a token', () => {
+    const options = getSelectedOptions([], ['label-1', token], representatives, t_i18n, variables);
+    expect(options.map((o) => o.label)).toEqual(['APT', 'Client label']);
+  });
+
+  it('outside a dashboard (no variables given), handles a token-looking value exactly as before', () => {
+    expect(getSelectedOptions([], [token, 'label-1'], representatives, t_i18n)).toEqual([
+      { value: 'label-1', type: 'Label', parentTypes: [], group: 'Selected', label: 'APT', color: '#ff0000' },
+      { value: token, type: 'deleted', parentTypes: [], group: 'Selected', label: 'deleted', color: undefined },
+    ]);
+  });
+});

@@ -1,0 +1,86 @@
+import {
+  auditsDistribution,
+  auditsMultiTimeSeries,
+  auditsNumber,
+  auditsTimeSeries,
+  auditsTimeSeriesBreakdown,
+  findAudits,
+  findHistory,
+  findById,
+  findAuditById,
+} from '../domain/log';
+import { storeLoadById } from '../database/middleware-loader';
+import { ENTITY_TYPE_EXTERNAL_REFERENCE } from '../schema/stixMetaObject';
+import { appLogLevelMaxStringSize, logApp, logFrontend } from '../config/conf';
+import { loadCreator } from '../database/members';
+
+// Same as maxExportBatchSize in opencti-front/src/utils/logging/loggerProvider.ts:
+// a larger batch was not sent by the frontend logger.
+const MAX_FRONTEND_LOGS_PER_CALL = 50;
+
+// Same truncation as prepareLogMetadata applies to meta strings
+const truncateLogText = (text) => (text.length > appLogLevelMaxStringSize ? `${text.substring(0, appLogLevelMaxStringSize - 3)}...` : text);
+
+const FRONTEND_LOG_LEVELS = {
+  DEBUG: 'debug',
+  INFO: 'info',
+  WARN: 'warn',
+  ERROR: 'error',
+};
+
+const logResolvers = {
+  Query: {
+    logs: (_, args, context) => findHistory(context, context.user, args),
+    log: (_, args, context) => findById(context, context.user, args.id),
+    audit: (_, args, context) => findAuditById(context, context.user, args.id),
+    audits: (_, args, context) => findAudits(context, context.user, args),
+    auditsNumber: (_, args, context) => auditsNumber(context, context.user, args),
+    auditsTimeSeries: (_, args, context) => auditsTimeSeries(context, context.user, args),
+    auditsMultiTimeSeries: (_, args, context) => auditsMultiTimeSeries(context, context.user, args),
+    auditsTimeSeriesBreakdown: (_, args, context) => auditsTimeSeriesBreakdown(context, context.user, args),
+    auditsDistribution: (_, args, context) => auditsDistribution(context, context.user, args),
+  },
+  Log: {
+    user: async (log, _, context) => loadCreator(context, context.user, log.applicant_id || log.user_id),
+    context_data: async (log, args, context) => context.batch.logContextDataBatchLoader.load({ log, args }),
+    raw_data: (log, _, __) => JSON.stringify(log, null, 2),
+    context_uri: (log, _, __) => (log.context_data.id && log.entity_type === 'History' ? `/dashboard/id/${log.context_data.id}` : undefined),
+    event_status: (log, _, __) => log.event_status ?? 'success',
+    event_scope: (log, _, __) => log.event_scope ?? log.event_type, // Retro compatibility
+  },
+  ContextData: {
+    external_references: (data, _, context) => {
+      const refPromises = Promise.all(
+        (data.references || []).map((id) => storeLoadById(context, context.user, id, ENTITY_TYPE_EXTERNAL_REFERENCE)),
+      ).then((refs) => refs.filter((element) => element !== undefined));
+      return Promise.resolve(data.external_references ?? [])
+        .then((externalReferences) => refPromises.then((refs) => externalReferences.concat(refs)));
+    },
+  },
+  Mutation: {
+    frontendErrorLog: (_, { message, codeStack, componentStack }, __) => {
+      logFrontend.error(message, { codeStack, componentStack });
+    },
+    frontendLogsAdd: (_, { logs }, context) => {
+      if (logs.length > MAX_FRONTEND_LOGS_PER_CALL) {
+        logApp.warn('[FRONTEND LOGS] Batch larger than the frontend logger sends, extra records dropped', {
+          received: logs.length,
+          max: MAX_FRONTEND_LOGS_PER_CALL,
+          user_id: context.user?.id,
+        });
+      }
+      logs.slice(0, MAX_FRONTEND_LOGS_PER_CALL).forEach((log) => {
+        const { timestamp, level, message, eventName, data, exception } = log;
+        logFrontend[FRONTEND_LOG_LEVELS[level]](truncateLogText(message), {
+          client_timestamp: timestamp,
+          event_name: eventName,
+          data,
+          exception,
+        });
+      });
+      return true;
+    },
+  },
+};
+
+export default logResolvers;

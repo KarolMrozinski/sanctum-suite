@@ -1,0 +1,93 @@
+package datawave.ingest.mapreduce.partition;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.HashSet;
+import java.util.Set;
+
+import org.apache.hadoop.conf.Configuration;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
+
+import datawave.ingest.mapreduce.handler.shard.ShardIdFactory;
+import datawave.ingest.mapreduce.job.TableSplitsCache;
+
+public class TabletLocationHashPartitionerTest {
+    public static final int MAX_EXPECTED_COLLISIONS = 70;
+
+    @TempDir
+    Path temporaryDirectory;
+
+    int TOTAL_TSERVERS = 600;
+    int SHARDS_PER_DAY = 170;
+    int NUM_DAYS = 1500;
+    int NUM_REDUCE_TASKS = 270;
+    Configuration conf = new Configuration();
+    TabletLocationHashPartitioner partitioner = null;
+
+    @BeforeEach
+    public void setUp() {
+        conf = new Configuration();
+        conf.setBoolean(TableSplitsCache.REFRESH_SPLITS, false);
+
+        TableSplitsCache.getCurrentCache(conf).clear();
+
+        partitioner = new TabletLocationHashPartitioner();
+        partitioner.setConf(conf);
+    }
+
+    @AfterEach
+    public void tearDown() {
+        conf.clear();
+        conf = null;
+        partitioner = null;
+    }
+
+    @Test
+    public void testLocationHashPartitioner() throws Exception {
+        conf.setInt(ShardIdFactory.NUM_SHARDS, SHARDS_PER_DAY);
+        new TestShardGenerator(conf, Files.createTempDirectory(temporaryDirectory, "splits").toFile(), NUM_DAYS, SHARDS_PER_DAY, TOTAL_TSERVERS, "shard");
+        TabletLocationHashPartitioner partitionerTwo = new TabletLocationHashPartitioner();
+        partitionerTwo.setConf(conf);
+
+        BalancedShardPartitionerTest.assertExpectedCollisions(partitionerTwo, 0, MAX_EXPECTED_COLLISIONS);
+        BalancedShardPartitionerTest.assertExpectedCollisions(partitionerTwo, 1, MAX_EXPECTED_COLLISIONS);
+        BalancedShardPartitionerTest.assertExpectedCollisions(partitionerTwo, 2, MAX_EXPECTED_COLLISIONS);
+
+        BalancedShardPartitionerTest.assertExpectedCollisions(partitionerTwo, 3, MAX_EXPECTED_COLLISIONS);
+        BalancedShardPartitionerTest.assertExpectedCollisions(partitionerTwo, 4, MAX_EXPECTED_COLLISIONS);
+        BalancedShardPartitionerTest.assertExpectedCollisions(partitionerTwo, 5, MAX_EXPECTED_COLLISIONS);
+        BalancedShardPartitionerTest.assertExpectedCollisions(partitionerTwo, 20, MAX_EXPECTED_COLLISIONS);
+        BalancedShardPartitionerTest.assertExpectedCollisions(partitionerTwo, 100, MAX_EXPECTED_COLLISIONS);
+    }
+
+    @Test
+    public void testPigeonHolesAreReal() throws Exception {
+        ArrayList<String> allLocations = new ArrayList<>();
+        ArrayList<String> locationsToUse = new ArrayList<>();
+        for (int tserverNum = 1; tserverNum < TOTAL_TSERVERS; tserverNum++) {
+            allLocations.add("" + tserverNum);
+            if (tserverNum < (TOTAL_TSERVERS - SHARDS_PER_DAY) && tserverNum > (TOTAL_TSERVERS - (2 * SHARDS_PER_DAY))) {
+                locationsToUse.add("" + tserverNum);
+            }
+        }
+        Set<Integer> partitionsUsed = new HashSet<>();
+
+        int collisions = 0;
+        for (String location : locationsToUse) {
+            byte[] bytes = location.getBytes();
+            int hashCode = location.hashCode() & Integer.MAX_VALUE;
+            int partition = (hashCode) % NUM_REDUCE_TASKS;
+            if (partitionsUsed.contains(partition)) {
+                collisions++;
+            }
+            partitionsUsed.add(partition);
+        }
+        assertEquals(42, collisions);
+    }
+}

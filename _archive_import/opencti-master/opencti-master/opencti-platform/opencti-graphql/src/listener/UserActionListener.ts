@@ -1,0 +1,297 @@
+import type { AuthUser } from '../types/user';
+import type { BasicStoreCommon, BasicStoreObject } from '../types/store';
+import { extractEntityRepresentativeName } from '../database/entity-representative';
+import { RELATION_CREATED_BY, RELATION_GRANTED_TO, RELATION_OBJECT_LABEL, RELATION_OBJECT_MARKING } from '../schema/stixRefRelationship';
+import { ENTITY_TYPE_WORKSPACE } from '../modules/workspace/workspace-types';
+
+interface BasicUserAction {
+  user: AuthUser;
+  status?: 'success' | 'error'; // nothing = success
+  event_type: 'authentication' | 'read' | 'mutation' | 'file' | 'command' | 'ingestion_health';
+  event_scope: string;
+  event_access: 'extended' | 'administration';
+  prevent_indexing?: boolean;
+}
+
+// region actions
+export interface UserSearchActionContextData {
+  input: unknown;
+  search?: string;
+}
+export interface UserSearchAction extends BasicUserAction {
+  event_type: 'command';
+  event_scope: 'search';
+  context_data: UserSearchActionContextData;
+}
+
+export interface ElementContextData {
+  id: string;
+  entity_name: string;
+  entity_type: string;
+  creator_ids?: string[];
+  granted_refs_ids?: string[];
+  object_marking_refs_ids?: string[];
+  object_marking_refs_definitions?: string[];
+  created_by_ref_id?: string;
+  workspace_type?: string;
+  labels_ids?: string[];
+}
+export interface UserAnalyzeActionContextData extends ElementContextData {
+  connector_id: string;
+  connector_name: string;
+}
+export interface UserAnalyzeAction extends BasicUserAction {
+  event_type: 'command';
+  event_scope: 'analyze';
+  context_data: UserAnalyzeActionContextData;
+}
+export interface UserEnrichActionContextData extends ElementContextData {
+  connector_id: string;
+  connector_name: string;
+}
+export interface UserEnrichAction extends BasicUserAction {
+  event_type: 'command';
+  event_scope: 'enrich';
+  context_data: UserEnrichActionContextData;
+}
+export interface UserImportActionContextData extends ElementContextData {
+  file_id: string;
+  file_mime: string;
+  file_name: string;
+  connectors: string[];
+}
+// The import of a configuration preset: the report of the import is the file, linked to no entity
+export interface ConfigPresetImportSummary {
+  counts: Record<'created' | 'overwritten' | 'skipped' | 'failed', number>;
+  // The type of a partial import (the items of one type taken from the bundle), absent for the import of the wizard
+  type?: string;
+}
+export interface UserConfigPresetImportActionContextData {
+  // The report of the import, null when it could not be written
+  file_id: string | null;
+  path: string;
+  file_name: string;
+  input: ConfigPresetImportSummary;
+}
+export interface UserImportAction extends BasicUserAction {
+  event_type: 'command';
+  event_scope: 'import';
+  context_data: UserImportActionContextData | UserConfigPresetImportActionContextData;
+}
+export interface UserExportActionContextData extends ElementContextData {
+  format: string;
+  entity_type: string;
+  export_scope: 'query' | 'single' | 'selection';
+  export_type: 'simple' | 'full';
+  element_id: string; // Same as id
+  max_marking: string[];
+  file_markings: string[];
+  list_params?: unknown;
+  selected_ids?: string[];
+}
+export interface UserExportAction extends BasicUserAction {
+  event_type: 'command';
+  event_scope: 'export';
+  context_data: UserExportActionContextData;
+}
+
+// The export of a configuration preset: a file of the platform, linked to no entity
+export interface ConfigPresetExportSummary {
+  entity_types: string[];
+  counts: Record<string, number>;
+  items: Record<string, string[]>;
+}
+export interface UserConfigPresetExportActionContextData {
+  path: string;
+  file_name: string;
+  // The context data of the activity log is mapped field by field: what is not a known field goes in the free-form input
+  input: ConfigPresetExportSummary;
+}
+export interface UserConfigPresetExportAction extends BasicUserAction {
+  event_type: 'command';
+  event_scope: 'export';
+  context_data: UserConfigPresetExportActionContextData;
+}
+
+export interface UserSendActionContextData extends ElementContextData {
+  input: unknown;
+}
+
+export interface UserSendAction extends BasicUserAction {
+  event_type: 'command';
+  event_scope: 'send';
+  context_data: UserSendActionContextData;
+}
+// endregion
+
+// region file
+export interface UserFileActionContextData extends ElementContextData {
+  path: string;
+  file_name: string;
+  input?: unknown;
+}
+export interface UserFileAction extends BasicUserAction {
+  event_type: 'file';
+  event_scope: 'read' | 'create' | 'delete' | 'download';
+  context_data: UserFileActionContextData;
+}
+
+export interface UserDisseminateActionContextData extends ElementContextData {
+  input: unknown;
+}
+export interface DisseminateAction extends BasicUserAction {
+  event_type: 'file';
+  event_scope: 'disseminate';
+  context_data: UserDisseminateActionContextData;
+}
+// endregion
+
+// region read / mutation
+export interface UserReadActionContextData extends ElementContextData {
+  workspace_type?: string;
+}
+export interface UserReadAction extends BasicUserAction {
+  event_type: 'read';
+  event_scope: 'read';
+  context_data: UserReadActionContextData;
+}
+export interface UserForbiddenAction extends BasicUserAction {
+  event_type: 'read' | 'mutation';
+  event_scope: 'unauthorized';
+  context_data: {
+    operation: string;
+    input: unknown;
+  };
+}
+export interface UserModificationAction extends BasicUserAction {
+  event_type: 'mutation';
+  event_scope: 'create' | 'update' | 'delete';
+  message: string;
+  context_data: {
+    id: string;
+    entity_type: string;
+    input: unknown;
+  };
+}
+// endregion
+
+// region health
+export interface IngestionHealthAction extends BasicUserAction {
+  event_type: 'ingestion_health';
+  event_scope: 'critical' | 'degraded' | 'recovered';
+  message: string;
+  // Only fields mapped under context_data: the history index mapping is strict
+  context_data: {
+    id: string;
+    entity_type: string;
+    entity_name: string;
+    ingestion_health_changes: {
+      // The messages of the failing checks, absent when none fails
+      message?: string;
+      // The same messages, one by check: the critical ones apart from the others
+      critical_messages?: string[];
+      advisory_messages?: string[];
+      // Status reported by the previous health event, absent for the first one
+      previous_status?: string;
+      // Date the current status started
+      status_since: string;
+    };
+  };
+}
+// endregion
+
+// region authentication
+export interface UserLoginAction extends BasicUserAction {
+  event_type: 'authentication';
+  event_scope: 'login';
+  session_kill?: number;
+  context_data: {
+    provider: string;
+    username?: string;
+  };
+}
+export interface UserLogoutAction extends BasicUserAction {
+  event_type: 'authentication';
+  event_scope: 'logout';
+  context_data: undefined;
+}
+
+export interface UserForgotPasswordAction extends BasicUserAction {
+  event_type: 'authentication';
+  event_scope: 'forgot';
+  context_data: undefined;
+  message: string;
+}
+// endregion
+
+export type UserAction = UserReadAction | UserFileAction | UserLoginAction | UserEnrichAction | UserAnalyzeAction | UserImportAction
+  | UserLogoutAction | UserExportAction | UserConfigPresetExportAction | UserSendAction | UserModificationAction | UserForbiddenAction | UserSearchAction
+  | DisseminateAction | UserForgotPasswordAction
+  | IngestionHealthAction;
+
+export interface ActionListener {
+  id: string;
+  next: (action: UserAction) => Promise<void>;
+}
+export interface ActionHandler {
+  unregister: () => void;
+}
+
+const listeners = new Map<string, ActionListener>();
+
+export const registerUserActionListener = (listener: ActionListener): ActionHandler => {
+  listeners.set(listener.id, listener);
+  return { unregister: () => listeners.delete(listener.id) };
+};
+
+export const publishUserAction = async (userAction: UserAction) => {
+  const actionPromises = [];
+  for (const [, listener] of listeners.entries()) {
+    actionPromises.push(listener.next(userAction));
+  }
+  return Promise.all(actionPromises);
+};
+
+export const completeContextDataForEntity = <T extends BasicStoreCommon | null, C extends ElementContextData>(inputContextData: C, data: T) => {
+  const contextData = { ...inputContextData };
+  if (data) {
+    if (data.creator_id) {
+      contextData.creator_ids = Array.isArray(data.creator_id) ? data.creator_id : [data.creator_id];
+    }
+    if (data[RELATION_GRANTED_TO]) {
+      contextData.granted_refs_ids = data[RELATION_GRANTED_TO];
+    }
+    if (data[RELATION_OBJECT_MARKING]) {
+      contextData.object_marking_refs_ids = data[RELATION_OBJECT_MARKING];
+    }
+    if (data[RELATION_CREATED_BY]) {
+      contextData.created_by_ref_id = data[RELATION_CREATED_BY];
+    }
+    if (data[RELATION_OBJECT_LABEL]) {
+      contextData.labels_ids = data[RELATION_OBJECT_LABEL];
+    }
+    if (data.entity_type === ENTITY_TYPE_WORKSPACE) {
+      contextData.workspace_type = data.type;
+    }
+  }
+  return contextData;
+};
+
+export const buildContextDataForFile = (
+  entity: BasicStoreObject | null,
+  path: string,
+  filename: string,
+  file_markings: string[] = [],
+  input: unknown = {},
+) => {
+  const baseData: UserFileActionContextData = {
+    path,
+    id: entity?.internal_id ?? '',
+    entity_name: entity ? extractEntityRepresentativeName(entity) : 'global',
+    entity_type: entity?.entity_type ?? 'global',
+    file_name: filename,
+    object_marking_refs_ids: file_markings,
+    input,
+  };
+  return completeContextDataForEntity(baseData, entity);
+};

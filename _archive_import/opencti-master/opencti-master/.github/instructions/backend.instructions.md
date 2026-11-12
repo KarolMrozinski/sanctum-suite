@@ -1,0 +1,90 @@
+---
+applyTo: "opencti-platform/opencti-graphql/**"
+description: "Backend architecture, standards, and implementation patterns for OpenCTI GraphQL API"
+---
+
+# Backend (opencti-graphql)
+
+## Scope
+The `opencti-graphql` module is the core API server for the OpenCTI platform. It handles:
+- GraphQL API requests (Apollo Server)
+- Data persistence (ElasticSearch/OpenSearch)
+- Message queuing (RabbitMQ)
+- File storage (S3, served by Silo in the development stack)
+- Cache (Redis)
+- Authentication & Authorization
+
+## Architecture
+
+### Tech Stack
+- **Runtime**: Node.js ≥ 20
+- **Language**: TypeScript
+- **API**: GraphQL (Apollo Server)
+- **Database**: ElasticSearch or OpenSearch
+- **Messaging**: RabbitMQ
+- **Object Storage**: S3 compatible (Silo, a MinIO fork, in the development stack)
+- **Cache**: Redis
+
+### Key Directories
+- `src/`: Source code
+  - `schema/`: GraphQL schema definitions
+  - `resolvers/`: GraphQL resolvers
+  - `domain/`: Business logic and service layer
+  - `modules/`: Self-contained domain modules (entity type, schema, resolvers, converter, domain logic)
+  - `database/`: Database connectors and utilities
+  - `migrations/`: Database migration scripts
+- `config/`: Configuration files (NODE_ENV based)
+- `tests/`: Unit and integration tests
+
+## Setup & Build
+
+### Prerequisites
+- **Yarn 4.13.0**: Enabled via `corepack enable`.
+- **Python Deps**: Required for some internal logic.
+
+### Commands
+> The API is a workspace of the repository-root Yarn project: `yarn install` from the root installs it, `yarn workspaces focus opencti-graphql` installs it alone.
+
+```bash
+# Installation
+yarn install
+yarn install:python
+
+# Build
+yarn build:prod    # Production build
+yarn build:dev     # Dev build (generates schema)
+yarn build:schema  # Generate GraphQL schema & types
+
+# Linting & Types
+yarn check-ts      # Check TypeScript types
+yarn lint          # Run ESLint
+
+# Testing
+yarn test:ci-unit              # Fast unit tests
+yarn test:ci-integration-sync  # Integration tests
+```
+
+## Implementation Patterns
+
+> **Detailed Patterns**:
+> - [Module Architecture](backend/patterns/module-architecture.md)
+> - [GraphQL Schema & Resolvers](backend/patterns/schema-resolvers.md)
+> - [Database & Migrations](backend/patterns/database-migrations.md)
+> - [Error Handling](backend/patterns/error-handling.md)
+> - [Logging Levels](backend/patterns/logging-levels.md)
+> - [Performance](backend/patterns/performance.md)
+> - [Testing](backend/patterns/testing.md)
+> - [Feature Flags](backend/patterns/feature-flags.md)
+
+### Feature flags (CRITICAL)
+When a feature is behind a feature flag, every new attribute definition **and** every new
+nested `mappings` entry it registers MUST set `featureFlag: <FLAG_CONSTANT>`. Otherwise the
+field is added to the ElasticSearch index mapping and exposed in the schema even when the
+flag is disabled — silently, no test fails. The `@ff` directive and `isFeatureEnabled`
+checks do not cover this. Full checklist: [Feature Flags](backend/patterns/feature-flags.md)
+and the `add-feature-flag` skill.
+
+## Common Issues
+- **Missing Python deps**: If you see errors about missing modules, run `yarn install:python`.
+- **Heap Memory**: If build fails with OOM, use `NODE_OPTIONS=--max_old_space_size=8192`.
+- **Schema mismatch**: If types are out of sync, run `yarn build:schema`.
