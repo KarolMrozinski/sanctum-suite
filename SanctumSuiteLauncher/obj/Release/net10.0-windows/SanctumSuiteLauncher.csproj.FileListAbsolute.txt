@@ -17,3 +17,4 @@ C:\Users\edgie\Desktop\EEE\sanctum-suite\SanctumSuiteLauncher\obj\Release\net10.
 C:\Users\edgie\Desktop\EEE\sanctum-suite\SanctumSuiteLauncher\obj\Release\net10.0-windows\SanctumSuiteLauncher.pdb
 C:\Users\edgie\Desktop\EEE\sanctum-suite\SanctumSuiteLauncher\obj\Release\net10.0-windows\SanctumSuiteLauncher.genruntimeconfig.cache
 C:\Users\edgie\Desktop\EEE\sanctum-suite\SanctumSuiteLauncher\obj\Release\net10.0-windows\ref\SanctumSuiteLauncher.dll
+C:\Users\edgie\Desktop\EEE\sanctum-suite\SanctumSuiteLauncher\bin\Release\net10.0-windows\SanctumSuiteLauncher.exe

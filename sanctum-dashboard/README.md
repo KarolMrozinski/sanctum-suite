@@ -1,36 +1,54 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Sanctum Suite Dashboard
 
-## Getting Started
+A premium cyber operations dashboard inspired by OpenCTI and refined into the Sanctum Suite brand.
 
-First, run the development server:
+## What it includes
+
+- OpenCTI-like threat intelligence layout
+- Overview, threats, entities, investigations, and alerts sections
+- Dark glassmorphism interface with cyber security styling
+- Local mock data modeled around analyst workflows
+- Desktop launcher integration for Windows startup and management
+
+## Local run
 
 ```bash
+cd sanctum-dashboard
+npm install
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Open:
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+- `http://localhost:3000`
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+## Build
 
-## Learn More
+```bash
+npm run build
+```
 
-To learn more about Next.js, take a look at the following resources:
+## App flow
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+The dashboard is structured around a live SOC/CTI operator experience:
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+- Overview: operational insights and exposure snapshot
+- Threats: malicious campaign and actor context
+- Entities: assets, identities, infrastructure, and impact mapping
+- Investigations: timeline-driven casework and narrative progression
+- Alerts: priority feed with severity and response posture
 
-## Deploy on Vercel
+## Windows launcher
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+From the repository root:
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+- `start-sanctum-suite.cmd`
+- `run-sanctum-suite.bat`
+- `SanctumSuiteLauncher.exe`
+- `Sanctum Suite.lnk`
+
+These entry points are intended to start the dashboard in a desktop-like native workflow and keep the browser launch single-instance and stable.
+
+## Notes
+
+This app is designed as a polished local CTI dashboard and desktop wrapper. The data is intentionally realistic but local/mock-driven rather than a full production backend.

@@ -33,6 +33,7 @@ public partial class App : Wpf.Application
     private Wpf.Controls.Button _stopBtn = null!;
     private Wpf.Controls.Button _openBtn = null!;
     private Wpf.Controls.TextBlock _status = null!;
+    private Border _statusDot = null!;
     private WinForms.NotifyIcon? _trayIcon;
     private bool _isWindowVisible = true;
 
@@ -105,6 +106,7 @@ public partial class App : Wpf.Application
         content.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
         content.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
         content.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+        content.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
 
         var header = new Grid { Margin = new Thickness(0, 0, 0, 12) };
         header.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
@@ -121,9 +123,8 @@ public partial class App : Wpf.Application
         };
         Grid.SetColumn(title, 0);
 
-        var statusDot = new Border
+        _statusDot = new Border
         {
-            Name = "statusDot",
             Width = 10,
             Height = 10,
             CornerRadius = new CornerRadius(5),
@@ -131,7 +132,7 @@ public partial class App : Wpf.Application
             Margin = new Thickness(0, 0, 8, 0),
             VerticalAlignment = VerticalAlignment.Center
         };
-        Grid.SetColumn(statusDot, 2);
+        Grid.SetColumn(_statusDot, 2);
 
         var closeBtn = new Wpf.Controls.Button
         {
@@ -149,7 +150,7 @@ public partial class App : Wpf.Application
         Grid.SetColumn(closeBtn, 2);
 
         header.Children.Add(title);
-        header.Children.Add(statusDot);
+        header.Children.Add(_statusDot);
         header.Children.Add(closeBtn);
 
         _status = new TextBlock
@@ -496,14 +497,7 @@ public partial class App : Wpf.Application
         _openBtn.IsEnabled = isRunning && !browserOpened;
         _openBtn.Background = new SolidColorBrush(isRunning && !browserOpened ? System.Windows.Media.Color.FromRgb(14, 116, 144) : System.Windows.Media.Color.FromRgb(24, 24, 27));
 
-        if (_window != null)
-        {
-            var dot = (Border?)_window.FindName("statusDot");
-            if (dot != null)
-            {
-                dot.Background = new SolidColorBrush(isRunning ? System.Windows.Media.Color.FromRgb(45, 212, 191) : System.Windows.Media.Color.FromRgb(100, 116, 139));
-            }
-        }
+        _statusDot.Background = new SolidColorBrush(isRunning ? System.Windows.Media.Color.FromRgb(45, 212, 191) : System.Windows.Media.Color.FromRgb(100, 116, 139));
     }
 
     private void MinimizeToTray()
