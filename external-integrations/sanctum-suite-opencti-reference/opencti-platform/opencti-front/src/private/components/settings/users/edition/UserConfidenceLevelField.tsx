@@ -1,0 +1,146 @@
+import React, { FunctionComponent, useState } from 'react';
+import { Field, useFormikContext } from 'formik';
+import Alert from '@mui/material/Alert';
+import Box from '@mui/material/Box';
+import Tooltip from '@mui/material/Tooltip';
+import { InformationOutline } from 'mdi-material-ui';
+import { UserEdition_user$data } from '@components/settings/users/__generated__/UserEdition_user.graphql';
+import ConfidenceInputSliderField from '../../../../../components/ConfidenceInputSliderField';
+import { useFormatter } from '../../../../../components/i18n';
+import SwitchField from '../../../../../components/fields/SwitchField';
+import { layerInputVars } from '../../../../../utils/fdsLayer';
+import UserConfidenceLevel from '../UserConfidenceLevel';
+
+interface UserConfidenceLevelFieldProps {
+  name: string;
+  label?: string;
+  onSubmit?: (name: string, value: string | null) => void;
+  onFocus?: (name: string, value: string) => void;
+  editContext?:
+    | readonly ({
+      readonly focusOn: string | null | undefined;
+      readonly name: string;
+    } | null)[]
+    | null;
+  containerStyle?: Record<string, string | number>;
+  disabled?: boolean;
+  user?: UserEdition_user$data; // only for edition
+}
+
+const UserConfidenceLevelField: FunctionComponent<UserConfidenceLevelFieldProps> = ({
+  name,
+  label,
+  onFocus,
+  onSubmit,
+  editContext,
+  containerStyle,
+  disabled,
+  user,
+}) => {
+  const { t_i18n } = useFormatter();
+  const finalLabel = label || t_i18n('Confidence level');
+  const { setFieldValue, initialValues } = useFormikContext<Record<string, boolean>>();
+  const [switchValue, setSwitchValue] = useState(Number.isInteger(initialValues[name]));
+
+  const handleSwitchChange = async () => {
+    if (switchValue) {
+      await setFieldValue(name, null);
+      onSubmit?.(name, null);
+    } else {
+      await setFieldValue(name, 100);
+      onSubmit?.(name, '100');
+    }
+    setSwitchValue(!switchValue);
+  };
+  return (
+    <Alert
+      severity="info"
+      icon={false}
+      variant="outlined"
+      // The alias ladder is anchored by the host panel; the block sits one step above it.
+      className="layer-3"
+      sx={{
+        position: 'relative',
+        width: '100%',
+        marginTop: '20px',
+        padding: '16px',
+        border: 'none',
+        borderRadius: 'var(--radius-sm)',
+        backgroundColor: 'var(--bg-elevation-default)',
+        // `--bg-input-default` resolves where it is DECLARED, on `:root`, so the layer class alone misses it.
+        ...layerInputVars,
+      }}
+      slotProps={{
+        // The alert's own message slot leads with 8px, which stacked on the padding above.
+        message: {
+          sx: {
+            width: '100%',
+            overflow: 'visible',
+            padding: 0,
+            color: 'text.secondary',
+          },
+        },
+      }}
+    >
+      { user && !!user.effective_confidence_level && (
+        <Box sx={{ marginBottom: '24px' }}>
+          {t_i18n('Effective Max Confidence Level:')}
+          &nbsp;
+          <UserConfidenceLevel user={user} />
+        </Box>
+      )}
+      { user && user.effective_confidence_level === null && (user.groups?.edges ?? []).length > 0 && (
+        <Box
+          sx={{ color: 'error.main' }}
+        >
+          {t_i18n('This user does not inherit a Max Confidence Level from their group. Configure user\'s groups with a Max Confidence Level.')}
+        </Box>
+      )}
+      { user && user.effective_confidence_level === null && (user.groups?.edges ?? []).length === 0 && (
+        <Box
+          sx={{ color: 'error.main' }}
+        >
+          {t_i18n('This user has no Max Confidence Level and does not inherit one from groups. Add a group to this user to resolve the issue.')}
+        </Box>
+      )}
+      <Box sx={{ display: 'flex', alignItems: 'center', gap: '4px', marginBottom: '24px' }}>
+        {/* we still use a technical field for this switch to be able to do lazy yup validation ; do NOT submit! */}
+        <Field
+          component={SwitchField}
+          type="checkbox"
+          name="user_confidence_level_enabled"
+          label={t_i18n('Enable user Max Confidence Level')}
+          // controlled field
+          checked={switchValue}
+          onChange={handleSwitchChange}
+        />
+        <Tooltip
+          sx={{ zIndex: 2 }}
+          title={t_i18n('The user\'s Max Confidence Level overrides Max Confidence Level inherited from user\'s groups')}
+        >
+          <InformationOutline
+            fontSize="small"
+            color="primary"
+            sx={{ position: 'relative', top: '-4px' }}
+          />
+        </Tooltip>
+      </Box>
+      <Field
+        component={ConfidenceInputSliderField}
+        containerstyle={containerStyle}
+        fullWidth={true}
+        entityType="User"
+        attributeName={name}
+        name={name}
+        label={finalLabel}
+        onFocus={onFocus}
+        onSubmit={onSubmit}
+        editContext={editContext}
+        disabled={Boolean(!switchValue || disabled)}
+        variant="edit"
+      />
+    </Alert>
+  );
+};
+
+export default UserConfidenceLevelField;

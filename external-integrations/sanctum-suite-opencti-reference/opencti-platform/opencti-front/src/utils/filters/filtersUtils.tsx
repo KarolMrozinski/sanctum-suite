@@ -1,0 +1,1581 @@
+import * as R from 'ramda';
+import { useEffect, useMemo, useState } from 'react';
+import { graphql } from 'react-relay';
+import { v4 as uuid } from 'uuid';
+import { FilterOptionValue } from '@components/common/lists/FilterAutocomplete';
+import { useFormatter } from '../../components/i18n';
+import type { FilterGroup as GqlFilterGroup } from './__generated__/useSearchEntitiesStixCoreObjectsSearchQuery.graphql';
+import type { filtersUtilsCustomFieldStixFilterKeysQuery } from './__generated__/filtersUtilsCustomFieldStixFilterKeysQuery.graphql';
+import useAuth, { FilterDefinition } from '../hooks/useAuth';
+import { fetchQuery } from '../../relay/environment';
+import { capitalizeFirstLetter, displayEntityTypeForTranslation, isValidDate } from '../String';
+import { FilterRepresentative } from '../../components/filters/FiltersModel';
+import { isEmptyField, uniqueArray } from '../utils';
+import { isCustomFieldAttribute } from '../customFields';
+import { Filter, FilterGroup, FilterValue, handleFilterHelpers } from './filtersHelpers-types';
+import { dateFiltersValueForDisplay } from '../Time';
+import { RELATIONSHIP_WIDGETS_TYPES } from '../widget/widgetUtils';
+import type { DashboardVariable } from '../../components/dashboard/dashboard-types';
+import { getVariableTokenLabel } from '../../components/dashboard/dashboardVariableTokenLabel';
+import { logger } from '../logging/logger';
+
+// ----------------------------------------------------------------------------------------------------------------------
+
+export type { FilterGroup as GqlFilterGroup } from './__generated__/useSearchEntitiesStixCoreObjectsSearchQuery.graphql';
+
+export interface FilterSearchContext {
+  entityTypes: string[];
+  elementId?: string[];
+  connectorsScope?: boolean;
+  elementType?: string;
+}
+
+export type FiltersRestrictions = {
+  preventLocalModeSwitchingFor?: string[]; // filter keys whose local mode can't be changed
+  preventRemoveFor?: string[]; // filter keys whose filter can't be removed
+  preventFilterValuesEditionFor?: Map<string, string[]>; // Map<filter key, values[]> indicating the not removable value for the given filter key
+};
+
+// /!\ Frozen: this is a shared module-level object used as default value in many components.
+// Never mutate it, and never share its arrays: use cloneFilterGroup() to get a safe mutable copy.
+export const emptyFilterGroup: FilterGroup = Object.freeze({
+  mode: 'and',
+  filters: Object.freeze([]) as unknown as Filter[],
+  filterGroups: Object.freeze([]) as unknown as FilterGroup[],
+}) as FilterGroup;
+
+/**
+ * The single recursion over a filter group tree: bottom-up, non-mutating, frozen-input safe.
+ * `transform` is called on every group of the tree, deepest first, and always receives a group
+ * whose sub-groups have already been transformed.
+ * Identity is preserved: when neither `transform` nor the recursion changes anything, the very
+ * same object is returned, so a state setter built on it does not trigger a re-render/url re-sync.
+ * /!\ Not used by the serialization helpers (`canonicalizeFilterGroupForBackend`, `pruneEmptyFiltersAndGroups`):
+ * those rebuild groups from a property whitelist in a load-bearing order, which is the opposite
+ * of the spread-and-patch done here.
+ */
+export const mapFilterGroupTree = (
+  filterGroup: FilterGroup,
+  transform: (group: FilterGroup) => FilterGroup,
+): FilterGroup => {
+  const subGroups = filterGroup.filterGroups ?? [];
+  const newSubGroups = subGroups.map((group) => mapFilterGroupTree(group, transform));
+  const subGroupsChanged = newSubGroups.some((group, index) => group !== subGroups[index]);
+  return transform(subGroupsChanged ? { ...filterGroup, filterGroups: newSubGroups } : filterGroup);
+};
+
+/**
+ * Deep copy of a filter group, so that no array instance is shared with the source.
+ * Used when a shared/frozen filter group (typically emptyFilterGroup) is injected in a state.
+ */
+export const cloneFilterGroup = (filterGroup: FilterGroup): FilterGroup => mapFilterGroupTree(filterGroup, (group) => ({
+  ...group,
+  filters: (group.filters ?? []).map((filter) => ({
+    ...filter,
+    values: [...(filter.values ?? [])],
+  })),
+  // rebuilt unconditionally: a leaf group would otherwise keep the source (possibly frozen) array
+  filterGroups: [...(group.filterGroups ?? [])],
+}));
+
+/**
+ * Assigns a FRONTEND-ONLY uuid `id` to the given filter group, to every nested group and to every
+ * filter of every group, whenever it does not already have one — the hydration counterpart of
+ * `canonicalizeFilterGroupForBackend` (which drops both id kinds in a single pass).
+ * - non-mutating and safe on frozen inputs (typically emptyFilterGroup), built on `mapFilterGroupTree`;
+ * - idempotent: an existing id is always preserved as-is, and when every group and filter is
+ *   already identified the very same object (identity) is returned, so calling it twice never
+ *   triggers a state change nor a url re-sync — unlike normalizeFilterGroupForFrontend, which
+ *   regenerates a filter's id unconditionally and is unsuited to repeated hydration.
+ * /!\ Does not de-duplicate: assumes every id already present was itself produced by `uuid()`
+ * (fresh per call), so a collision is not checked for. Never feed it a hand-built or copy-pasted
+ * tree whose ids were not minted that way.
+ * /!\ Must only be called on state entry points (state initialization, setFilters), never in a
+ * render-derived value: new uuids on every render would cause endless history.replaceState churn.
+ */
+export const ensureFilterIds = (filterGroup: FilterGroup): FilterGroup => mapFilterGroupTree(filterGroup, (group) => {
+  const filters = group.filters ?? [];
+  const newFilters = filters.map((filter) => (filter.id ? filter : { ...filter, id: uuid() }));
+  const filtersChanged = newFilters.some((filter, index) => filter !== filters[index]);
+  if (!filtersChanged && group.id) return group;
+  return {
+    ...group,
+    ...(filtersChanged ? { filters: newFilters } : {}),
+    id: group.id ?? uuid(),
+  };
+});
+
+// ----------------------------------------------------------------------------------------------------------------------
+
+export const SELF_ID = 'SELF_ID';
+export const SELF_ID_VALUE = 'CURRENT ENTITY';
+
+export const ME_FILTER_VALUE = '@me';
+
+// Filter operators that do not require any values in filter.values
+export const NO_VALUES_FILTER_OPERATORS = ['nil', 'not_nil', 'has_changed', 'not_has_changed'];
+
+/** Default height (in px) of one item on the filter line rendered by `FilterIconButtonContainer`
+ * (the default/non-'small'/non-'tag' variant): each filter `Chip`, the AND/OR mode chip, and the
+ * nested filter-group chip button all line up on it. Matches MUI `Chip`'s own default height —
+ * not a themed token, just named here once so nothing on that line repeats the literal `32`. */
+export const FILTER_LINE_ITEM_HEIGHT = 32;
+
+// 'within' operator filter constants
+export const DEFAULT_WITHIN_FILTER_VALUES = ['now-1d', 'now'];
+
+const PIR_SCORE_FILTER = 'pir_score';
+const LAST_PIR_SCORE_DATE_FILTER = 'last_pir_score_date';
+
+export const FiltersVariant = {
+  list: 'list',
+  dialog: 'dialog',
+};
+
+const NOT_CLEANABLE_FILTER_KEYS = [
+  'entity_type',
+  'authorized_members.id',
+  'user_id',
+  'internal_id',
+  'entity_id',
+  'ids',
+  'bulkSearchKeywords',
+  'draft_ids',
+  'draft_change',
+  PIR_SCORE_FILTER,
+  LAST_PIR_SCORE_DATE_FILTER,
+];
+
+const pirScoreFilterDefinition = {
+  filterKey: PIR_SCORE_FILTER,
+  label: 'PIR Score',
+  multiple: false,
+  type: 'integer',
+  subFilters: [],
+  subEntityTypes: [],
+  elementsForFilterValuesSearch: [],
+};
+
+const lastPirScoreDateFilterDefinition = {
+  filterKey: LAST_PIR_SCORE_DATE_FILTER,
+  label: 'Last PIR Score date',
+  multiple: false,
+  type: 'date',
+  subFilters: [],
+  subEntityTypes: [],
+  elementsForFilterValuesSearch: [],
+};
+
+// filters which possible values are entity types or relationship types
+export const entityTypesFilters = [
+  'entity_type',
+  'fromTypes',
+  'toTypes',
+  'relationship_type', // TODO to remove because is entity_type
+  'contextEntityType',
+  'elementWithTargetTypes',
+  'type', // regardingOf subfilter
+  'x_opencti_main_observable_type',
+  'main_entity_type', // for DeleteOperation
+  'exclusion_list_entity_types',
+];
+
+// context filters for audits (filters on the entity involved in an activity/knowledge event)
+export const contextFilters = [
+  'contextCreator',
+  'contextCreatedBy',
+  'contextEntityId',
+  'contextEntityType',
+  'contextObjectLabel',
+  'contextObjectMarking',
+];
+
+// filters available on the live stream event envelope (origin) - kept narrow on purpose
+export const streamOriginFilters = [
+  'members_user',
+  'members_group',
+  'members_organization',
+];
+
+// filters available in stix filtering (streams, playbooks, triggers)
+// this is the static part of the list: it is completed dynamically with the custom fields
+// stix filter keys (see useStixFilters below), which is the only entry point that should be used
+// by callers needing the full, up-to-date list of stix filtering keys.
+const STATIC_STIX_FILTERS = [
+  'entity_type',
+  'workflow_id',
+  'objectAssignee',
+  'objects',
+  'objectMarking',
+  'objectLabel',
+  'creator_id',
+  'createdBy',
+  'priority',
+  'severity',
+  'x_opencti_score',
+  'x_opencti_detection',
+  'revoked',
+  'confidence',
+  'indicator_types',
+  'pattern_type',
+  'pattern',
+  'x_opencti_main_observable_type',
+  'fromId',
+  'toId',
+  'fromTypes',
+  'toTypes',
+  'representative',
+  'x_opencti_cisa_kev',
+  'x_opencti_epss_score',
+  'x_opencti_epss_percentile',
+  'x_opencti_cvss_base_score',
+  'x_opencti_cvss_base_severity',
+  'report_types',
+  'response_types',
+  'information_types',
+  'takedown_types',
+  'note_types',
+  'incident_type',
+  'description',
+  'x_opencti_ssvc_exploitation',
+  'x_opencti_ssvc_automatable',
+  'x_opencti_ssvc_technical_impact',
+  'x_opencti_closing_reason',
+];
+const customFieldStixFilterKeysQuery = graphql`
+  query filtersUtilsCustomFieldStixFilterKeysQuery($entityType: String) {
+    customFieldStixFilterKeys(entityType: $entityType)
+  }
+`;
+
+/**
+ * Centralizes the fetching of the custom fields filter keys usable in stix filtering
+ * (streams, playbooks, triggers, connectors, ...), so that callers don't have to
+ * each implement their own loading strategy (query, caching...).
+ * Returns an empty array while loading.
+ */
+export const useCustomFieldStixFilterKeys = (entityType?: string): string[] => {
+  const [customFieldFilterKeys, setCustomFieldFilterKeys] = useState<string[]>([]);
+  useEffect(() => {
+    let isMounted = true;
+    fetchQuery<filtersUtilsCustomFieldStixFilterKeysQuery>(
+      customFieldStixFilterKeysQuery,
+      { entityType },
+    )
+      .toPromise()
+      .then((data) => {
+        if (isMounted) {
+          setCustomFieldFilterKeys([...(data?.customFieldStixFilterKeys ?? [])]);
+        }
+      })
+      .catch(() => {
+        if (isMounted) {
+          setCustomFieldFilterKeys([]);
+        }
+      });
+    return () => {
+      isMounted = false;
+    };
+  }, [entityType]);
+  return customFieldFilterKeys;
+};
+
+/**
+ * Returns the full list of filter keys usable in stix filtering (streams, playbooks, triggers,
+ * connectors, ...): the static list of built-in keys, concatenated with the dynamic list of
+ * custom fields filter keys (fetched centrally by this hook).
+ * This is the single entry point callers should use instead of hard-coding/duplicating
+ * the custom fields loading logic.
+ */
+export const useStixFilters = (entityType?: string): string[] => {
+  const customFieldFilterKeys = useCustomFieldStixFilterKeys(entityType);
+  return useMemo(
+    () => uniqueArray([...STATIC_STIX_FILTERS, ...customFieldFilterKeys]),
+    [customFieldFilterKeys],
+  );
+};
+
+// ----------------------------------------------------------------------------------------------------------------------
+// utilities
+
+const getStringFilterKey = (key: string | string[]): string => {
+  return Array.isArray(key) ? key[0] : key;
+};
+
+/**
+ * The filter keys displayed by a stix filters form: a stored filter on a custom field deleted since stays
+ * displayed, so that it can be removed on its own (the backend rejects saving it).
+ */
+export const getStixFiltersDisplayedKeys = (availableFilterKeys: string[], filters?: FilterGroup | null): string[] => {
+  if (!filters) return availableFilterKeys;
+  const unavailableCustomFieldKeys = new Set<string>();
+  mapFilterGroupTree(filters, (group) => {
+    (group.filters ?? []).forEach((filter) => {
+      const key = getStringFilterKey(filter.key);
+      if (isCustomFieldAttribute(key) && !availableFilterKeys.includes(key)) unavailableCustomFieldKeys.add(key);
+    });
+    return group;
+  });
+  return unavailableCustomFieldKeys.size > 0 ? [...availableFilterKeys, ...unavailableCustomFieldKeys] : availableFilterKeys;
+};
+
+export const isDraftWorkspaceFilterGroup = (filters: FilterGroup | null | undefined): boolean => {
+  if (!filters) return false;
+  const entityTypeFilter = filters.filters.find((f) => f.key === 'entity_type');
+  if (!entityTypeFilter || entityTypeFilter.values.length === 0) return false;
+  return entityTypeFilter.values.every((v) => {
+    const val = typeof v === 'string' ? v : (v?.value ?? v?.id);
+    return val === 'DraftWorkspace';
+  });
+};
+
+/**
+ * Shallow, structure-only check: true as soon as the group has *any* child filter or child
+ * group, regardless of whether that child is itself complete/usable (e.g. a value-less filter,
+ * or an empty nested group). Kept for live-editing call sites that need "is there structure to
+ * keep working with" rather than "is this a complete, submittable rule set" — a strict check
+ * would delete what the user is mid-typing (see `FilterFiltersInput.tsx`).
+ * Do not use this for required-filter submit gates: use `isFilterGroupNotEmpty` instead.
+ */
+export const isFilterGroupNotEmptyShallow = (filterGroup?: FilterGroup | GqlFilterGroup | null) => {
+  return !!(
+    filterGroup
+    && (filterGroup.filters?.length > 0 || filterGroup.filterGroups?.length > 0)
+  );
+};
+
+/**
+ * Strict check: true only if the group would still contain at least one usable rule after
+ * serialization (i.e. after pruning value-less filters and empty descendant groups). This is
+ * the "is this a complete, submittable rule set" semantics, and the one required-filter submit
+ * gates (disabled buttons, etc.) should use.
+ */
+export const isFilterGroupNotEmpty = (filterGroup?: FilterGroup | GqlFilterGroup | null) => {
+  if (!filterGroup) return false;
+  const pruned = pruneEmptyFiltersAndGroups(canonicalizeFilterGroupForBackend(filterGroup as FilterGroup));
+  return isFilterGroupNotEmptyShallow(pruned);
+};
+
+export const isStringifiedFilterGroupFormatCorrect = (stringFilters: string): boolean => {
+  const filters = JSON.parse(stringFilters);
+  return isFilterGroupFormatCorrect(filters);
+};
+
+/**
+ * Checks whether a given value has the correct structure of a FilterGroup,
+ * i.e. it is an object with a valid mode ('and' | 'or'), and arrays for filters and filterGroups.
+ */
+export const isFilterGroupFormatCorrect = (value: unknown): boolean => {
+  if (!value || typeof value !== 'object') {
+    return false;
+  }
+  const objectValue = value as { mode?: unknown; filters?: unknown; filterGroups?: unknown };
+  return (objectValue.mode === 'or' || objectValue.mode === 'and')
+    && Array.isArray(objectValue.filters)
+    && Array.isArray(objectValue.filterGroups);
+};
+
+export const isUniqFilter = (key: string, filterKeysSchema: Map<string, Map<string, FilterDefinition>>) => {
+  const filterDefinition = filterKeysSchema.get('Stix-Core-Object')?.get(key);
+  return !!(filterDefinition && ['boolean', 'date', 'integer', 'float'].includes(filterDefinition.type));
+};
+
+// basic text filters are filters of type string or text that are not entity types filters
+// i.e. filters whose values are not pickable from a list and should be entered manually
+export const isBasicTextFilter = (
+  filterDefinition: FilterDefinition | undefined,
+) => {
+  return filterDefinition
+    && (filterDefinition.type === 'string' || filterDefinition.type === 'text')
+    && !entityTypesFilters.includes(filterDefinition.filterKey);
+};
+
+export const isNumericFilter = (
+  filterType?: string,
+) => {
+  return filterType === 'integer' || filterType === 'float';
+};
+
+/**
+ * Remove filters that have no values, except those whose operators are valid without values
+ */
+export const removeEmptyFiltersFromList = (filtersList: Filter[]) => {
+  return filtersList.filter((f) => NO_VALUES_FILTER_OPERATORS.includes(f.operator ?? 'eq') || f.values.length > 0);
+};
+
+/**
+ * Return the values of the filters of a specific key among a filters list
+ */
+export const findFilterFromKey = (
+  filters: Filter[],
+  key: string,
+  operator = 'eq',
+) => {
+  for (const filter of filters) {
+    if (filter.key === key) {
+      const filterOperator = filter.operator || 'eq';
+      if (filterOperator === operator) {
+        return filter;
+      }
+    }
+  }
+  return null;
+};
+
+/**
+ * Return all filters whose key is in `keys` and whose operator matches.
+ */
+export const findFiltersFromKeys = (
+  filters: Filter[],
+  keys: string[],
+  operator = 'eq',
+): Filter[] => {
+  const result: Filter[] = [];
+  for (const filter of filters) {
+    if (keys.includes(filter.key)) {
+      if (!filter.operator || filter.operator === operator) {
+        result.push(filter);
+      }
+    }
+  }
+  return result;
+};
+
+export const findFilterIndexFromKey = (
+  filters: Filter[],
+  key: string,
+  operator?: string,
+) => {
+  for (let i = 0; i < filters.length; i += 1) {
+    const filter = filters[i];
+    if (filter.key === key) {
+      if (operator && filter.operator === operator) {
+        return i;
+      }
+      if (!operator) {
+        return i;
+      }
+    }
+  }
+  return null;
+};
+
+// create a new filter: filters AND new filter built with (key, value, operator, mode)
+export const addFilter = (
+  filters: FilterGroup | undefined,
+  key: string,
+  value: string | string[],
+  operator = 'eq',
+  mode = 'or',
+): FilterGroup | undefined => {
+  const filterFromParameters = {
+    key,
+    values: Array.isArray(value) ? value : [value],
+    operator,
+    mode,
+  };
+  return {
+    mode: 'and',
+    filters: [filterFromParameters],
+    filterGroups: filters && isFilterGroupNotEmpty(filters) ? [filters] : [],
+  };
+};
+
+// remove filter with key=entity_type and values contains 'all'
+// because in this case we want everything, so no need for filters
+export const removeEntityTypeAllFromFilterGroup = (inputFilters?: FilterGroup | null) => {
+  if (inputFilters && isFilterGroupNotEmpty(inputFilters)) {
+    const { filters, filterGroups } = inputFilters;
+    const newFilters = filters.filter((f) => !(f.key === 'entity_type' && f.values.includes('all')));
+    const newFilterGroups = filterGroups.map((group) => removeEntityTypeAllFromFilterGroup(group)) as FilterGroup[];
+    return {
+      ...inputFilters,
+      filters: newFilters,
+      filterGroups: newFilterGroups,
+    };
+  }
+  return inputFilters;
+};
+
+// fetch the entity type filters possible values of first and second levels and third levels
+// and remove Observable if the filters target only some sub observable types
+// exemple: Observable AND (Domain-Name) --> [Domain-Name]
+// exemple: Domain-Name OR Observable --> [Domain-Name, Observable]
+// exemple: Stix-Domain-Object AND (Malware OR (Country AND City)) --> [Stix-Domain-Object, Malware]
+export const getEntityTypeThreeFirstLevelsFilterValues = (
+  filters?: FilterGroup,
+  observableTypes?: string[],
+  domainObjectTypes?: string [],
+): string[] => {
+  if (!filters) {
+    return [];
+  }
+  let firstLevelValues = findFiltersFromKeys(filters.filters, ['entity_type', 'relationship_type'], 'eq')
+    .map(({ values }) => values)
+    .flat();
+  if (filters.filterGroups.length > 0) {
+    const subFiltersSeparatedWithAnd = filters.filterGroups
+      .filter((fg) => fg.mode === 'and' || (fg.mode === 'or' && fg.filters.length === 1))
+      .map((fg) => fg.filters)
+      .flat();
+    if (subFiltersSeparatedWithAnd.length > 0) {
+      const secondLevelValues = findFiltersFromKeys(subFiltersSeparatedWithAnd, ['entity_type', 'relationship_type'], 'eq')
+        .map(({ values }) => values)
+        .flat();
+      if (secondLevelValues.length > 0) {
+        if (filters.mode === 'and') {
+          // if all second values are observables sub types : remove observable from firstLevelValue
+          if (secondLevelValues.every((type) => observableTypes?.includes(type))) {
+            firstLevelValues = firstLevelValues.filter((type) => type !== 'Stix-Cyber-Observable');
+          }
+          if (secondLevelValues.every((type) => domainObjectTypes?.includes(type))) {
+            firstLevelValues = firstLevelValues.filter((type) => type !== 'Stix-Domain-Object');
+          }
+        }
+        return [...firstLevelValues, ...secondLevelValues];
+      }
+    }
+    if (filters.mode === 'or') {
+      return [];
+    }
+    // Check third level values
+    const subFilterGroupssSeparatedWithAnd = filters.filterGroups
+      .filter((fg) => fg.mode === 'and' || (fg.mode === 'or' && fg.filters.length === 1))
+      .map((fg) => fg.filterGroups)
+      .flat();
+    const thirdFiltersSeperatedWithAnd = subFilterGroupssSeparatedWithAnd
+      .filter((fg) => fg.mode === 'and' || (fg.mode === 'or' && fg.filters.length === 1))
+      .map((fg) => fg.filters)
+      .flat();
+    if (thirdFiltersSeperatedWithAnd.length > 0) {
+      const thirdLevelValues = findFiltersFromKeys(thirdFiltersSeperatedWithAnd, ['entity_type'], 'eq')
+        .map(({ values }) => values)
+        .flat();
+      if (thirdLevelValues.length > 0) {
+        if (filters.mode === 'and') {
+          // if all second values are observables sub types : remove observable from firstLevelValue
+          if (thirdLevelValues.every((type) => observableTypes?.includes(type))) {
+            firstLevelValues = firstLevelValues.filter((type) => type !== 'Stix-Cyber-Observable');
+          }
+          if (thirdLevelValues.every((type) => domainObjectTypes?.includes(type))) {
+            firstLevelValues = firstLevelValues.filter((type) => type !== 'Stix-Domain-Object');
+          }
+        }
+        return [...firstLevelValues, ...thirdLevelValues];
+      }
+    }
+  }
+  return firstLevelValues;
+};
+
+// construct filters and options for widgets
+export const buildFiltersAndOptionsForWidgets = (
+  inputFilters: FilterGroup | undefined | null,
+  opts: {
+    removeTypeAll?: boolean;
+    startDate?: string | null;
+    endDate?: string | null;
+    dateAttribute?: string;
+    isKnowledgeRelationshipWidget?: boolean;
+  } = {},
+) => {
+  const {
+    removeTypeAll = false,
+    startDate = null,
+    endDate = null,
+    dateAttribute = 'created_at',
+    isKnowledgeRelationshipWidget = false,
+  } = opts;
+  let filters = inputFilters ?? undefined;
+  // remove 'all' in filter with key=entity_type
+  if (removeTypeAll) {
+    filters = removeEntityTypeAllFromFilterGroup(filters) ?? undefined;
+  }
+  // handle startDate and endDate options
+  const dateFiltersContent: Filter[] = [];
+  if (startDate) {
+    dateFiltersContent.push({
+      key: dateAttribute,
+      values: [startDate],
+      operator: 'gt',
+      mode: 'or',
+    });
+  }
+  if (endDate) {
+    dateFiltersContent.push({
+      key: dateAttribute,
+      values: [endDate],
+      operator: 'lt',
+      mode: 'or',
+    });
+  }
+  if (dateFiltersContent.length > 0) {
+    filters = {
+      mode: 'and',
+      filters: dateFiltersContent,
+      filterGroups: filters && isFilterGroupNotEmpty(filters) ? [filters] : [],
+    };
+  }
+  if (isKnowledgeRelationshipWidget) {
+    filters = addFilter(filters, 'entity_type', RELATIONSHIP_WIDGETS_TYPES);
+  }
+  return { filters };
+};
+
+export const useBuildFiltersForTemplateWidgets = () => {
+  // fetch not allowed markings for content widgets
+  const { me } = useAuth();
+  const allowedMarkings = me.allowed_marking ?? [];
+  const maxShareableMarkings = me.max_shareable_marking ?? [];
+
+  const buildFiltersForTemplateWidgets = (
+    inputFilters: string | undefined | null,
+    containerId: string,
+    maxContentMarkingsIds: string[],
+  ) => {
+    // replace SELF_ID
+    let filters = inputFilters ? JSON.parse(inputFilters.replace(SELF_ID, containerId)) : undefined;
+    // restrict markings
+    const maxContentMarkings = allowedMarkings.filter((m) => maxContentMarkingsIds.includes(m.id));
+    const notAllowedMarkingIds = allowedMarkings
+      .filter((def) => {
+        const maxMarkingsOfType = [...maxShareableMarkings, ...maxContentMarkings].filter((marking) => marking.definition_type === def.definition_type);
+        return isEmptyField(maxMarkingsOfType) || maxMarkingsOfType.some((maxMarking) => maxMarking.x_opencti_order < def.x_opencti_order);
+      })
+      .map((m) => m.id);
+    if (notAllowedMarkingIds.length > 0) {
+      filters = addFilter(filters, 'objectMarking', notAllowedMarkingIds, 'not_eq', 'and');
+    }
+    return filters;
+  };
+
+  return { buildFiltersForTemplateWidgets };
+};
+
+// return the i18n label corresponding to a filter value
+export const filterValue = (
+  filterKey: string,
+  value?: string | null,
+  filterType?: string,
+  filterOperator?: string,
+) => {
+  const { t_i18n, nsd, smhd } = useFormatter();
+  if (filterKey === 'regardingOf' || filterKey === 'dynamicRegardingOf' || filterKey === 'dynamic' || filterKey === 'dynamicFrom' || filterKey === 'dynamicTo') {
+    return JSON.stringify(value);
+  }
+  if (
+    value
+    && (filterType === 'boolean' || filterType === 'enum')
+  ) {
+    return t_i18n(value);
+  }
+  if (filterKey === 'x_opencti_negative') {
+    return t_i18n(value === 'true' ? 'False positive' : 'True positive');
+  }
+  if (value && entityTypesFilters.includes(filterKey)) {
+    return value === 'all'
+      ? t_i18n('entity_All')
+      : t_i18n(displayEntityTypeForTranslation(value));
+  }
+  if (filterType === 'date') {
+    if (filterOperator === 'within' && !isValidDate(value)) {
+      return value;
+    }
+    const dateConvertor = filterOperator === 'within' ? smhd : nsd;
+    return dateConvertor(dateFiltersValueForDisplay(value, filterOperator));
+  }
+  if (filterKey === 'relationship_type' || filterKey === 'type') {
+    return t_i18n(`relationship_${value}`);
+  }
+
+  if (value === undefined || value === null) {
+    return value;
+  }
+
+  // Defensive check to prevent errors on string manipulation after this call
+  if (typeof value !== 'string') {
+    logger.warn('Filter value is not a string', {
+      eventName: 'opencti.filter.value_not_string',
+      data: { filter: { key: filterKey, type: filterType, operator: filterOperator }, value: { type: typeof value } },
+    });
+    return String(value);
+  }
+  return value;
+};
+
+export const isFilterEditable = (filtersRestrictions: FiltersRestrictions | undefined, filterKey: string, filterValues: string[]) => {
+  return !(filtersRestrictions?.preventFilterValuesEditionFor
+    && Array.from(filtersRestrictions.preventFilterValuesEditionFor.keys() ?? []).includes(filterKey)
+    && filtersRestrictions.preventFilterValuesEditionFor.get(filterKey)?.some((v) => filterValues.includes(v)));
+};
+
+// ----------------------------------------------------------------------------------------------------------------------
+// Serialization
+// TODO:
+//  these functions are used to sanitize the keys inside filters before serialization and saving into backend
+//  This is due to format inconsistencies between back and front formats and will be unnecessary once fixed.
+
+export const sanitizeFiltersStructure = (filterGroup: FilterGroup): FilterGroup => mapFilterGroupTree(filterGroup, (group) => ({
+  ...group,
+  filters: (group.filters || []).filter(
+    (filter) => Array.isArray(filter.values) && filter.values.length > 0,
+  ),
+  filterGroups: group.filterGroups || [],
+}));
+
+/**
+ * Normalizes a FilterGroup for backend persistence:
+ * - Converts filter keys from string to string[] (backend expects arrays).
+ * - Removes filter IDs (not persisted).
+ * - Strips empty filters (no values and no nil/not_nil operator).
+ * - Recursively processes nested filterGroups.
+ *
+ * This is required because GQL input coercion accepts single values in place of arrays,
+ * but when filters are stringified and parsed server-side, strict array format is expected.
+ */
+export function normalizeFilterGroupForBackend(filterGroup: FilterGroup): GqlFilterGroup;
+export function normalizeFilterGroupForBackend(filterGroup?: FilterGroup | null): GqlFilterGroup | undefined;
+export function normalizeFilterGroupForBackend(
+  filterGroup?: FilterGroup | null,
+): GqlFilterGroup | undefined {
+  if (!filterGroup) {
+    return undefined;
+  }
+  // strip the frontend-only ids, prune the empty filters and groups, then turn the keys into arrays
+  const cleanFilterGroup = pruneEmptyFiltersAndGroups(canonicalizeFilterGroupForBackend(filterGroup));
+  const keysToArrays = (group: FilterGroup): GqlFilterGroup => ({
+    mode: group.mode,
+    filters: group.filters.map((f) => ({
+      ...f,
+      key: Array.isArray(f.key) ? f.key : [f.key],
+    })),
+    filterGroups: group.filterGroups.map((fg) => keysToArrays(fg)),
+  } as GqlFilterGroup);
+  return keysToArrays(cleanFilterGroup);
+}
+
+/**
+ * Standalone 'dynamicFrom'/'dynamicTo' filters hold the nested filter group directly in their
+ * values (unlike 'dynamicRegardingOf', which nests it under a 'dynamic' sub-value).
+ */
+const isStandaloneDynamicKey = (key: string) => key === 'dynamicFrom' || key === 'dynamicTo';
+
+/**
+ * Reverse operation of normalizeFilterGroupForBackend:
+ * converts a GqlFilterGroup (backend format with array keys) into a FilterGroup (frontend format with single string key).
+ * Also assigns a unique `id` to each filter for React rendering purposes.
+ */
+export const normalizeFilterGroupForFrontend = (
+  filterGroup: GqlFilterGroup,
+): FilterGroup => {
+  return {
+    ...filterGroup,
+    // frontend-only group id, preserved if the persisted group already carries one
+    id: (filterGroup as unknown as FilterGroup)?.id ?? uuid(),
+    filters: filterGroup?.filters?.map((f) => {
+      const key = Array.isArray(f.key) ? f.key[0] : f.key;
+      // build values
+      let values: FilterValue[];
+      if (key === 'dynamicRegardingOf') { // add id in dynamic regarding of subfilter for React rendering purposes
+        values = f.values.map((dynamicRegardingOfValue) => {
+          if (dynamicRegardingOfValue.key === 'dynamic') { // values with 'dynamic' key contains filters
+            return {
+              ...dynamicRegardingOfValue,
+              values: dynamicRegardingOfValue.values.map((filterValue: GqlFilterGroup) => normalizeFilterGroupForFrontend(filterValue)),
+            };
+          } else {
+            return dynamicRegardingOfValue;
+          }
+        });
+      } else if (isStandaloneDynamicKey(key)) { // the value IS the nested filter group
+        values = f.values.map((nestedGroup: GqlFilterGroup) => normalizeFilterGroupForFrontend(nestedGroup));
+      } else {
+        values = f.values.map((v) => v || 'todo: delete this');
+      }
+      // return the filter with normalized key and values, and add an id
+      return {
+        ...f,
+        id: uuid(),
+        key,
+        values,
+      };
+    }),
+    filterGroups: filterGroup?.filterGroups?.map((fg) => normalizeFilterGroupForFrontend(fg)),
+  } as FilterGroup;
+};
+
+/**
+ * Turns a FilterGroup (frontend format, i.e. with single keys) into the backend format (key is an array)
+ * and stringify it, ready to be saved in backend.
+ * @param filterGroup
+ */
+export const serializeFilterGroupForBackend = (
+  filterGroup?: FilterGroup | null,
+): string => {
+  if (!filterGroup) {
+    return JSON.stringify(emptyFilterGroup);
+  }
+  return JSON.stringify(normalizeFilterGroupForBackend(filterGroup));
+};
+
+/**
+ * Parse a filterGroup as given by the backend (backend format, i.e. with array keys),
+ * And turns it into the frontend format (single key).
+ * @param filterGroup
+ */
+export const deserializeFilterGroupForFrontend = (
+  filterGroup?: GqlFilterGroup | string | null,
+): FilterGroup | null => {
+  if (!filterGroup) {
+    return null;
+  }
+  let filters: GqlFilterGroup;
+  if (typeof filterGroup === 'string') {
+    filters = JSON.parse(filterGroup) as GqlFilterGroup;
+  } else {
+    filters = filterGroup;
+  }
+  return normalizeFilterGroupForFrontend(filters);
+};
+
+// ----------------------------------------------------------------------------------------------------------------------
+
+// add a filter (k, id, op) in a filterGroup smartly, for usage in forms
+// note that we're only dealing with one-level filterGroup (no nested), so we just update the 1st level filters list
+export const constructHandleAddFilter = (
+  filters: FilterGroup | undefined | null,
+  k: string,
+  id: string | null,
+  filterKeysSchema: Map<string, Map<string, FilterDefinition>>,
+  op = 'eq',
+) => {
+  // if the filter key is already used, update it
+  if (filters && findFilterFromKey(filters.filters, k, op)) {
+    const filter = findFilterFromKey(filters.filters, k, op);
+    let newValues: FilterValue[] = [];
+    if (id !== null) {
+      newValues = isUniqFilter(k, filterKeysSchema)
+        ? [id]
+        : R.uniq([...(filter?.values ?? []), id]);
+    }
+    const newFilterElement = {
+      key: k,
+      values: newValues,
+      operator: op,
+      mode: 'or',
+    };
+    return {
+      ...filters,
+      filters: [
+        ...filters.filters.filter((f) => f.key !== k || f.operator !== op), // remove filter with k as key
+        newFilterElement, // add new filter
+      ],
+    };
+  }
+  // new filter key, add it ot the list
+  const newFilterElement = {
+    key: k,
+    values: id !== null ? [id] : [],
+    operator: op ?? 'eq',
+    mode: 'or',
+  };
+  return filters
+    ? {
+        ...filters,
+        filters: [...filters.filters, newFilterElement], // add new filter
+      }
+    : {
+        mode: 'and',
+        filterGroups: [],
+        filters: [newFilterElement],
+      };
+};
+
+// remove a filter (k, op, id) in a filterGroup smartly, for usage in forms
+// if the filter ends up empty, return undefined
+export const constructHandleRemoveFilter = (filters: FilterGroup | undefined | null, k: string, op = 'eq') => {
+  if (filters) {
+    const newBaseFilters = {
+      ...filters,
+      filters: filters.filters.filter((f) => f.key !== k || f.operator !== op), // remove filter with key=k and operator=op
+    };
+    return isFilterGroupNotEmpty(newBaseFilters) ? newBaseFilters : emptyFilterGroup;
+  }
+  return undefined;
+};
+
+// switch the mode inside a specific filter
+export const filtersAfterSwitchLocalMode = (filters: FilterGroup | undefined | null, localFilter: Filter) => {
+  if (filters) {
+    const filterIndex = findFilterIndexFromKey(
+      filters.filters,
+      localFilter.key,
+      localFilter.operator,
+    );
+    if (filterIndex !== null) {
+      const newFiltersContent = [...filters.filters];
+      newFiltersContent[filterIndex] = {
+        ...localFilter,
+        mode: localFilter.mode === 'and' ? 'or' : 'and',
+      };
+      return {
+        ...filters,
+        filters: newFiltersContent,
+      };
+    }
+  }
+  return undefined;
+};
+
+export const getDefaultOperatorFilter = (
+  filterDefinition?: FilterDefinition,
+) => {
+  if (!filterDefinition) {
+    return 'eq';
+  }
+  const { type } = filterDefinition;
+  if (type === 'date') {
+    return 'within';
+  }
+  if (isNumericFilter(type)) {
+    return 'gt';
+  }
+  if (type === 'boolean') {
+    return 'eq';
+  }
+  if (isBasicTextFilter(filterDefinition)) {
+    if (filterDefinition.type === 'string') {
+      return 'starts_with';
+    }
+    if (filterDefinition.type === 'text') {
+      if (type === 'text') {
+        return 'search';
+      }
+    } else {
+      throw Error(`A basic text filter is of type string or text, not ${filterDefinition.type}`);
+    }
+  }
+  return 'eq';
+};
+
+/**
+ * Get the possible operator for a given key/subkey.
+ * Subkeys are nested inside special filter that combine several fields (filter values is not a string[] but object[])
+ */
+export const getAvailableOperatorForFilterSubKey = (filterKey: string, subKey: string): string[] => {
+  if (filterKey === 'regardingOf' || filterKey === 'dynamicRegardingOf') {
+    if (subKey === 'relationship_type') { // As first element of the filter
+      return ['eq', 'not_eq'];
+    }
+    return [];
+  }
+
+  return ['eq', 'not_eq', 'nil', 'not_nil'];
+};
+
+/**
+ * Operators are restricted depending on the filter definition
+ * @param filterDefinition
+ */
+export const getAvailableOperatorForFilterKey = (
+  filterDefinition: FilterDefinition | undefined,
+  opts?: { isStixFiltering?: boolean },
+): string[] => {
+  if (!filterDefinition) {
+    return ['eq'];
+  }
+  if (filterDefinition.filterKey === 'connectedToId') { // instance trigger filter
+    return ['eq'];
+  }
+  const { type: filterType } = filterDefinition;
+  // In stix filtering context (playbooks, streams, triggers), add has_changed/not_has_changed operators
+  const changeOperators = opts?.isStixFiltering ? ['has_changed', 'not_has_changed'] : [];
+  if (filterType === 'date') {
+    return ['gt', 'gte', 'lt', 'lte', 'nil', 'not_nil', 'within', ...changeOperators];
+  }
+  if (isNumericFilter(filterType)) {
+    return ['gt', 'gte', 'lt', 'lte', 'eq', 'not_eq', ...changeOperators];
+  }
+  if (filterType === 'boolean') {
+    return ['eq', 'not_eq', ...changeOperators];
+  }
+  if (isBasicTextFilter(filterDefinition)) {
+    if (filterDefinition.type === 'string' || opts?.isStixFiltering) { // all the string operators are available for short string or in stix filtering
+      return ['eq', 'not_eq', 'nil', 'not_nil', 'contains', 'not_contains',
+        'starts_with', 'not_starts_with', 'ends_with', 'not_ends_with', 'search', ...changeOperators];
+    }
+    if (filterDefinition.type === 'text') {
+      if (filterDefinition.type === 'text') {
+        return ['search', 'nil', 'not_nil', ...changeOperators];
+      }
+    } else {
+      throw Error(`A basic text filter is of type string or text, not ${filterDefinition.type}`);
+    }
+  }
+
+  if (filterDefinition.multiple) {
+    return ['eq', 'not_eq', 'only_eq_to', 'not_only_eq_to', 'nil', 'not_nil', ...changeOperators];
+  }
+
+  return ['eq', 'not_eq', 'nil', 'not_nil', ...changeOperators];
+};
+
+export const getAvailableOperatorForFilter = (
+  filterDefinition: FilterDefinition | undefined,
+  subKey?: string,
+  opts?: { isStixFiltering?: boolean },
+): string[] => {
+  const isStixFiltering = opts?.isStixFiltering ?? false;
+  if (filterDefinition && subKey) return getAvailableOperatorForFilterSubKey(filterDefinition.filterKey, subKey);
+  return getAvailableOperatorForFilterKey(filterDefinition, { isStixFiltering });
+};
+
+export const useFetchFilterKeysSchema = () => {
+  let filterKeysSchema: Map<string, Map<string, FilterDefinition>>;
+
+  try {
+    filterKeysSchema = useAuth().schema.filterKeysSchema;
+  } catch (_e) {
+    filterKeysSchema = new Map();
+  }
+  return filterKeysSchema;
+};
+
+export const getBuildFilterKeysMapFromEntityType = (
+  filterKeysSchema: Map<string, Map<string, FilterDefinition>>,
+  entityTypes = ['Stix-Core-Object'],
+): Map<string, FilterDefinition> => {
+  // 1. case one entity type
+  if (entityTypes.length === 1) {
+    return filterKeysSchema.get(entityTypes[0]) ?? new Map();
+  }
+  // 2. case several entity types
+  const filterKeysMap = new Map();
+  entityTypes.forEach((entityType) => {
+    const currentMap = filterKeysSchema.get(entityType) ?? new Map();
+    currentMap.forEach((value, key) => {
+      const valueToSet = filterKeysMap.has(key)
+        ? { ...value, subEntityTypes: filterKeysMap.get(key).subEntityTypes.concat([entityType]) }
+        : value;
+      filterKeysMap.set(key, valueToSet);
+    });
+  });
+  // add entity_type filter if several types are given (entity_type filter already present for abstract types)
+  if (entityTypes.length > 0) {
+    filterKeysMap.set('entity_type', {
+      filterKey: 'entity_type',
+      type: 'string',
+      label: 'Entity type',
+      multiple: true,
+      subEntityTypes: entityTypes,
+      elementsForFilterValuesSearch: [],
+    });
+  }
+  return filterKeysMap;
+};
+
+export const useBuildFilterKeysMapFromEntityType = (entityTypes = ['Stix-Core-Object']): Map<string, FilterDefinition> => {
+  const { filterKeysSchema } = useAuth().schema;
+  return getBuildFilterKeysMapFromEntityType(filterKeysSchema, entityTypes);
+};
+
+export const getAvailableFilterKeysForEntityTypes = (
+  filterKeysSchema: Map<string, Map<string, FilterDefinition>>,
+  entityTypes: string[],
+  addNotCleanableFilterKeys = false,
+) => {
+  const filterKeysMap = getBuildFilterKeysMapFromEntityType(filterKeysSchema, entityTypes);
+  return uniqueArray(filterKeysMap.keys() ?? [])
+    .concat(addNotCleanableFilterKeys ? NOT_CLEANABLE_FILTER_KEYS : []);
+};
+
+export const useAvailableFilterKeysForEntityTypes = (
+  entityTypes: string[],
+  addNotCleanableFilterKeys = false,
+) => {
+  const { filterKeysSchema } = useAuth().schema;
+  return getAvailableFilterKeysForEntityTypes(filterKeysSchema, entityTypes, addNotCleanableFilterKeys);
+};
+
+const isFilterKeyAvailable = (key: string, availableFilterKeys: string[]) => {
+  const completedAvailableFilterKeys = availableFilterKeys.concat(NOT_CLEANABLE_FILTER_KEYS);
+  return completedAvailableFilterKeys.includes(key);
+};
+
+/**
+ * Removes the `id` property from all filters in a FilterGroup (recursively).
+ * Also strips filters with empty values (unless operator is nil/not_nil).
+ * For `dynamicRegardingOf` filters, recursively cleans nested dynamic filter values.
+ */
+export const removeFrontendIdAndEmptyFiltersFromFilterGroupObject = (filters?: FilterGroup | null): FilterGroup | undefined => {
+  if (!filters) {
+    return undefined;
+  }
+  // strip the frontend-only ids, then prune the empty filters only (empty descendant groups are kept, as before)
+  return pruneEmptyFiltersAndGroups(canonicalizeFilterGroupForBackend(filters), false);
+};
+
+/**
+ * Keeps only the filters whose key is available, recursively.
+ */
+const keepAvailableFilterKeys = (filterGroup: FilterGroup, availableFilterKeys: string[]): FilterGroup => mapFilterGroupTree(filterGroup, (group) => ({
+  ...group,
+  filters: (group.filters ?? []).filter((f) => isFilterKeyAvailable(f.key, availableFilterKeys)),
+}));
+
+// TODO use useRemoveIdAndIncorrectKeysFromFilterGroupObject instead when all the calling files are in pure function
+export const removeIdAndIncorrectKeysFromFilterGroupObject = (filters: FilterGroup | null | undefined, availableFilterKeys: string[]): FilterGroup | undefined => {
+  if (!filters) {
+    return undefined;
+  }
+  // ids are stripped first, then the filters with an unavailable key are removed,
+  // and only then the empty filters and the empty descendant groups are pruned
+  return pruneEmptyFiltersAndGroups(keepAvailableFilterKeys(canonicalizeFilterGroupForBackend(filters), availableFilterKeys));
+};
+
+export const useRemoveIdAndIncorrectKeysFromFilterGroupObject = (
+  filters?: FilterGroup | null,
+  entityTypes = ['Stix-Core-Object'],
+): FilterGroup | undefined => {
+  const availableFilterKeys = useAvailableFilterKeysForEntityTypes(entityTypes).concat(NOT_CLEANABLE_FILTER_KEYS);
+  return removeIdAndIncorrectKeysFromFilterGroupObject(filters, availableFilterKeys);
+};
+
+interface BuildEntityTypeBasedFilterContextArgs {
+  excludedEntityTypesParam?: string | string[] | undefined;
+  entityTypesContext?: string[];
+  draftId?: string;
+}
+
+export const useBuildEntityTypeBasedFilterContext = (
+  entityTypeParam: string | string[],
+  filters: FilterGroup | undefined,
+  args: BuildEntityTypeBasedFilterContextArgs = {},
+): FilterGroup => {
+  const { excludedEntityTypesParam = undefined, entityTypesContext = undefined, draftId = undefined } = args;
+  const entityTypes = Array.isArray(entityTypeParam) ? entityTypeParam : [entityTypeParam];
+  const userFilters = useRemoveIdAndIncorrectKeysFromFilterGroupObject(filters, entityTypesContext ?? entityTypes);
+  const entityTypeFilter = { key: 'entity_type', values: entityTypes, operator: 'eq', mode: 'or' };
+  const entityTypeContextFilters: Filter[] = [entityTypeFilter];
+  if (excludedEntityTypesParam && excludedEntityTypesParam.length > 0) {
+    const excludedEntityTypes = Array.isArray(excludedEntityTypesParam) ? excludedEntityTypesParam : [excludedEntityTypesParam];
+    const excludedEntityTypeFilter = { key: 'entity_type', values: excludedEntityTypes, operator: 'not_eq', mode: 'and' };
+    entityTypeContextFilters.push(excludedEntityTypeFilter);
+  }
+  if (draftId) {
+    entityTypeContextFilters.push({ // entities that are in the draft 'draftId'
+      key: 'draft_ids',
+      values: [draftId],
+    });
+    entityTypeContextFilters.push({ // entities that are in the draft index (ie, don't take into account entities existing outside drafts but modified in a draft)
+      key: 'draft_change',
+      operator: 'not_nil',
+      values: [],
+    });
+  }
+
+  return {
+    mode: 'and',
+    filters: entityTypeContextFilters,
+    filterGroups: userFilters && isFilterGroupNotEmpty(userFilters) ? [userFilters] : [],
+  };
+};
+
+export const getFilterDefinitionFromFilterKeysMap = (
+  key: string | string[],
+  filterKeysMap: Map<string, FilterDefinition>,
+): FilterDefinition | undefined => {
+  const filterKey = getStringFilterKey(key);
+  if (filterKey === PIR_SCORE_FILTER) {
+    return pirScoreFilterDefinition;
+  }
+  if (filterKey === LAST_PIR_SCORE_DATE_FILTER) {
+    return lastPirScoreDateFilterDefinition;
+  }
+  return filterKeysMap.get(filterKey);
+};
+
+export const useFilterDefinition = (
+  key: string | string[],
+  entityTypes = ['Stix-Core-Object', 'stix-core-relationship'],
+  subKey?: string,
+): FilterDefinition | undefined => {
+  const filterKey = getStringFilterKey(key);
+  if (filterKey === PIR_SCORE_FILTER) {
+    return pirScoreFilterDefinition;
+  }
+  if (filterKey === LAST_PIR_SCORE_DATE_FILTER) {
+    return lastPirScoreDateFilterDefinition;
+  }
+  const filterDefinition = useBuildFilterKeysMapFromEntityType(entityTypes).get(filterKey);
+  if (subKey) {
+    const subFilterDefinition = filterDefinition?.subFilters
+      ? filterDefinition.subFilters.filter((subFilter: FilterDefinition) => subFilter.filterKey === subKey)
+      : undefined;
+    if (subFilterDefinition && subFilterDefinition.length > 0) {
+      return subFilterDefinition[0];
+    }
+    throw Error(`The ${subKey} sub-filter doesn't exist for the ${filterKey} filter`);
+  }
+  return filterDefinition;
+};
+
+export const getDefaultFilterObject = (
+  filterKey: string,
+  filterDefinition?: FilterDefinition,
+  values?: FilterValue[],
+  mode?: string,
+): Filter => {
+  return {
+    id: uuid(),
+    key: filterKey,
+    operator: getDefaultOperatorFilter(filterDefinition),
+    values: values ?? [],
+    mode: mode ?? 'or',
+  };
+};
+
+/**
+ * The filter a newly-created condition/group is pre-filled with: the first of `keyOptions`,
+ * matching the order the filter-key select shows them in. `keyOptions` is the caller's already-
+ * built, already-sorted `buildGroupedFilterKeyOptions(...)` result (or `ListFilters`'s `options`,
+ * built the same way) — this does not re-sort, so the one sort implementation there stays the
+ * only one. Shared by every "add a condition" and "add a nested group" entry point so they all
+ * pick the same default. Returns undefined when there is no available filter key to default to.
+ */
+export const getFirstDefaultConditionFilter = (
+  keyOptions: { value: string }[],
+  filterKeysMap: Map<string, FilterDefinition>,
+): Filter | undefined => {
+  const filterKey = keyOptions[0]?.value;
+  if (!filterKey) return undefined;
+  return getDefaultFilterObject(filterKey, getFilterDefinitionFromFilterKeysMap(filterKey, filterKeysMap));
+};
+
+export const useGetDefaultFilterObject = (
+  filterKeys: string[],
+  entityTypes: string[],
+  values?: FilterValue[],
+  mode?: string,
+) => {
+  const filtersDefinition = filterKeys.map((key) => useFilterDefinition(key, entityTypes));
+  return (filtersDefinition
+    .filter((def) => def) as FilterDefinition[])
+    .map((def) => getDefaultFilterObject(def.filterKey, def, values, mode));
+};
+
+export const isStixObjectTypes = [
+  'fromOrToId',
+  'fromId',
+  'toId',
+  'objects',
+  'targets',
+  'indicates',
+  'contextEntityId',
+  'id',
+];
+
+export const getSelectedOptions = (
+  entitiesOptions: FilterOptionValue[],
+  filterValues: string[],
+  filtersRepresentativesMap: Map<string,
+    FilterRepresentative>,
+  t_i18n: (s: string) => string,
+  // Dashboard variables, only given in a dashboard: a `$var:` token is then shown under the variable name.
+  // Not given (anywhere else), a token-looking value is handled as any other value.
+  variables?: DashboardVariable[],
+): FilterOptionValue[] => {
+  // we try to get first the element from the search
+  // and if we did not find we tried one from filterRepresentative
+  // Most of the time element from search should be sufficient
+  const mapFilterValues: FilterOptionValue[] = [];
+  filterValues.forEach((value: string) => {
+    const mapRepresentative = entitiesOptions.find((f) => f.value === value);
+    const tokenLabel = getVariableTokenLabel(value, variables, t_i18n);
+    if (mapRepresentative) {
+      mapFilterValues.push({
+        ...mapRepresentative,
+        group: capitalizeFirstLetter(t_i18n('selected')),
+      });
+    } else if (tokenLabel !== null) {
+      // The representatives query cannot resolve a token: never rely on its answer.
+      mapFilterValues.push({
+        value,
+        type: 'Variable',
+        parentTypes: [],
+        group: capitalizeFirstLetter(t_i18n('selected')),
+        label: tokenLabel.label,
+      });
+    } else if (value === SELF_ID) {
+      mapFilterValues.push({
+        value,
+        type: 'instance',
+        parentTypes: [],
+        group: capitalizeFirstLetter(t_i18n('selected')),
+        label: SELF_ID_VALUE,
+      });
+    } else {
+      const filterRepresentative = filtersRepresentativesMap.get(value);
+      if (filterRepresentative) {
+        mapFilterValues.push({
+          value,
+          type: filterRepresentative?.entity_type || t_i18n('deleted'),
+          parentTypes: [],
+          group: capitalizeFirstLetter(t_i18n('selected')),
+          label: filterRepresentative?.value ?? t_i18n('deleted'),
+          color: filterRepresentative?.color ?? undefined,
+        });
+      }
+    }
+  });
+  return mapFilterValues.sort((a, b) => a.label.localeCompare(b.label));
+};
+
+// filter operators that can display with an icon
+export const filterOperatorsWithIcon = [
+  'lt',
+  'lte',
+  'gt',
+  'gte',
+  'nil',
+  'not_nil',
+  'has_changed',
+  'not_has_changed',
+  'eq',
+  'not_eq',
+];
+
+export const convertOperatorToIcon = (operator: string) => {
+  switch (operator) {
+    case 'lt':
+      return <>&nbsp;&#60;</>;
+    case 'lte':
+      return <>&nbsp;&#8804;</>;
+    case 'gt':
+      return <>&nbsp;&#62;</>;
+    case 'gte':
+      return <>&nbsp;&#8805;</>;
+    case 'eq':
+      return <>&nbsp;=</>;
+    case 'not_eq':
+      return <>&nbsp;&#8800;</>;
+    default:
+      return null;
+  }
+};
+
+export const extractAllFilters: (filters: FilterGroup) => Filter[] = (filters: FilterGroup) => {
+  const allFilters: Filter[] = [];
+  allFilters.push(...(filters.filters ?? []));
+  (filters.filterGroups ?? []).forEach((filterGroup) => allFilters.push(...extractAllFilters(filterGroup)));
+  return allFilters;
+};
+
+/**
+ * Removes, at every nesting level, the filters whose key is not available anymore for the given types.
+ */
+export const cleanFilters = (filters: FilterGroup, helpers: handleFilterHelpers, types: string[], completeFilterKeysMap: Map<string, Map<string, FilterDefinition>>) => {
+  const newAvailableFilterKeys = uniqueArray(types.flatMap((t) => Array.from(completeFilterKeysMap.get(t)?.keys() ?? [])));
+  const allListedFilters = extractAllFilters(filters);
+  const filtersToRemoveIds = allListedFilters.filter((f) => !newAvailableFilterKeys.includes(f.key)).map((f) => f.id ?? '');
+  filtersToRemoveIds.forEach((id) => helpers.handleRemoveFilterById(id));
+};
+
+export const isRegardingOfFilterWarning = (
+  filter: Filter,
+  observablesTypes: string[],
+  filtersRepresentativesMap: Map<string, FilterRepresentative>,
+) => {
+  if (filter.key === 'regardingOf') {
+    const relationshipTypes: string[] = filter.values.filter((v) => v.key === 'relationship_type').map((f) => f.values).flat();
+    const entitiesIds: string[] = filter.values.filter((v) => v.key === 'id').map((f) => f.values).flat();
+    const entityTypes = entitiesIds
+      .map((id) => filtersRepresentativesMap.get(id)?.entity_type)
+      .filter((t) => !!t) as string[];
+    if (relationshipTypes.includes('located-at')
+      && entityTypes.some((type) => ['City', 'IPv4-Addr', 'IPv6-Addr'].includes(type))) {
+      return true;
+    }
+    if (relationshipTypes.includes('related-to')
+      && entityTypes.some((type) => [...observablesTypes, 'Stix-Cyber-Observable'].includes(type))) {
+      return true;
+    }
+    if (relationshipTypes.includes('indicates')
+      && entityTypes.some((type) => ['Indicator'].includes(type))) {
+      return true;
+    }
+  }
+  return false;
+};
+
+export const getFilterKeyValues = (filterKey: string, filterGroup: FilterGroup) => {
+  const values: string[] = [];
+  const filtersResult = { ...filterGroup };
+  filtersResult.filters.forEach((filter) => {
+    const { key } = filter;
+    const arrayKeys = Array.isArray(key) ? key : [key];
+    if (arrayKeys.includes(filterKey)) {
+      values.push(...filter.values);
+    }
+  });
+  filtersResult.filterGroups.forEach((fg) => {
+    const vals = getFilterKeyValues(filterKey, fg);
+    values.push(...vals);
+  });
+  return values;
+};
+
+// add pirId to pir filters
+export const formatFiltersInPirContext = (f: FilterGroup, pirId: string): FilterGroup => {
+  const formattedFilters: Filter[] = [];
+  for (const filter of f.filters) {
+    const filterKey = filter.key;
+    if (filterKey === PIR_SCORE_FILTER || filterKey === LAST_PIR_SCORE_DATE_FILTER) {
+      const subKey = filterKey === PIR_SCORE_FILTER ? 'score' : 'date';
+      formattedFilters.push({
+        key: filterKey,
+        values: [
+          { ...filter, key: subKey },
+          { key: 'pir_ids', values: [pirId] },
+        ],
+      });
+    } else {
+      formattedFilters.push(filter);
+    }
+  }
+  return {
+    mode: f.mode,
+    filters: formattedFilters,
+    filterGroups: f.filterGroups.length > 0
+      ? f.filterGroups.map((fg) => formatFiltersInPirContext(fg, pirId))
+      : [],
+  };
+};
+
+/**
+ * Replace SELF_ID sentinel with the actual entity ID in context.
+ * The filter values are not typed well so we have to use a "big bertha"-like
+ * solution: JSON.stringify + String.replace + JSON.parse.
+ */
+export const buildFiltersForCustomView = (
+  filters: FilterGroup | null | undefined,
+  entityId?: string,
+): FilterGroup | null | undefined => {
+  if (!filters) return filters;
+  const filtersStr = JSON.stringify(filters);
+  const updatedFiltersStr = filtersStr.replaceAll(SELF_ID, entityId || '');
+  if (filtersStr === updatedFiltersStr) {
+    return filters;
+  }
+  return JSON.parse(updatedFiltersStr);
+};
+
+// ----------------------------------------------------------------------------------------------------------------------
+// Single source of truth for cleaning a frontend filter group before sending it to the backend.
+// ----------------------------------------------------------------------------------------------------------------------
+
+/**
+ * Rebuilds the values of a `dynamicRegardingOf` filter: only the `dynamic` values (whose nested
+ * filter groups are recursively stripped) followed by the `relationship_type` values are kept.
+ */
+const canonicalizeDynamicRegardingOfValues = (values: FilterValue[]): FilterValue[] => {
+  const dynamicValues = (values ?? [])
+    .filter((value) => value?.key === 'dynamic')
+    .map((dynamic) => ({
+      key: dynamic.key,
+      values: (dynamic.values ?? []).map((dynamicFilterGroup: FilterGroup) => canonicalizeFilterGroupForBackend(dynamicFilterGroup)),
+    }));
+  const relationshipTypeValues = (values ?? [])
+    .filter((value) => value?.key === 'relationship_type')
+    .map((relationshipType) => ({ key: relationshipType.key, values: [...(relationshipType.values ?? [])] }));
+  return [...dynamicValues, ...relationshipTypeValues];
+};
+
+/**
+ * Rebuilds a single filter in canonical form: only the properties expected by the backend, in the
+ * order `key`, `values`, `operator`, `mode`. Optional properties absent from the input are not
+ * emitted, and the frontend-only `id` is dropped by construction.
+ */
+const canonicalizeFilterValues = (filter: Filter): FilterValue[] => {
+  if (filter.key === 'dynamicRegardingOf') return canonicalizeDynamicRegardingOfValues(filter.values);
+  if (isStandaloneDynamicKey(filter.key)) return (filter.values ?? []).map((group: FilterGroup) => canonicalizeFilterGroupForBackend(group));
+  return [...(filter.values ?? [])];
+};
+
+const canonicalizeFilter = (filter: Filter): Filter => ({
+  key: filter.key,
+  values: canonicalizeFilterValues(filter),
+  ...(filter.operator !== undefined ? { operator: filter.operator } : {}),
+  ...(filter.mode !== undefined ? { mode: filter.mode } : {}),
+});
+
+/**
+ * Puts a filter group in its canonical backend form, recursively. Canonical means:
+ * - only the properties the backend knows are emitted (whitelist rebuild): `mode`, `filters`,
+ *   `filterGroups` for a group, `key`, `values`, `operator`, `mode` for a filter — which is how
+ *   the frontend-only ids (filter level and group level) disappear;
+ * - always in that exact order, with absent optional properties omitted rather than set to
+ *   undefined, so two equivalent filter groups stringify to the exact same JSON. Saved-filter
+ *   comparison (savedFiltersUtils) relies on that property.
+ * Non-mutating, safe on frozen inputs.
+ *
+ * Note it does NOT prune empty filters or empty groups: compose with
+ * `pruneEmptyFiltersAndGroups` when the target is an actual backend query.
+ */
+export const canonicalizeFilterGroupForBackend = (filterGroup: FilterGroup): FilterGroup => ({
+  mode: filterGroup.mode,
+  filters: (filterGroup.filters ?? []).map((filter) => canonicalizeFilter(filter)),
+  filterGroups: (filterGroup.filterGroups ?? []).map((group) => canonicalizeFilterGroupForBackend(group)),
+});
+
+/**
+ * Stringifies a filter group on its way to the url, in canonical form: the frontend-only ids
+ * (filter level and group level) are dropped at any depth, because they are regenerated on the
+ * way back in (`ensureFilterIds`) and would otherwise churn in shared links.
+ *
+ * Takes `unknown` and falls back to a plain stringify, because url parameters carrying filters
+ * are not all proven filter groups (legacy stored shapes, timeline filters, …).
+ */
+export const stringifyFilterGroupForUrl = (filters: unknown): string => (
+  isFilterGroupFormatCorrect(filters)
+    ? JSON.stringify(canonicalizeFilterGroupForBackend(filters as FilterGroup))
+    : JSON.stringify(filters)
+);
+
+/**
+ * Prunes the nested filter groups held in the `dynamic` values of a `dynamicRegardingOf` filter.
+ */
+const pruneDynamicRegardingOfValues = (values: FilterValue[], dropEmptyGroups = true): FilterValue[] => {
+  return (values ?? []).map((value) => {
+    if (value?.key !== 'dynamic') return value;
+    return {
+      ...value,
+      values: (value.values ?? []).map((dynamicFilterGroup: FilterGroup) => pruneEmptyFiltersAndGroups(dynamicFilterGroup, dropEmptyGroups)),
+    };
+  });
+};
+
+/**
+ * Removes the empty filters (no values, except for operators valid without values like nil/not_nil)
+ * and the empty descendant filter groups. The root group is always kept, even if it ends up empty.
+ * Non-mutating, safe on frozen inputs.
+ * /!\ This is a serialization helper: like canonicalizeFilterGroupForBackend it rebuilds groups from a whitelist,
+ * so it also drops any frontend-only group property. Never use it on a state value.
+ */
+export const pruneEmptyFiltersAndGroups = (filterGroup: FilterGroup, dropEmptyGroups = true): FilterGroup => ({
+  mode: filterGroup.mode,
+  filters: removeEmptyFiltersFromList(filterGroup.filters ?? []).map((filter) => {
+    if (filter.key === 'dynamicRegardingOf') {
+      return { ...filter, values: pruneDynamicRegardingOfValues(filter.values, dropEmptyGroups) };
+    }
+    if (isStandaloneDynamicKey(filter.key)) {
+      return { ...filter, values: (filter.values ?? []).map((group: FilterGroup) => pruneEmptyFiltersAndGroups(group, dropEmptyGroups)) };
+    }
+    return filter;
+  }),
+  filterGroups: (filterGroup.filterGroups ?? [])
+    .map((group) => pruneEmptyFiltersAndGroups(group, dropEmptyGroups))
+    // children are already pruned above (post-order), so a shallow check is enough and safe here —
+    // using the strict isFilterGroupNotEmpty would recurse back into this same function.
+    .filter((group) => !dropEmptyGroups || isFilterGroupNotEmptyShallow(group)),
+});

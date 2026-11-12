@@ -1,0 +1,152 @@
+import React, { FunctionComponent } from 'react';
+import { graphql, useFragment } from 'react-relay';
+import Grid from '@mui/material/Grid';
+import CustomFieldValuesDisplay from '@components/common/custom_fields/CustomFieldValuesDisplay';
+import Tag from '../../../../components/common/tag/Tag';
+import { Stack } from '@mui/material';
+import StixCoreObjectsDonut from '../../common/stix_core_objects/StixCoreObjectsDonut';
+import ExpandableMarkdown from '../../../../components/ExpandableMarkdown';
+import { useFormatter } from '../../../../components/i18n';
+import StixCoreObjectKillChainPhasesView from '../../common/stix_core_objects/StixCoreObjectKillChainPhasesView';
+import { InfrastructureDetails_infrastructure$data, InfrastructureDetails_infrastructure$key } from './__generated__/InfrastructureDetails_infrastructure.graphql';
+import Card from '../../../../components/common/card/Card';
+import Label from '../../../../components/common/label/Label';
+import FieldOrEmpty from '../../../../components/FieldOrEmpty';
+import { EMPTY_VALUE } from '../../../../utils/String';
+
+const InfrastructureDetailsFragment = graphql`
+  fragment InfrastructureDetails_infrastructure on Infrastructure {
+    id
+    entity_type
+    customFieldValues {
+      ...CustomFieldValuesDisplay_values @relay(mask: false)
+    }
+    name
+    description
+    infrastructure_types
+    first_seen
+    last_seen
+    killChainPhases {
+      id
+      entity_type
+      kill_chain_name
+      phase_name
+      x_opencti_order
+    }
+    objectLabel {
+      id
+      value
+      color
+    }
+  }
+`;
+
+interface InfrastructureDetailsProps {
+  infrastructure: InfrastructureDetails_infrastructure$key;
+}
+
+const InfrastructureDetails: FunctionComponent<InfrastructureDetailsProps> = ({
+  infrastructure,
+}) => {
+  const { t_i18n, fldt } = useFormatter();
+
+  const data: InfrastructureDetails_infrastructure$data = useFragment(
+    InfrastructureDetailsFragment,
+    infrastructure,
+  );
+  const killChainPhases = data.killChainPhases ?? [];
+  const infrastructureTypes = data.infrastructure_types ?? [];
+  const observablesDataSelection = [
+    {
+      attribute: 'entity_type',
+      filters: {
+        mode: 'and',
+        filters: [
+          {
+            key: 'entity_type',
+            values: ['Stix-Cyber-Observable'],
+          },
+          {
+            key: 'regardingOf',
+            values: [
+              { key: 'id', values: [data.id] },
+              { key: 'relationship_type', values: ['consists-of'] },
+            ],
+          },
+        ],
+        filterGroups: [],
+      },
+    },
+  ];
+
+  const config = {
+    startDate: undefined,
+    endDate: undefined,
+  };
+
+  return (
+    <div style={{ height: '100%' }}>
+      <Card title={t_i18n('Details')}>
+        <Grid container={true} spacing={3}>
+          <Grid size={12}>
+            <Label>
+              {t_i18n('Description')}
+            </Label>
+            <ExpandableMarkdown source={data.description} limit={400} />
+          </Grid>
+          <Grid size={6}>
+            <Label>
+              {t_i18n('Infrastructure types')}
+            </Label>
+            <FieldOrEmpty source={infrastructureTypes}>
+              <Stack
+                direction="row"
+                sx={{
+                  flexWrap: 'wrap',
+                  gap: 1,
+                }}
+              >
+                {infrastructureTypes.length > 0
+                  && infrastructureTypes.map((infrastructureType) => (
+                    <Tag
+                      key={infrastructureType}
+                      label={infrastructureType}
+                    />
+                  ),
+                  )}
+              </Stack>
+            </FieldOrEmpty>
+          </Grid>
+          <Grid size={6}>
+            <Label>
+              {t_i18n('First seen')}
+            </Label>
+            {data.first_seen ? fldt(data.first_seen) : EMPTY_VALUE}
+          </Grid>
+          <Grid size={6}>
+            <Label>
+              {t_i18n('Last seen')}
+            </Label>
+            {data.last_seen ? fldt(data.last_seen) : EMPTY_VALUE}
+          </Grid>
+          <Grid size={6}>
+            <StixCoreObjectKillChainPhasesView killChainPhases={killChainPhases} />
+          </Grid>
+          <CustomFieldValuesDisplay entityType={data.entity_type} values={data.customFieldValues ?? []} />
+        </Grid>
+        <br />
+        <StixCoreObjectsDonut
+          dataSelection={observablesDataSelection}
+          parameters={{ title: t_i18n('Observables distribution') }}
+          variant="inEntity"
+          height={300}
+          config={config}
+          popover={undefined}
+          host={undefined}
+        />
+      </Card>
+    </div>
+  );
+};
+
+export default InfrastructureDetails;

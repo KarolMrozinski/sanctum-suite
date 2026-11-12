@@ -1,0 +1,178 @@
+# OpenCTI Documentation Space
+
+[![Website](https://img.shields.io/badge/website-opencti.io-blue.svg)](https://opencti.io)
+[![Slack Status](https://img.shields.io/badge/slack-3K%2B%20members-4A154B)](https://community.filigran.io)
+
+## Introduction
+
+This is the main repository of the OpenCTI Documentation space. The online version is available directly on [docs.opencti.io](https://docs.opencti.io).
+
+## Install and display the documentation locally
+
+Clone the repository:
+
+```sh
+git clone git@github.com:OpenCTI-Platform/opencti.git
+cd docs
+```
+
+Install dependencies
+
+```sh
+pip install -r requirements.txt
+```
+
+Run local server with hot-reload:
+
+```sh
+mkdocs serve
+```
+
+It should display the following output in the terminal:
+```
+> Starting server at http://localhost:8000/
+```
+
+⚠️ Make sure to always build the documentation locally before submitting a pull request, and check for errors and warnings in the terminal output,as they can indicate issues with the formatting of the documentation.
+
+```sh
+mkdocs build
+```
+
+
+## Contribute
+
+You can contribute to the documentation by submitting a pull request on GitHub. 
+Please make sure to follow the [contribution guidelines](https://github.com/OpenCTI-Platform/opencti?tab=contributing-ov-file#contributing-to-opencti).
+
+### Caveats
+
+The following notable issues have been identified in the past and should be checked before submitting a pull request.
+
+#### Bullet or ordered lists not rendered properly
+
+```md
+Some text
+- Item 1
+- Item 2
+```
+
+Will not be rendered properly, and displayed as a paragraph. 
+To fix this, make sure to add a blank line before the first item in the list:
+
+```md
+Some text
+
+- Item 1
+- Item 2
+```
+
+#### Anchored links not working
+
+When linking to a section in the same page, make sure to use the correct anchor link.
+For instance:
+
+```md
+## My (super) section
+```
+Will be accessible with the following link: `#my-super-section` (all lowercase, spaces replaced by dashes, and special characters removed).
+
+#### Images
+
+Add images next to the pages (e.g. in `usage/assets/`) and link them relatively, as usual.
+
+When the documentation is built, the images used by pages are not copied into each version: they are renamed after their
+content hash (e.g. `audit-3f9a1c2b7e.png`) and stored once at https://docs.opencti.io/shared-assets/, shared by all
+versions (see `hooks/shared_assets.py`). An updated image gets a new name, so older versions keep showing the previous one.
+
+#### Documentation page not accessible from the sidebar
+
+Make sure to add new documentation pages in the `mkdocs.yml` file under the `nav` section.
+Then, make sure to build the documentation locally and check for errors and warnings in the terminal output.
+
+## Deploy the documentation
+
+The deployment relies on `mike`.
+
+### Check existing versions
+
+List existing versions with:
+
+```sh
+mike list
+```
+
+Deploy **without** `mike deploy --push`, then publish the shared images with `scripts/publish_shared_assets.py --push`,
+which pushes the version and its images together. With `mike deploy --push` alone, the version would go live with
+missing images.
+
+### Deploy and update the current version
+
+With the right version number (eg. 5.7.X):
+
+```sh
+mike deploy [version]
+python scripts/publish_shared_assets.py --push
+```
+
+### Deploy a new stable version
+
+With the right version number (eg. 5.7.X), update the `latest` tag:
+
+```sh
+mike deploy --update-aliases [version] latest
+python scripts/publish_shared_assets.py --push
+```
+
+### Use a feature flag on existing documentation page
+
+#### On existing page with a part that should not be published yet
+
+On the top of markdown page, enable macro and then use `flag` macro
+
+```
+---
+render_macros: true
+---
+
+# Here normal md title
+
+{%- if flag("MY_FEATURE_FLAG") %}
+Here is all documentation under feature flag.
+Will not be published.
+{%- endif %}
+
+```
+
+> [!WARNING]
+> With `render_macros: true`, the **whole page** is processed by Jinja, code blocks included: any `{{`, `{%` or `{#` breaks the build (`on_undefined: strict`).
+> Wrap such content in `{% raw %}` … `{% endraw %}`. 
+To render locally with your feature flag:
+
+```sh
+export APP__ENABLED_DEV_FEATURES='["MY_FEATURE_FLAG"]'
+mkdocs build
+mkdocs serve
+# unset APP__ENABLED_DEV_FEATURES // to remove it
+```
+
+#### For full new pages that should not be published yet
+
+You can use the `feature-flags`, all documentation inside is excluded from the publication.
+See also `/docs/feature-flags/feature_under_ff_doc_example.md`
+
+```sh
+mkdocs build
+mkdocs serve
+```
+
+And then open the page with direct URL such as `http://127.0.0.1:8000/feature-flags/feature_under_ff_doc_example/`.
+The URL should be displayed in the `mkdocs serve` logs.
+
+
+If you want to see the published site only:
+
+```sh
+mkdocs build
+mkdocs serve --clean
+```

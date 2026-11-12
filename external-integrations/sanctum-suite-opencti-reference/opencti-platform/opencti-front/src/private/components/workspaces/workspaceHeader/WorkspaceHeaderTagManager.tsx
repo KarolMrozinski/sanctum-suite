@@ -1,0 +1,293 @@
+import Button from '@common/button/Button';
+import IconButton from '@common/button/IconButton';
+import Dialog from '@common/dialog/Dialog';
+import Tag from '@common/tag/Tag';
+import { AddOutlined, CloseOutlined, Delete } from '@mui/icons-material';
+import Box from '@mui/material/Box';
+import DialogActions from '@mui/material/DialogActions';
+import List from '@mui/material/List';
+import ListItem from '@mui/material/ListItem';
+import ListItemText from '@mui/material/ListItemText';
+import Slide from '@mui/material/Slide';
+import Tooltip from '@mui/material/Tooltip';
+import { Field, Form, Formik } from 'formik';
+import { FormikConfig } from 'formik/dist/types';
+import { DotsHorizontalCircleOutline } from 'mdi-material-ui';
+import { useEffect, useRef, useState } from 'react';
+import { graphql } from 'react-relay';
+import TextField from 'src/components/TextField';
+import { useFormatter } from 'src/components/i18n';
+import { MESSAGING$ } from 'src/relay/environment';
+import useApiMutation from 'src/utils/hooks/useApiMutation';
+import { EXPLORE_EXUPDATE, INVESTIGATION_INUPDATE } from 'src/utils/hooks/useGranted';
+import Security from 'src/utils/Security';
+
+const workspaceMutation = graphql`
+  mutation WorkspaceHeaderTagManagerFieldMutation($id: ID!, $input: [EditInput!]!) {
+    workspaceFieldPatch(id: $id, input: $input) {
+      tags
+    }
+  }
+`;
+
+type WorkspaceHeaderTagManagerProps = {
+  tags: readonly string[];
+  workspaceId: string;
+  canEdit: boolean;
+};
+
+export type WorkspaceHeaderTagCreatorFormValues = {
+  newTag: string;
+};
+const WorkspaceHeaderTagManager = ({ tags, workspaceId, canEdit }: WorkspaceHeaderTagManagerProps) => {
+  const { t_i18n } = useFormatter();
+
+  const [newTag, setNewTag] = useState<string>('');
+  const [isTagInputOpen, setIsTagInputOpen] = useState<boolean>(false);
+  const [isTagDialogOpen, setIsTagDialogOpen] = useState<boolean>(false);
+
+  const [commit] = useApiMutation(workspaceMutation);
+
+  const inlineTagInputId = 'inline-new-tag-input';
+  const inlineTagInputRef = useRef<HTMLInputElement | null>(null);
+  const dialogTagInputRef = useRef<HTMLInputElement | null>(null);
+
+  // The inline field appears in place (Slide) while the trigger button stays
+  // mounted, so removing autoFocus left it never reached nor announced.
+  useEffect(() => {
+    if (isTagInputOpen) {
+      inlineTagInputRef.current?.focus();
+    }
+  }, [isTagInputOpen]);
+
+  // The header holds two chips; the counter's tooltip stands for the rest.
+  const namedTags = tags.filter((tag) => tag.length > 0);
+  const shownTags = namedTags.slice(0, 2);
+  const hiddenTagCount = namedTags.length - shownTags.length;
+
+  // One ref for the header trigger: "Add tag", or "More" once there are several
+  // tags. Only one of the two is rendered at a time.
+  const triggerRef = useRef<HTMLButtonElement | null>(null);
+  const hasTagMenu = tags.length > 1;
+  const refocusTriggerAfterSwap = useRef(false);
+
+  // Adding a second tag swaps "Add tag" for "More" once the mutation lands,
+  // unmounting the button that had the focus; hand it to "More" instead.
+  useEffect(() => {
+    if (refocusTriggerAfterSwap.current) {
+      refocusTriggerAfterSwap.current = false;
+      if (document.activeElement === document.body) {
+        triggerRef.current?.focus();
+      }
+    }
+  }, [hasTagMenu]);
+
+  const toggleTagInput = () => setIsTagInputOpen(!isTagInputOpen);
+  // The inline field unmounts with the focus inside it, which would leave
+  // keyboard users on <body>; give it back to the trigger that opened it.
+  const closeTagInput = () => {
+    setIsTagInputOpen(false);
+    triggerRef.current?.focus();
+  };
+  const toggleTagDialog = () => setIsTagDialogOpen(!isTagDialogOpen);
+
+  // The product field reports (name, value), not a DOM event.
+  const handleChangeNewTag = (_: string, value: string) => setNewTag(value);
+
+  // Escape mirrors the toggle button: it dismisses the inline field without
+  // creating a tag, so keyboard users are not stuck once they have tabbed in.
+  const handleInlineTagInputKeyDown = (key: string) => {
+    if (key === 'Escape') {
+      setNewTag('');
+      closeTagInput();
+    }
+  };
+
+  const handleManageTags = (tagList: string[], message: string) => {
+    commit({
+      variables: {
+        id: workspaceId,
+        input: {
+          key: 'tags',
+          value: tagList,
+        },
+      },
+      onCompleted: () => MESSAGING$.notifySuccess(message),
+    });
+  };
+  const deleteTag = (tagToDelete: string) => () => {
+    const filteredTags = tags.filter((tag) => tag !== tagToDelete);
+    handleManageTags(filteredTags, t_i18n('The tag has been removed'));
+  };
+
+  const onSubmitCreateTag: FormikConfig<WorkspaceHeaderTagCreatorFormValues>['onSubmit'] = (data, { resetForm }) => {
+    if (!tags.includes(newTag) && newTag !== '') {
+      refocusTriggerAfterSwap.current = isTagInputOpen && tags.length === 1;
+      handleManageTags([...tags, newTag], t_i18n('The tag has been added'));
+    }
+    if (isTagInputOpen) closeTagInput();
+    setNewTag('');
+    resetForm();
+  };
+
+  return (
+    <>
+      <Security needs={[EXPLORE_EXUPDATE, INVESTIGATION_INUPDATE]} hasAccess={canEdit}>
+        <>
+          {hasTagMenu ? (
+            <IconButton
+              ref={triggerRef}
+              color="primary"
+              // md, like its `Add tag` alternate below: the two share one slot
+              // and must not change size with the state.
+              size="default"
+              aria-label="More"
+              onClick={toggleTagDialog}
+            >
+              <DotsHorizontalCircleOutline fontSize="small" />
+            </IconButton>
+          ) : (
+            <Tooltip title={isTagInputOpen ? t_i18n('Cancel') : t_i18n('Add tag')}>
+              <IconButton
+                ref={triggerRef}
+                color="primary"
+                // md.
+                size="default"
+                aria-label="Add tag"
+                onClick={toggleTagInput}
+              >
+                {isTagInputOpen ? (
+                  <CloseOutlined fontSize="small" />
+                ) : (
+                  <AddOutlined fontSize="small" />
+                )}
+              </IconButton>
+            </Tooltip>
+          )}
+
+          <Slide
+            direction="right"
+            in={isTagInputOpen}
+            mountOnEnter
+            unmountOnExit
+          >
+            <div>
+              <Formik
+                initialValues={{ newTag: '' }}
+                onSubmit={onSubmitCreateTag}
+              >
+                <Form>
+                  <label className="sr-only" htmlFor={inlineTagInputId}>{t_i18n('New tag')}</label>
+                  <Field
+                    id={inlineTagInputId}
+                    innerRef={(node: HTMLInputElement | null) => {
+                      inlineTagInputRef.current = node;
+                    }}
+                    component={TextField}
+                    variant="outlined"
+                    name="newTag"
+                    placeholder={t_i18n('New tag')}
+                    onChange={handleChangeNewTag}
+                    onKeyDown={handleInlineTagInputKeyDown}
+                    value={newTag}
+                  />
+                </Form>
+              </Formik>
+            </div>
+          </Slide>
+
+          <Dialog
+            open={isTagDialogOpen}
+            onClose={toggleTagDialog}
+            title={t_i18n('Entity tags')}
+            size="small"
+            slotProps={{
+              // Adding a tag is what this dialog is opened for once "More"
+              // replaces "Add tag"; focus its field once the dialog has entered.
+              transition: { onEntered: () => dialogTagInputRef.current?.focus() },
+            }}
+          >
+            <Formik
+              initialValues={{ newTag: '' }}
+              onSubmit={onSubmitCreateTag}
+            >
+              <Form>
+                <label className="sr-only" htmlFor="dialog-new-tag-input">{t_i18n('New tag')}</label>
+                {/* Same layout as the entity aliases dialog: the field takes the
+                    width, and Add submits it (as does Enter). */}
+                <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: 1 }}>
+                  <Box sx={{ flex: 1 }}>
+                    <Field
+                      id="dialog-new-tag-input"
+                      innerRef={(node: HTMLInputElement | null) => {
+                        dialogTagInputRef.current = node;
+                      }}
+                      component={TextField}
+                      variant="outlined"
+                      name="newTag"
+                      fullWidth={true}
+                      placeholder={t_i18n('New tag')}
+                      onChange={handleChangeNewTag}
+                      value={newTag}
+                    />
+                  </Box>
+                  {/* Not disabled while empty, as in the aliases dialog. */}
+                  <Button type="submit">
+                    {t_i18n('Add')}
+                  </Button>
+                </Box>
+              </Form>
+            </Formik>
+
+            <List>
+              {tags.map(
+                (label) => label.length > 0 && (
+                  <ListItem
+                    key={label}
+                    disableGutters
+                    dense
+                    secondaryAction={(
+                      <IconButton
+                        aria-label="delete"
+                        onClick={deleteTag(label)}
+                      >
+                        <Delete />
+                      </IconButton>
+                    )}
+                  >
+                    <ListItemText primary={label} />
+                  </ListItem>
+                ),
+              )}
+            </List>
+
+            <DialogActions>
+              <Button onClick={toggleTagDialog}>
+                {t_i18n('Close')}
+              </Button>
+            </DialogActions>
+          </Dialog>
+        </>
+      </Security>
+      <div style={{ display: 'flex', gap: 4 }}>
+        {shownTags.map((tag) => (
+          <Tag
+            key={tag}
+            label={tag}
+            deleteLabel={`${t_i18n('Remove')} ${tag}`}
+            onDelete={deleteTag(tag)}
+          />
+        ))}
+        {hiddenTagCount > 0 && (
+          <Tag
+            label={`+${hiddenTagCount}`}
+            labelTextTransform="none"
+            tooltipTitle={namedTags.join(', ')}
+          />
+        )}
+      </div>
+    </>
+  );
+};
+
+export default WorkspaceHeaderTagManager;
