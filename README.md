@@ -21,9 +21,9 @@
 
 </div>
 
-## Final release hero
+## Why Sanctum Suite exists
 
-Sanctum Suite is a premium cyber threat-intelligence platform designed for modern security operations teams. Built around a dark, analyst-first experience, the project blends a polished OpenCTI-style dashboard, desktop-native launcher behavior, and modular product architecture into a single cohesive security workspace.
+Sanctum Suite was created to give security teams a sharper, more focused way to work with threat intelligence, operational context, and investigation flow. It brings together a premium analyst interface, local-first access, and desktop-like execution into one cohesive workspace designed to reduce noise and help teams move faster when investigating risk.
 
 ## Product overview
 
