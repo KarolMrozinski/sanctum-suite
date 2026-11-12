@@ -18,6 +18,7 @@ namespace SanctumSuiteLauncher;
 
 public partial class App : Wpf.Application
 {
+    private static readonly Mutex SingleInstanceMutex = new(false, "Global\\SanctumSuiteLauncher");
     private readonly string _root = ResolveRepoRoot();
     private readonly string _appDir = Path.Combine(ResolveRepoRoot(), "sanctum-dashboard");
     private readonly string _pidFile = Path.Combine(ResolveRepoRoot(), ".sanctum-suite.pid");
@@ -73,7 +74,7 @@ public partial class App : Wpf.Application
             AllowsTransparency = true,
             Background = Wpf.Media.Brushes.Transparent,
             Foreground = new SolidColorBrush(System.Windows.Media.Color.FromRgb(226, 232, 240)),
-            Icon = new BitmapImage(new Uri(Path.Combine(_root, "sanctum-suite-icon.ico"), UriKind.Absolute)),
+            Icon = new BitmapImage(new Uri(Path.Combine(_root, "resources", "sanctum-suite-icon.ico"), UriKind.Absolute)),
             ShowInTaskbar = true,
             Topmost = false
         };
@@ -248,7 +249,7 @@ public partial class App : Wpf.Application
         _trayIcon = new WinForms.NotifyIcon
         {
             Visible = true,
-            Icon = new Icon(Path.Combine(_root, "sanctum-suite-icon.ico")),
+            Icon = new Icon(Path.Combine(_root, "resources", "sanctum-suite-icon.ico")),
             Text = "Sanctum Suite"
         };
         _trayIcon.Click += (_, _) =>

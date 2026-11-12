@@ -5,8 +5,10 @@ cd /d "%~dp0"
 set "APP_URL=%SANCTUM_APP_URL%"
 if not defined APP_URL set "APP_URL=http://localhost:3000"
 
-set "EXE_PATH=%~dp0SanctumSuiteLauncher.exe"
 set "APP_DIR=%~dp0sanctum-dashboard"
+set "EXE_PATH=%~dp0SanctumSuiteLauncher.exe"
+set "EXE_PUBLISH_PATH=%~dp0desktop\SanctumSuiteLauncher\bin\Release\net10.0-windows\win-x64\publish\SanctumSuiteLauncher.exe"
+set "EXE_DEBUG_PATH=%~dp0desktop\SanctumSuiteLauncher\bin\Debug\net10.0-windows\win-x64\SanctumSuiteLauncher.exe"
 set "LOCAL_TARGET=0"
 
 call :normalize_app_url
@@ -14,8 +16,21 @@ call :normalize_app_url
 echo "%APP_URL%" | findstr /I /C:"localhost" /C:"127.0.0.1" /C:"0.0.0.0" >nul
 if not errorlevel 1 set "LOCAL_TARGET=1"
 
+if not exist "%EXE_PATH%" if exist "%EXE_PUBLISH_PATH%" set "EXE_PATH=%EXE_PUBLISH_PATH%"
+if not exist "%EXE_PATH%" if exist "%EXE_DEBUG_PATH%" set "EXE_PATH=%EXE_DEBUG_PATH%"
+
+if not exist "%EXE_PATH%" (
+    where dotnet >nul 2>nul
+    if not errorlevel 1 (
+        echo [Sanctum Suite] Native launcher not found. Building desktop package...
+        dotnet publish "%~dp0desktop\SanctumSuiteLauncher\SanctumSuiteLauncher.csproj" -c Release -r win-x64 --self-contained false -p:UseAppHost=true -nologo
+        if exist "%EXE_PUBLISH_PATH%" set "EXE_PATH=%EXE_PUBLISH_PATH%"
+    )
+)
+
 if exist "%EXE_PATH%" (
     echo [Sanctum Suite] Uruchamianie aplikacji desktopowej...
+    echo [Sanctum Suite] Native launcher: %EXE_PATH%
     echo [Sanctum Suite] Target URL: %APP_URL%
     start "" "%EXE_PATH%"
     exit /b 0

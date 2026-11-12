@@ -1,17 +1,17 @@
 {
   "format": 1,
   "restore": {
-    "C:\\Users\\edgie\\Desktop\\EEE\\sanctum-suite\\SanctumSuiteLauncher\\SanctumSuiteLauncher.csproj": {}
+    "C:\\Users\\edgie\\Desktop\\EEE\\sanctum-suite\\desktop\\SanctumSuiteLauncher\\SanctumSuiteLauncher.csproj": {}
   },
   "projects": {
-    "C:\\Users\\edgie\\Desktop\\EEE\\sanctum-suite\\SanctumSuiteLauncher\\SanctumSuiteLauncher.csproj": {
+    "C:\\Users\\edgie\\Desktop\\EEE\\sanctum-suite\\desktop\\SanctumSuiteLauncher\\SanctumSuiteLauncher.csproj": {
       "version": "1.0.0",
       "restore": {
-        "projectUniqueName": "C:\\Users\\edgie\\Desktop\\EEE\\sanctum-suite\\SanctumSuiteLauncher\\SanctumSuiteLauncher.csproj",
+        "projectUniqueName": "C:\\Users\\edgie\\Desktop\\EEE\\sanctum-suite\\desktop\\SanctumSuiteLauncher\\SanctumSuiteLauncher.csproj",
         "projectName": "SanctumSuiteLauncher",
-        "projectPath": "C:\\Users\\edgie\\Desktop\\EEE\\sanctum-suite\\SanctumSuiteLauncher\\SanctumSuiteLauncher.csproj",
+        "projectPath": "C:\\Users\\edgie\\Desktop\\EEE\\sanctum-suite\\desktop\\SanctumSuiteLauncher\\SanctumSuiteLauncher.csproj",
         "packagesPath": "C:\\Users\\edgie\\.nuget\\packages\\",
-        "outputPath": "C:\\Users\\edgie\\Desktop\\EEE\\sanctum-suite\\SanctumSuiteLauncher\\obj\\",
+        "outputPath": "C:\\Users\\edgie\\Desktop\\EEE\\sanctum-suite\\desktop\\SanctumSuiteLauncher\\obj\\",
         "projectStyle": "PackageReference",
         "fallbackFolders": [
           "C:\\Program Files (x86)\\Microsoft Visual Studio\\Shared\\NuGetPackages"
@@ -362,6 +362,11 @@
             "System.Xml.XPath": "(,4.3.32767]",
             "System.Xml.XPath.XDocument": "(,5.0.32767]"
           }
+        }
+      },
+      "runtimes": {
+        "win-x64": {
+          "#import": []
         }
       }
     }
