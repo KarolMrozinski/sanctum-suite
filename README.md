@@ -23,31 +23,32 @@
 
 ## Final release hero
 
-Sanctum Suite is a premium cyber threat-intelligence platform built to feel like a modern security operations desktop: dark, precise, glassy, and engineered for analyst flow. The project combines a high-end CTI dashboard, desktop-native Windows launch behavior, and modular architecture into one cohesive product experience.
+Sanctum Suite is a premium cyber threat-intelligence platform designed for modern security operations teams. Built around a dark, analyst-first experience, the project blends a polished OpenCTI-style dashboard, desktop-native launcher behavior, and modular product architecture into a single cohesive security workspace.
 
-## What’s inside
+## Product overview
 
-### Product experience
-- OpenCTI-inspired cyber SOC dashboard
-- Threats, entities, investigations, alerts, and overview workflows
-- Premium dark glass UI with analyst-first hierarchy
-- Local-first runtime with desktop launcher behavior for Windows
+Sanctum Suite is structured as a high-end local-first CTI environment with a clear operational flow across intelligence, investigation, and response-oriented views. It combines the visual language of a modern security operations console with practical UX patterns suited for demos, internal review, and future deployment to an external environment.
 
-### Platform architecture
-- Next.js + React + TypeScript frontend
-- .NET + WPF desktop shell and launcher integration
-- PowerShell/CMD entrypoints for single-instance startup
-- Python, Rust, and security-oriented tooling layers for future expansion
+### What’s inside
 
-### Operational model
-- realistic mock CTI data for live-like analyst workflows
-- local environment ready for review, testing, and demo use
-- URL-ready design for future deployment and external hosting
-- organized repo structure for product growth and maintenance
+- OpenCTI-inspired analyst dashboard with threat intelligence workflow
+- Structured views for overview, threats, entities, investigations, and alerts
+- Premium dark-glass UI with crisp hierarchy and active monitoring cues
+- Local-first runtime with desktop launcher flow for Windows users
+- Modular repo layout prepared for future integrations and real data sources
 
-## How to use Sanctum Suite
+### Core capabilities
 
-### 1. Run the dashboard
+- Threat-centric intelligence overview
+- Entity relationship and context views
+- Investigation tracking and analyst workflow support
+- Alert monitoring and live-style operational summaries
+- Desktop launch shell with URL-aware runtime targeting
+- Clean product architecture and documentation-first repo organization
+
+## Quick start
+
+### 1. Run the dashboard locally
 
 ```bash
 cd sanctum-dashboard
@@ -55,13 +56,13 @@ npm install
 npm run dev
 ```
 
-Open the app:
+Then open:
 
 - `http://localhost:3000`
 
-### 2. Start the desktop launcher
+### 2. Launch the desktop wrapper
 
-From the repo root, use one of the supported launch entrypoints:
+From the repository root, use one of the supported entrypoints:
 
 - `start-sanctum-suite.cmd`
 - `run-sanctum-suite.bat`
@@ -70,15 +71,13 @@ From the repo root, use one of the supported launch entrypoints:
 
 ### 3. Stop or reset the runtime
 
-Use the shutdown flow:
+```bash
+stop-sanctum-suite.cmd
+```
 
-- `stop-sanctum-suite.cmd`
+This keeps the lifecycle clean and prevents duplicate process or browser reopen loops.
 
-This keeps the launcher lifecycle clean and prevents duplicate browser reopen loops.
-
-### 4. Use the product
-
-Navigate through the main sections:
+### 4. Explore the main product sections
 
 - Overview
 - Threats
@@ -88,34 +87,34 @@ Navigate through the main sections:
 
 ## Root-level naming standard
 
-The canonical root structure is organized around clarity and product-first naming:
+The repository is organized around a clean product-first naming model:
 
 ```text
 README.md          primary product landing page
-INDEX.md           repository index and navigation entrypoint
-docs/              documentation hub and operational references
-app/               product runtime and UI code
-desktop/           desktop launcher and Windows shell resources
-integrations/      external integrations and references
-security/          security documentation and hardening guidance
-resources/         brand, visuals, and supporting assets
-build/             packaging and release-oriented build assets
-reports/           generated reports and operational exports
+INDEX.md           repository overview and navigation entrypoint
+docs/              documentation and operational references
+app/               application layer and system runtime logic
+desktop/           desktop shell and native launcher package
+integrations/      integration references and external system hooks
+security/          security posture, guidance, and hardening docs
+resources/         brand assets, visuals, and supporting resources
+build/             packaging and release-oriented build artifacts
+reports/           operational summaries and report exports
 ```
 
-Legacy support files remain in the root for compatibility, but the names above are the final product-facing standard.
+Legacy support files remain available for compatibility, while the structure above represents the final product-facing standard.
 
 ## Repository layout
 
 ```text
-app/           Product application and runtime logic
-desktop/       Desktop shell and launcher components
-integrations/  Integrations, references, and external systems
-security/      Security posture and governance documentation
-resources/     Brand assets, visuals, and helper resources
-docs/          Documentation, runbooks, and learning content
+app/           Product runtime and application logic
+desktop/       Desktop launcher and Windows app wrapper
+integrations/  External integrations, references, and system hooks
+security/      Security documentation and governance
+resources/     Brand assets and design resources
+docs/          Documentation, runbooks, and product notes
 build/         Packaging, build, and deployment scaffolding
-reports/       Audit summaries, reports, and exports
+reports/       Generated reports and operational exports
 ```
 
 ## Technology stack
@@ -124,10 +123,10 @@ reports/       Audit summaries, reports, and exports
 |---|---|
 | Frontend | Next.js + React + TypeScript |
 | Styling | Tailwind CSS + glassmorphism + cyber UI |
-| Runtime | Node.js + npm + local dev server |
+| Runtime | Node.js + npm + local development server |
 | Desktop wrapper | .NET + C# + WPF + Windows launcher flow |
-| Automation | PowerShell + CMD + BAT launch scripts |
-| Security model | Python + Rust + Ada + APL + HALS |
+| Automation | PowerShell + CMD + BAT startup scripts |
+| Security model | Python + Rust + future security tooling layers |
 
 ## Documentation and navigation
 
@@ -141,17 +140,17 @@ reports/       Audit summaries, reports, and exports
 
 ## Design language
 
-Sanctum Suite intentionally uses a premium cyber-ops aesthetic:
+Sanctum Suite follows a premium cyber-operations visual system built around:
 
-- deep navy and graphite palette
-- cyan/teal signal accents
-- glass surfaces with soft glow
-- dense analyst workspace layout
-- minimal premium chrome for desktop-style feel
+- deep navy and graphite surfaces
+- cyan and teal signal accents
+- glass-effect panels with soft glow
+- dense, analyst-first workspace layout
+- minimal premium chrome for a desktop-native feel
 
-## Status
+## Current status
 
-The project is currently in a local-first operational prototype phase with a polished CTI UX and a desktop launcher layer. It is ready for local use, review, demo, and future deployment expansion.
+The project currently sits in a polished local-first operational prototype phase: the CTI interface is fully styled and functional, the desktop launcher layer is substantially improved, and the repo is organized around a more product-ready structure. It is ready for local demos, validation, and future expansion into external deployment or live backend integration.
 
 ## License
 
