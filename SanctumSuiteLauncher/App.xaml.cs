@@ -21,8 +21,6 @@ public partial class App : Wpf.Application
     private readonly string _root = Path.GetFullPath(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "..", "..", "..", ".."));
     private readonly string _appDir = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "..", "..", "..", "..");
     private readonly string _pidFile = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "..", "..", "..", "..", ".sanctum-suite.pid");
-    private readonly string _stdoutLog = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "..", "..", "..", "..", "sanctum-suite-stdout.log");
-    private readonly string _stderrLog = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "..", "..", "..", "..", "sanctum-suite-stderr.log");
     private readonly string _browserFlag = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "..", "..", "..", "..", ".sanctum-suite.browser-opened");
     private readonly HttpClient _client = new();
     private Wpf.Window _window = null!;
@@ -199,6 +197,8 @@ public partial class App : Wpf.Application
     {
         try
         {
+            var appProjectDir = Path.Combine(_appDir, "sanctum-dashboard");
+
             if (IsAppRunning())
             {
                 _status.Text = "Status: running";
@@ -206,32 +206,30 @@ public partial class App : Wpf.Application
                 return;
             }
 
-            if (!File.Exists(Path.Combine(_appDir, "sanctum-dashboard", "package.json")))
+            if (!File.Exists(Path.Combine(appProjectDir, "package.json")))
             {
                 _status.Text = "Status: missing project";
                 RefreshStatus();
                 return;
             }
 
-            if (!File.Exists(Path.Combine(_appDir, "sanctum-dashboard", "node_modules", "next", "package.json")))
+            if (!File.Exists(Path.Combine(appProjectDir, "node_modules", "next", "package.json")))
             {
                 _status.Text = "Status: installing deps...";
                 RefreshStatus();
-                var install = Process.Start(new ProcessStartInfo("cmd.exe", $"/c cd /d \"{Path.Combine(_appDir, "sanctum-dashboard")}\" && npm install --no-fund --no-audit") { UseShellExecute = true });
+                var install = Process.Start(new ProcessStartInfo("cmd.exe", $"/c cd /d \"{appProjectDir}\" && npm install --no-fund --no-audit") { UseShellExecute = true });
                 install!.WaitForExit();
             }
 
             StopApp(false);
-            File.Delete(_stdoutLog);
-            File.Delete(_stderrLog);
             File.Delete(_browserFlag);
 
             _nodeProcess = new Process
             {
                 StartInfo = new ProcessStartInfo
                 {
-                    FileName = "cmd.exe",
-                    Arguments = $"/c cd /d \"{Path.Combine(_appDir, "sanctum-dashboard")}\" && npm run dev -- --hostname 0.0.0.0 > \"{_stdoutLog}\" 2> \"{_stderrLog}\"",
+                    FileName = "powershell.exe",
+                    Arguments = $"-NoLogo -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -Command \"Set-Location '{appProjectDir}'; npm run dev -- --hostname 0.0.0.0 --port 3000\"",
                     UseShellExecute = false,
                     CreateNoWindow = true,
                     RedirectStandardOutput = false,
@@ -298,7 +296,7 @@ public partial class App : Wpf.Application
             {
                 try
                 {
-                    var proc = Process.GetProcessById(pid);
+                    using var proc = Process.GetProcessById(pid);
                     if (!proc.HasExited)
                     {
                         return true;
@@ -313,7 +311,10 @@ public partial class App : Wpf.Application
             try
             {
                 var cmd = proc.StartInfo?.Arguments ?? string.Empty;
-                if (cmd.Contains("next dev --hostname 0.0.0.0") || cmd.Contains("npm run dev"))
+                var processName = proc.ProcessName ?? string.Empty;
+                if ((processName.Contains("node", StringComparison.OrdinalIgnoreCase) || processName.Contains("powershell", StringComparison.OrdinalIgnoreCase))
+                    && (cmd.Contains("next dev --hostname 0.0.0.0", StringComparison.OrdinalIgnoreCase)
+                        || cmd.Contains("npm run dev", StringComparison.OrdinalIgnoreCase)))
                 {
                     return true;
                 }
@@ -362,15 +363,20 @@ public partial class App : Wpf.Application
                 var value = File.ReadAllText(_pidFile).Trim();
                 if (int.TryParse(value, out var pid))
                 {
-                    try { Process.GetProcessById(pid)?.Kill(true); } catch { }
+                    try
+                    {
+                        using var proc = Process.GetProcessById(pid);
+                        proc.Kill(true);
+                    }
+                    catch { }
                 }
                 File.Delete(_pidFile);
             }
 
-            foreach (var proc in Process.GetProcesses().Where(p => p.ProcessName.Contains("node") || p.ProcessName.Contains("cmd")).ToList())
+            foreach (var proc in Process.GetProcesses().Where(p => p.ProcessName.Contains("node", StringComparison.OrdinalIgnoreCase) || p.ProcessName.Contains("powershell", StringComparison.OrdinalIgnoreCase) || p.ProcessName.Contains("cmd", StringComparison.OrdinalIgnoreCase)).ToList())
             {
                 var cmd = proc.StartInfo?.Arguments ?? string.Empty;
-                if (cmd.Contains("next dev --hostname 0.0.0.0") || cmd.Contains("npm run dev"))
+                if (cmd.Contains("next dev --hostname 0.0.0.0", StringComparison.OrdinalIgnoreCase) || cmd.Contains("npm run dev", StringComparison.OrdinalIgnoreCase))
                 {
                     try { proc.Kill(true); } catch { }
                 }

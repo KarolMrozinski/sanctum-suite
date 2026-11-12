@@ -64,7 +64,7 @@ function Start-App {
     Stop-ManagedProcess
     Remove-Item $stdoutLog, $stderrLog, $browserFlag -Force -ErrorAction SilentlyContinue
 
-    $process = Start-Process -FilePath 'cmd.exe' -ArgumentList '/c', "cd /d `"$appDir`" && npm run dev -- --hostname 0.0.0.0 > `"$stdoutLog`" 2> `"$stderrLog`"" -WindowStyle Hidden -PassThru
+    $process = Start-Process -FilePath 'powershell.exe' -ArgumentList '-NoLogo', '-NoProfile', '-ExecutionPolicy', 'Bypass', '-WindowStyle', 'Hidden', '-Command', "Set-Location '$appDir'; npm run dev -- --hostname 0.0.0.0 --port 3000" -PassThru
     $process.Id | Set-Content -Path $pidFile
 
     $deadline = (Get-Date).AddSeconds(90)
