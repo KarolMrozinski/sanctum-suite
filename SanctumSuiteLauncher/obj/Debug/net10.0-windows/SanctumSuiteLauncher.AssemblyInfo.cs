@@ -13,7 +13,7 @@ using System.Reflection;
 [assembly: System.Reflection.AssemblyCompanyAttribute("SanctumSuiteLauncher")]
 [assembly: System.Reflection.AssemblyConfigurationAttribute("Debug")]
 [assembly: System.Reflection.AssemblyFileVersionAttribute("1.0.0.0")]
-[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+8eb0f25f639a1c435d67391d08137123a50a6644")]
+[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+ee00164ba272aaaffe11e0421046cd13ee42e18b")]
 [assembly: System.Reflection.AssemblyProductAttribute("SanctumSuiteLauncher")]
 [assembly: System.Reflection.AssemblyTitleAttribute("SanctumSuiteLauncher")]
 [assembly: System.Reflection.AssemblyVersionAttribute("1.0.0.0")]

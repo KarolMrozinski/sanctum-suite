@@ -9,6 +9,8 @@ set "EXE_PATH=%~dp0SanctumSuiteLauncher.exe"
 set "APP_DIR=%~dp0sanctum-dashboard"
 set "LOCAL_TARGET=0"
 
+call :normalize_app_url
+
 echo "%APP_URL%" | findstr /I /C:"localhost" /C:"127.0.0.1" /C:"0.0.0.0" >nul
 if not errorlevel 1 set "LOCAL_TARGET=1"
 
@@ -42,7 +44,7 @@ if errorlevel 1 (
     exit /b 1
 )
 
-for /f "tokens=*" %%P in ('powershell -NoLogo -NoProfile -ExecutionPolicy Bypass -Command "$p = Get-CimInstance Win32_Process | Where-Object { $_.CommandLine -match 'next dev --hostname 0.0.0.0' -or $_.CommandLine -match 'npm run dev -- --hostname 0.0.0.0 --port 3000' } | Select-Object -First 1 -ExpandProperty ProcessId; if ($p) { $p }" 2^>nul') do (
+for /f "tokens=*" %%P in ('powershell -NoLogo -NoProfile -ExecutionPolicy Bypass -Command "$p = Get-CimInstance Win32_Process | Where-Object { $_.CommandLine -match 'next dev' -or $_.CommandLine -match 'npm run dev' } | Where-Object { $_.CommandLine -match 'sanctum-dashboard' -or $_.CommandLine -match '--hostname' -or $_.CommandLine -match '--port' } | Select-Object -First 1 -ExpandProperty ProcessId; if ($p) { $p }" 2^>nul') do (
     set "RUNNING_PID=%%P"
 )
 if defined RUNNING_PID (
@@ -73,6 +75,10 @@ for /l %%I in (1,1,120) do (
 
 echo [Sanctum Suite] Nie udalo sie uruchomic aplikacji w czasie oczekiwania.
 exit /b 1
+
+:normalize_app_url
+set "APP_URL=%APP_URL:0.0.0.0=localhost%"
+exit /b 0
 
 :app_ready
 echo [Sanctum Suite] Aplikacja jest dostepna pod %APP_URL%

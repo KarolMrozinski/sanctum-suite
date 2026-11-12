@@ -293,6 +293,13 @@ public partial class App : Wpf.Application
         _window.Show();
         _window.Activate();
         RefreshStatus();
+
+        _ = Task.Run(async () =>
+        {
+            await Task.Delay(500);
+            await Dispatcher.InvokeAsync(async () => await StartAppAsync());
+        });
+
         base.OnStartup(e);
     }
 
@@ -339,10 +346,11 @@ public partial class App : Wpf.Application
 
             var port = ExtractPort(AppUrl);
             var host = ExtractHost(AppUrl);
+            var command = $"Set-Location '{appProjectDir}'; npm run dev -- --hostname {host} --port {port}";
             var startInfo = new ProcessStartInfo
             {
                 FileName = "powershell.exe",
-                Arguments = $"-NoLogo -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -Command \"Set-Location '{appProjectDir}'; npm run dev -- --hostname {host} --port {port}\"",
+                Arguments = $"-NoLogo -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -Command \"{command}\"",
                 UseShellExecute = false,
                 CreateNoWindow = true,
                 RedirectStandardOutput = false,
@@ -377,6 +385,7 @@ public partial class App : Wpf.Application
             if (started)
             {
                 _status.Text = "Status: running";
+                TryOpenBrowser(false);
             }
             else
             {
@@ -438,6 +447,19 @@ public partial class App : Wpf.Application
         }
     }
 
+    private static bool IsLikelyDevServer(string? commandLine)
+    {
+        if (string.IsNullOrWhiteSpace(commandLine))
+        {
+            return false;
+        }
+
+        return commandLine.Contains("next dev", StringComparison.OrdinalIgnoreCase)
+            || commandLine.Contains("npm run dev", StringComparison.OrdinalIgnoreCase)
+            || commandLine.Contains("sanctum-dashboard", StringComparison.OrdinalIgnoreCase)
+            || commandLine.Contains("--hostname", StringComparison.OrdinalIgnoreCase);
+    }
+
     private static string ExtractHost(string url)
     {
         if (Uri.TryCreate(url, UriKind.Absolute, out var uri))
@@ -496,12 +518,11 @@ public partial class App : Wpf.Application
                     || processName.Contains("powershell", StringComparison.OrdinalIgnoreCase)
                     || processName.Contains("cmd", StringComparison.OrdinalIgnoreCase);
 
-                var matchesDevServer = cmd.Contains("next dev", StringComparison.OrdinalIgnoreCase)
-                    || cmd.Contains("npm run dev", StringComparison.OrdinalIgnoreCase);
-
+                var matchesDevServer = IsLikelyDevServer(cmd);
                 var matchesTargetUrl = cmd.Contains(expectedHost, StringComparison.OrdinalIgnoreCase)
                     || cmd.Contains($"--port {expectedPort}", StringComparison.OrdinalIgnoreCase)
-                    || cmd.Contains("sanctum-dashboard", StringComparison.OrdinalIgnoreCase);
+                    || cmd.Contains("sanctum-dashboard", StringComparison.OrdinalIgnoreCase)
+                    || cmd.Contains("next", StringComparison.OrdinalIgnoreCase);
 
                 if (isNodeOrShell && (matchesDevServer || matchesTargetUrl))
                 {
@@ -574,8 +595,7 @@ public partial class App : Wpf.Application
                 var host = ExtractHost(targetUrl);
                 var port = ExtractPort(targetUrl);
 
-                if (cmd.Contains("next dev", StringComparison.OrdinalIgnoreCase)
-                    || cmd.Contains("npm run dev", StringComparison.OrdinalIgnoreCase)
+                if (IsLikelyDevServer(cmd)
                     || cmd.Contains($"--hostname {host}", StringComparison.OrdinalIgnoreCase)
                     || cmd.Contains($"--port {port}", StringComparison.OrdinalIgnoreCase)
                     || cmd.Contains("sanctum-dashboard", StringComparison.OrdinalIgnoreCase))

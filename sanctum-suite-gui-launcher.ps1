@@ -51,7 +51,15 @@ function Is-AppRunning {
     }
 
     try {
-        $processes = Get-CimInstance Win32_Process | Where-Object { $_.Name -match 'node|cmd' -and $_.CommandLine -match 'next dev --hostname 0.0.0.0' }
+        $processes = Get-CimInstance Win32_Process | Where-Object {
+            $_.Name -match 'node|cmd|powershell' -and (
+                $_.CommandLine -match 'next dev' -or
+                $_.CommandLine -match 'npm run dev' -or
+                $_.CommandLine -match 'sanctum-dashboard' -or
+                $_.CommandLine -match '--hostname' -or
+                $_.CommandLine -match '--port'
+            )
+        }
         if ($processes) { return $true }
     } catch {}
 
