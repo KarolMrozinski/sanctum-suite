@@ -1,11 +1,6 @@
-import { DashboardShell } from "@/components/dashboard/dashboard-shell";
-import { EntitiesSection } from "@/components/dashboard/overview-section";
+import { SectionDetailPage } from "@/components/dashboard/section-detail-page";
 import { getDashboardSnapshot } from "@/lib/dashboard-data";
 
 export default function EntitiesPage() {
-  return (
-    <DashboardShell section="entities">
-      <EntitiesSection snapshot={getDashboardSnapshot("entities")} />
-    </DashboardShell>
-  );
+  return <SectionDetailPage section="entities" snapshot={getDashboardSnapshot("entities")} />;
 }

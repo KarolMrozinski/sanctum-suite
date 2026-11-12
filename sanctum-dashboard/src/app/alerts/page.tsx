@@ -1,11 +1,6 @@
-import { DashboardShell } from "@/components/dashboard/dashboard-shell";
-import { AlertsSection } from "@/components/dashboard/overview-section";
+import { SectionDetailPage } from "@/components/dashboard/section-detail-page";
 import { getDashboardSnapshot } from "@/lib/dashboard-data";
 
 export default function AlertsPage() {
-  return (
-    <DashboardShell section="alerts">
-      <AlertsSection snapshot={getDashboardSnapshot("alerts")} />
-    </DashboardShell>
-  );
+  return <SectionDetailPage section="alerts" snapshot={getDashboardSnapshot("alerts")} />;
 }
