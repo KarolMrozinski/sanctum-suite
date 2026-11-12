@@ -4,11 +4,17 @@
 
 # SANCTUM SUITE
 
+<p>
+  <a href="README.md"><img src="https://img.shields.io/badge/Main%20Repo-Open-00E5FF?style=for-the-badge" alt="Main Repo" /></a>
+  <a href="sanctum-dashboard/README.md"><img src="https://img.shields.io/badge/Dashboard-Open-7C3AED?style=for-the-badge" alt="Dashboard" /></a>
+  <a href="docs/README.md"><img src="https://img.shields.io/badge/Docs-Open-94A3B8?style=for-the-badge" alt="Docs" /></a>
+</p>
+
 </div>
 
 ## Overview
 
-Sanctum Suite is a premium cyber threat-intelligence workspace built around a dark OpenCTI-inspired analyst experience and rebranded into the Sanctum Suite identity. The project combines a live-like dashboard, operational CTI sections, desktop-style launch flow, and modular infrastructure for future real-world deployment.
+Sanctum Suite is a premium cyber threat-intelligence workspace built around a dark OpenCTI-inspired analyst experience and rebranded into the Sanctum Suite identity. The repo combines a live-like dashboard, operational CTI sections, desktop-style launch flow, and modular infrastructure for future real-world deployment.
 
 ## Repository map
 
@@ -65,9 +71,17 @@ npm install
 npm run dev
 ```
 
-Then open:
+Open:
 
-- http://localhost:3000
+- `http://localhost:3000`
+
+## Documentation
+
+- [README.md](README.md)
+- [docs/README.md](docs/README.md)
+- [security/SECURITY.md](security/SECURITY.md)
+- [DEPLOYMENT.md](DEPLOYMENT.md)
+- [notebooks/sanctum_deep_dive.ipynb](notebooks/sanctum_deep_dive.ipynb)
 
 ## Notes
 
