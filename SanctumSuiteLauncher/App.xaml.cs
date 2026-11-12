@@ -6,7 +6,9 @@ using System.Net.Http;
 using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Input;
 using System.Windows.Media;
+using System.Windows.Media.Effects;
 using System.Windows.Media.Imaging;
 using System.Windows.Threading;
 using WinForms = System.Windows.Forms;
@@ -38,31 +40,43 @@ public partial class App : Wpf.Application
         _window = new Window
         {
             Title = "Sanctum Suite",
-            Width = 520,
-            Height = 270,
+            Width = 560,
+            Height = 300,
             WindowStartupLocation = WindowStartupLocation.CenterScreen,
             ResizeMode = ResizeMode.NoResize,
             WindowStyle = WindowStyle.None,
             AllowsTransparency = true,
-            Background = new SolidColorBrush(System.Windows.Media.Color.FromArgb(180, 10, 17, 25)),
+            Background = Wpf.Media.Brushes.Transparent,
             Foreground = new SolidColorBrush(System.Windows.Media.Color.FromRgb(226, 232, 240)),
             Icon = new BitmapImage(new Uri(Path.Combine(_root, "sanctum-suite-icon.ico"), UriKind.Absolute))
         };
 
         _window.MouseLeftButtonDown += (_, _) => _window.DragMove();
 
+        var shadow = new DropShadowEffect
+        {
+            Color = System.Windows.Media.Color.FromArgb(120, 15, 23, 42),
+            BlurRadius = 25,
+            ShadowDepth = 12,
+            Opacity = 0.7
+        };
+
         var outer = new Border
         {
-            CornerRadius = new CornerRadius(20),
+            CornerRadius = new CornerRadius(24),
             BorderBrush = new SolidColorBrush(System.Windows.Media.Color.FromArgb(120, 148, 163, 184)),
             BorderThickness = new Thickness(1),
-            Background = new SolidColorBrush(System.Windows.Media.Color.FromArgb(180, 10, 17, 25)),
+            Background = new LinearGradientBrush(
+                System.Windows.Media.Color.FromArgb(220, 8, 15, 25),
+                System.Windows.Media.Color.FromArgb(210, 15, 23, 32),
+                90),
             Padding = new Thickness(20),
-            Margin = new Thickness(8)
+            Margin = new Thickness(10),
+            Effect = shadow
         };
 
         var stack = new StackPanel { Background = System.Windows.Media.Brushes.Transparent };
-        var header = new Grid { Margin = new Thickness(0, 0, 0, 12) };
+        var header = new Grid { Margin = new Thickness(0, 0, 0, 14) };
         header.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
         header.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
         header.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
@@ -76,7 +90,7 @@ public partial class App : Wpf.Application
             Height = 16,
             CornerRadius = new CornerRadius(8),
             Background = new SolidColorBrush(System.Windows.Media.Color.FromRgb(131, 224, 196)),
-            Margin = new Thickness(0, 6, 0, 0),
+            Margin = new Thickness(0, 7, 0, 0),
             Child = new Border { Width = 8, Height = 8, CornerRadius = new CornerRadius(4), Background = new SolidColorBrush(System.Windows.Media.Color.FromRgb(10, 17, 25)) }
         };
         Grid.SetColumn(icon, 2);
@@ -84,14 +98,14 @@ public partial class App : Wpf.Application
         var closeBtn = new Wpf.Controls.Button
         {
             Content = "✕",
-            Width = 26,
-            Height = 26,
-            Margin = new Thickness(8, 0, 0, 0),
-            Background = new SolidColorBrush(System.Windows.Media.Color.FromArgb(120, 100, 116, 126)),
+            Width = 28,
+            Height = 28,
+            Margin = new Thickness(10, 0, 0, 0),
+            Background = new SolidColorBrush(System.Windows.Media.Color.FromArgb(100, 100, 116, 126)),
             Foreground = System.Windows.Media.Brushes.White,
             BorderThickness = new Thickness(0),
             Padding = new Thickness(0),
-            ToolTip = "Close to tray"
+            ToolTip = "Zwin do zasobnika"
         };
         closeBtn.Click += (_, _) => MinimizeToTray();
         Grid.SetColumn(closeBtn, 2);
@@ -103,9 +117,9 @@ public partial class App : Wpf.Application
         _status = new TextBlock { Text = "Status: stopped", FontSize = 16, Margin = new Thickness(0, 0, 0, 18), Foreground = new SolidColorBrush(System.Windows.Media.Color.FromRgb(226, 232, 240)) };
         var buttons = new StackPanel { Orientation = System.Windows.Controls.Orientation.Horizontal, Margin = new Thickness(0, 0, 0, 12) };
 
-        _startBtn = new Wpf.Controls.Button { Content = "Start", Width = 130, Height = 42, Margin = new Thickness(0, 0, 12, 0), Background = new SolidColorBrush(System.Windows.Media.Color.FromRgb(14, 116, 144)), Foreground = System.Windows.Media.Brushes.White, BorderThickness = new Thickness(0), FontWeight = FontWeights.SemiBold };
-        _stopBtn = new Wpf.Controls.Button { Content = "Stop", Width = 130, Height = 42, Margin = new Thickness(0, 0, 12, 0), Background = new SolidColorBrush(System.Windows.Media.Color.FromRgb(51, 65, 85)), Foreground = System.Windows.Media.Brushes.White, BorderThickness = new Thickness(0), FontWeight = FontWeights.SemiBold };
-        _openBtn = new Wpf.Controls.Button { Content = "Open app", Width = 130, Height = 42, Background = new SolidColorBrush(System.Windows.Media.Color.FromRgb(24, 24, 27)), Foreground = System.Windows.Media.Brushes.White, BorderThickness = new Thickness(0), FontWeight = FontWeights.SemiBold };
+        _startBtn = new Wpf.Controls.Button { Content = "Start", Width = 150, Height = 44, Margin = new Thickness(0, 0, 12, 0), Background = new SolidColorBrush(System.Windows.Media.Color.FromRgb(14, 116, 144)), Foreground = System.Windows.Media.Brushes.White, BorderThickness = new Thickness(0), FontWeight = FontWeights.SemiBold, Cursor = System.Windows.Input.Cursors.Hand };
+        _stopBtn = new Wpf.Controls.Button { Content = "Stop", Width = 150, Height = 44, Margin = new Thickness(0, 0, 12, 0), Background = new SolidColorBrush(System.Windows.Media.Color.FromRgb(51, 65, 85)), Foreground = System.Windows.Media.Brushes.White, BorderThickness = new Thickness(0), FontWeight = FontWeights.SemiBold, Cursor = System.Windows.Input.Cursors.Hand };
+        _openBtn = new Wpf.Controls.Button { Content = "Open app", Width = 150, Height = 44, Background = new SolidColorBrush(System.Windows.Media.Color.FromRgb(24, 24, 27)), Foreground = System.Windows.Media.Brushes.White, BorderThickness = new Thickness(0), FontWeight = FontWeights.SemiBold, Cursor = System.Windows.Input.Cursors.Hand };
 
         _startBtn.Click += async (_, _) => await StartAppAsync();
         _stopBtn.Click += (_, _) => StopApp();
@@ -151,6 +165,14 @@ public partial class App : Wpf.Application
         var trayMenu = new WinForms.ContextMenuStrip();
         var showItem = new WinForms.ToolStripMenuItem("Show");
         showItem.Click += (_, _) => RestoreWindow();
+        var openItem = new WinForms.ToolStripMenuItem("Open app");
+        openItem.Click += (_, _) =>
+        {
+            if (IsAppRunning())
+            {
+                Process.Start(new ProcessStartInfo("http://localhost:3000") { UseShellExecute = true });
+            }
+        };
         var exitItem = new WinForms.ToolStripMenuItem("Exit");
         exitItem.Click += (_, _) =>
         {
@@ -159,6 +181,7 @@ public partial class App : Wpf.Application
             _window.Close();
         };
         trayMenu.Items.Add(showItem);
+        trayMenu.Items.Add(openItem);
         trayMenu.Items.Add(exitItem);
         _trayIcon.ContextMenuStrip = trayMenu;
 
