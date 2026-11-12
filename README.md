@@ -62,6 +62,17 @@ The project is now structured as a working local dashboard application with mock
 
 ## Run locally
 
+<div align="center">
+
+| Area | Detail |
+|---|---|
+| Local runtime | `http://localhost:3000` |
+| Dashboard mode | Next.js CTI workspace |
+| Startup flow | local app + desktop launcher |
+| Runtime status | live and operating |
+
+</div>
+
 ```bash
 cd sanctum-dashboard
 npm install
