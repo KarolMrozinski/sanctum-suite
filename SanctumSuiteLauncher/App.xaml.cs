@@ -18,11 +18,12 @@ namespace SanctumSuiteLauncher;
 
 public partial class App : Wpf.Application
 {
-    private readonly string _root = Path.GetFullPath(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "..", "..", "..", ".."));
-    private readonly string _appDir = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "..", "..", "..", "..");
-    private readonly string _pidFile = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "..", "..", "..", "..", ".sanctum-suite.pid");
-    private readonly string _browserFlag = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "..", "..", "..", "..", ".sanctum-suite.browser-opened");
+    private readonly string _root = ResolveRepoRoot();
+    private readonly string _appDir = Path.Combine(ResolveRepoRoot(), "sanctum-dashboard");
+    private readonly string _pidFile = Path.Combine(ResolveRepoRoot(), ".sanctum-suite.pid");
+    private readonly string _browserFlag = Path.Combine(ResolveRepoRoot(), ".sanctum-suite.browser-opened");
     private readonly HttpClient _client = new();
+    private const string AppUrl = "http://localhost:3000";
     private Wpf.Window _window = null!;
     private readonly DispatcherTimer _timer = new();
     private Process? _nodeProcess;
@@ -33,65 +34,101 @@ public partial class App : Wpf.Application
     private WinForms.NotifyIcon? _trayIcon;
     private bool _isWindowVisible = true;
 
+    private static string ResolveRepoRoot()
+    {
+        var baseDir = AppDomain.CurrentDomain.BaseDirectory;
+        var candidates = new[]
+        {
+            baseDir,
+            Path.GetFullPath(Path.Combine(baseDir, "..", "..", "..", "..")),
+            Path.GetFullPath(Path.Combine(baseDir, "..", "..", "..")),
+            Path.GetFullPath(Path.Combine(baseDir, "..", "..")),
+            Directory.GetCurrentDirectory()
+        };
+
+        foreach (var candidate in candidates)
+        {
+            if (Directory.Exists(candidate) && File.Exists(Path.Combine(candidate, "sanctum-dashboard", "package.json")))
+            {
+                return candidate;
+            }
+        }
+
+        return baseDir;
+    }
+
     protected override void OnStartup(StartupEventArgs e)
     {
         _window = new Window
         {
             Title = "Sanctum Suite",
-            Width = 560,
-            Height = 300,
+            Width = 540,
+            Height = 260,
             WindowStartupLocation = WindowStartupLocation.CenterScreen,
             ResizeMode = ResizeMode.NoResize,
             WindowStyle = WindowStyle.None,
             AllowsTransparency = true,
             Background = Wpf.Media.Brushes.Transparent,
             Foreground = new SolidColorBrush(System.Windows.Media.Color.FromRgb(226, 232, 240)),
-            Icon = new BitmapImage(new Uri(Path.Combine(_root, "sanctum-suite-icon.ico"), UriKind.Absolute))
+            Icon = new BitmapImage(new Uri(Path.Combine(_root, "sanctum-suite-icon.ico"), UriKind.Absolute)),
+            ShowInTaskbar = true,
+            Topmost = false
         };
 
         _window.MouseLeftButtonDown += (_, _) => _window.DragMove();
 
         var shadow = new DropShadowEffect
         {
-            Color = System.Windows.Media.Color.FromArgb(120, 15, 23, 42),
-            BlurRadius = 25,
-            ShadowDepth = 12,
-            Opacity = 0.7
+            Color = System.Windows.Media.Color.FromArgb(160, 15, 23, 42),
+            BlurRadius = 28,
+            ShadowDepth = 14,
+            Opacity = 0.85
         };
 
         var outer = new Border
         {
             CornerRadius = new CornerRadius(24),
             BorderBrush = new SolidColorBrush(System.Windows.Media.Color.FromArgb(120, 148, 163, 184)),
-            BorderThickness = new Thickness(1),
+            BorderThickness = new Thickness(1.2),
             Background = new LinearGradientBrush(
-                System.Windows.Media.Color.FromArgb(220, 8, 15, 25),
-                System.Windows.Media.Color.FromArgb(210, 15, 23, 32),
+                System.Windows.Media.Color.FromArgb(230, 7, 13, 22),
+                System.Windows.Media.Color.FromArgb(220, 12, 20, 30),
                 90),
-            Padding = new Thickness(20),
-            Margin = new Thickness(10),
+            Padding = new Thickness(22),
+            Margin = new Thickness(12),
             Effect = shadow
         };
 
-        var stack = new StackPanel { Background = System.Windows.Media.Brushes.Transparent };
-        var header = new Grid { Margin = new Thickness(0, 0, 0, 14) };
+        var content = new Grid();
+        content.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+        content.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+        content.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+
+        var header = new Grid { Margin = new Thickness(0, 0, 0, 12) };
         header.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
         header.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
         header.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
 
-        var title = new TextBlock { Text = "Sanctum Suite", FontSize = 30, FontWeight = FontWeights.Bold, Foreground = new SolidColorBrush(System.Windows.Media.Color.FromRgb(131, 224, 196)), Margin = new Thickness(0, 0, 0, 0) };
+        var title = new TextBlock
+        {
+            Text = "Sanctum Suite",
+            FontSize = 28,
+            FontWeight = FontWeights.Bold,
+            Foreground = new SolidColorBrush(System.Windows.Media.Color.FromRgb(131, 224, 196)),
+            VerticalAlignment = VerticalAlignment.Center
+        };
         Grid.SetColumn(title, 0);
 
-        var icon = new Border
+        var statusDot = new Border
         {
-            Width = 16,
-            Height = 16,
-            CornerRadius = new CornerRadius(8),
-            Background = new SolidColorBrush(System.Windows.Media.Color.FromRgb(131, 224, 196)),
-            Margin = new Thickness(0, 7, 0, 0),
-            Child = new Border { Width = 8, Height = 8, CornerRadius = new CornerRadius(4), Background = new SolidColorBrush(System.Windows.Media.Color.FromRgb(10, 17, 25)) }
+            Width = 10,
+            Height = 10,
+            CornerRadius = new CornerRadius(5),
+            Background = new SolidColorBrush(System.Windows.Media.Color.FromRgb(100, 116, 139)),
+            Margin = new Thickness(0, 0, 8, 0),
+            VerticalAlignment = VerticalAlignment.Center
         };
-        Grid.SetColumn(icon, 2);
+        Grid.SetColumn(statusDot, 2);
 
         var closeBtn = new Wpf.Controls.Button
         {
@@ -99,7 +136,7 @@ public partial class App : Wpf.Application
             Width = 28,
             Height = 28,
             Margin = new Thickness(10, 0, 0, 0),
-            Background = new SolidColorBrush(System.Windows.Media.Color.FromArgb(100, 100, 116, 126)),
+            Background = new SolidColorBrush(System.Windows.Media.Color.FromArgb(80, 148, 163, 184)),
             Foreground = System.Windows.Media.Brushes.White,
             BorderThickness = new Thickness(0),
             Padding = new Thickness(0),
@@ -109,37 +146,99 @@ public partial class App : Wpf.Application
         Grid.SetColumn(closeBtn, 2);
 
         header.Children.Add(title);
-        header.Children.Add(icon);
+        header.Children.Add(statusDot);
         header.Children.Add(closeBtn);
 
-        _status = new TextBlock { Text = "Status: stopped", FontSize = 16, Margin = new Thickness(0, 0, 0, 18), Foreground = new SolidColorBrush(System.Windows.Media.Color.FromRgb(226, 232, 240)) };
-        var buttons = new StackPanel { Orientation = System.Windows.Controls.Orientation.Horizontal, Margin = new Thickness(0, 0, 0, 12) };
+        _status = new TextBlock
+        {
+            Text = "Status: stopped",
+            FontSize = 15,
+            Margin = new Thickness(0, 0, 0, 18),
+            Foreground = new SolidColorBrush(System.Windows.Media.Color.FromRgb(226, 232, 240))
+        };
 
-        _startBtn = new Wpf.Controls.Button { Content = "Start", Width = 150, Height = 44, Margin = new Thickness(0, 0, 12, 0), Background = new SolidColorBrush(System.Windows.Media.Color.FromRgb(14, 116, 144)), Foreground = System.Windows.Media.Brushes.White, BorderThickness = new Thickness(0), FontWeight = FontWeights.SemiBold, Cursor = System.Windows.Input.Cursors.Hand };
-        _stopBtn = new Wpf.Controls.Button { Content = "Stop", Width = 150, Height = 44, Margin = new Thickness(0, 0, 12, 0), Background = new SolidColorBrush(System.Windows.Media.Color.FromRgb(51, 65, 85)), Foreground = System.Windows.Media.Brushes.White, BorderThickness = new Thickness(0), FontWeight = FontWeights.SemiBold, Cursor = System.Windows.Input.Cursors.Hand };
-        _openBtn = new Wpf.Controls.Button { Content = "Open app", Width = 150, Height = 44, Background = new SolidColorBrush(System.Windows.Media.Color.FromRgb(24, 24, 27)), Foreground = System.Windows.Media.Brushes.White, BorderThickness = new Thickness(0), FontWeight = FontWeights.SemiBold, Cursor = System.Windows.Input.Cursors.Hand };
+        var infoBar = new Border
+        {
+            Background = new SolidColorBrush(System.Windows.Media.Color.FromArgb(35, 15, 118, 110)),
+            Padding = new Thickness(14, 10, 14, 10),
+            CornerRadius = new CornerRadius(12),
+            Margin = new Thickness(0, 0, 0, 18)
+        };
+        var infoText = new TextBlock
+        {
+            Text = "Monitoring • Threats • Alerts • Investigations",
+            Foreground = new SolidColorBrush(System.Windows.Media.Color.FromRgb(191, 219, 254)),
+            FontSize = 12,
+            FontWeight = FontWeights.SemiBold
+        };
+        infoBar.Child = infoText;
+
+        var buttons = new StackPanel { Orientation = System.Windows.Controls.Orientation.Horizontal, Margin = new Thickness(0, 0, 0, 0) };
+
+        _startBtn = new Wpf.Controls.Button
+        {
+            Content = "Start",
+            Width = 150,
+            Height = 44,
+            Margin = new Thickness(0, 0, 12, 0),
+            Background = new SolidColorBrush(System.Windows.Media.Color.FromRgb(14, 116, 144)),
+            Foreground = System.Windows.Media.Brushes.White,
+            BorderThickness = new Thickness(0),
+            FontWeight = FontWeights.SemiBold,
+            Cursor = System.Windows.Input.Cursors.Hand,
+            Padding = new Thickness(0)
+        };
+
+        _stopBtn = new Wpf.Controls.Button
+        {
+            Content = "Stop",
+            Width = 150,
+            Height = 44,
+            Margin = new Thickness(0, 0, 12, 0),
+            Background = new SolidColorBrush(System.Windows.Media.Color.FromRgb(51, 65, 85)),
+            Foreground = System.Windows.Media.Brushes.White,
+            BorderThickness = new Thickness(0),
+            FontWeight = FontWeights.SemiBold,
+            Cursor = System.Windows.Input.Cursors.Hand,
+            Padding = new Thickness(0)
+        };
+
+        _openBtn = new Wpf.Controls.Button
+        {
+            Content = "Open app",
+            Width = 150,
+            Height = 44,
+            Background = new SolidColorBrush(System.Windows.Media.Color.FromRgb(24, 24, 27)),
+            Foreground = System.Windows.Media.Brushes.White,
+            BorderThickness = new Thickness(0),
+            FontWeight = FontWeights.SemiBold,
+            Cursor = System.Windows.Input.Cursors.Hand,
+            Padding = new Thickness(0)
+        };
 
         _startBtn.Click += async (_, _) => await StartAppAsync();
         _stopBtn.Click += (_, _) => StopApp();
         _openBtn.Click += (_, _) =>
         {
-            if (!IsAppRunning())
-            {
-                return;
-            }
-
-            Process.Start(new ProcessStartInfo("http://localhost:3000") { UseShellExecute = true });
-            File.WriteAllText(_browserFlag, "opened");
+            if (!IsAppRunning()) return;
+            TryOpenBrowser(false);
         };
 
         buttons.Children.Add(_startBtn);
         buttons.Children.Add(_stopBtn);
         buttons.Children.Add(_openBtn);
-        stack.Children.Add(header);
-        stack.Children.Add(_status);
-        stack.Children.Add(buttons);
 
-        outer.Child = stack;
+        Grid.SetRow(header, 0);
+        Grid.SetRow(_status, 1);
+        Grid.SetRow(infoBar, 2);
+        Grid.SetRow(buttons, 3);
+
+        content.Children.Add(header);
+        content.Children.Add(_status);
+        content.Children.Add(infoBar);
+        content.Children.Add(buttons);
+
+        outer.Child = content;
         _window.Content = outer;
 
         _trayIcon = new WinForms.NotifyIcon
@@ -168,7 +267,7 @@ public partial class App : Wpf.Application
         {
             if (IsAppRunning())
             {
-                Process.Start(new ProcessStartInfo("http://localhost:3000") { UseShellExecute = true });
+                TryOpenBrowser(false);
             }
         };
         var exitItem = new WinForms.ToolStripMenuItem("Exit");
@@ -197,7 +296,7 @@ public partial class App : Wpf.Application
     {
         try
         {
-            var appProjectDir = Path.Combine(_appDir, "sanctum-dashboard");
+            var appProjectDir = _appDir;
 
             if (IsAppRunning())
             {
@@ -206,7 +305,7 @@ public partial class App : Wpf.Application
                 return;
             }
 
-            if (!File.Exists(Path.Combine(appProjectDir, "package.json")))
+            if (!Directory.Exists(appProjectDir) || !File.Exists(Path.Combine(appProjectDir, "package.json")))
             {
                 _status.Text = "Status: missing project";
                 RefreshStatus();
@@ -218,57 +317,40 @@ public partial class App : Wpf.Application
                 _status.Text = "Status: installing deps...";
                 RefreshStatus();
                 var install = Process.Start(new ProcessStartInfo("cmd.exe", $"/c cd /d \"{appProjectDir}\" && npm install --no-fund --no-audit") { UseShellExecute = true });
-                install!.WaitForExit();
+                if (install != null) install.WaitForExit();
             }
 
             StopApp(false);
-            File.Delete(_browserFlag);
+            try { File.Delete(_browserFlag); } catch { }
 
-            _nodeProcess = new Process
+            var startInfo = new ProcessStartInfo
             {
-                StartInfo = new ProcessStartInfo
-                {
-                    FileName = "powershell.exe",
-                    Arguments = $"-NoLogo -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -Command \"Set-Location '{appProjectDir}'; npm run dev -- --hostname 0.0.0.0 --port 3000\"",
-                    UseShellExecute = false,
-                    CreateNoWindow = true,
-                    RedirectStandardOutput = false,
-                    RedirectStandardError = false,
-                }
+                FileName = "powershell.exe",
+                Arguments = $"-NoLogo -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -Command \"Set-Location '{appProjectDir}'; npm run dev -- --hostname 0.0.0.0 --port 3000\"",
+                UseShellExecute = false,
+                CreateNoWindow = true,
+                RedirectStandardOutput = false,
+                RedirectStandardError = false,
             };
 
-            if (_nodeProcess.Start())
+            _nodeProcess = Process.Start(startInfo);
+            if (_nodeProcess != null)
             {
                 File.WriteAllText(_pidFile, _nodeProcess.Id.ToString());
             }
 
             _status.Text = "Status: starting...";
             RefreshStatus();
-            var started = false;
-            var browserOpened = false;
 
+            var started = false;
             for (var i = 0; i < 120; i++)
             {
                 try
                 {
-                    var resp = await _client.GetAsync("http://localhost:3000");
+                    var resp = await _client.GetAsync(AppUrl);
                     if (resp.IsSuccessStatusCode)
                     {
                         started = true;
-                        if (!browserOpened)
-                        {
-                            try
-                            {
-                                Process.Start(new ProcessStartInfo("http://localhost:3000") { UseShellExecute = true });
-                            }
-                            catch
-                            {
-                                Process.Start(new ProcessStartInfo("cmd.exe", "/c start \"\" \"http://localhost:3000\"") { UseShellExecute = true });
-                            }
-
-                            File.WriteAllText(_browserFlag, "opened");
-                            browserOpened = true;
-                        }
                         break;
                     }
                 }
@@ -293,6 +375,49 @@ public partial class App : Wpf.Application
             RefreshStatus();
             Wpf.MessageBox.Show(ex.Message, "Sanctum Suite");
         }
+    }
+
+    private void TryOpenBrowser(bool remember = true)
+    {
+        if (!IsAppRunning())
+        {
+            return;
+        }
+
+        if (remember && File.Exists(_browserFlag))
+        {
+            return;
+        }
+
+        try
+        {
+            Process.Start(new ProcessStartInfo(AppUrl) { UseShellExecute = true });
+        }
+        catch
+        {
+            try
+            {
+                Process.Start(new ProcessStartInfo("cmd.exe", $"/c start \"\" \"{AppUrl}\"") { UseShellExecute = true });
+            }
+            catch
+            {
+                return;
+            }
+        }
+
+        if (remember)
+        {
+            try
+            {
+                File.WriteAllText(_browserFlag, DateTime.UtcNow.ToString("O"));
+            }
+            catch { }
+        }
+    }
+
+    private void OpenBrowserOnce()
+    {
+        TryOpenBrowser(true);
     }
 
     private bool IsAppRunning()
@@ -322,7 +447,8 @@ public partial class App : Wpf.Application
                 var processName = proc.ProcessName ?? string.Empty;
                 if ((processName.Contains("node", StringComparison.OrdinalIgnoreCase) || processName.Contains("powershell", StringComparison.OrdinalIgnoreCase))
                     && (cmd.Contains("next dev --hostname 0.0.0.0", StringComparison.OrdinalIgnoreCase)
-                        || cmd.Contains("npm run dev", StringComparison.OrdinalIgnoreCase)))
+                        || cmd.Contains("npm run dev", StringComparison.OrdinalIgnoreCase)
+                        || cmd.Contains("port 3000", StringComparison.OrdinalIgnoreCase)))
                 {
                     return true;
                 }
@@ -342,14 +468,22 @@ public partial class App : Wpf.Application
         _startBtn.Background = new SolidColorBrush(isRunning ? System.Windows.Media.Color.FromRgb(30, 41, 59) : System.Windows.Media.Color.FromRgb(14, 116, 144));
         _stopBtn.IsEnabled = isRunning;
         _stopBtn.Background = new SolidColorBrush(isRunning ? System.Windows.Media.Color.FromRgb(51, 65, 85) : System.Windows.Media.Color.FromRgb(30, 41, 59));
-        _openBtn.IsEnabled = isRunning;
-        _openBtn.Background = new SolidColorBrush(isRunning ? System.Windows.Media.Color.FromRgb(14, 116, 144) : System.Windows.Media.Color.FromRgb(24, 24, 27));
+        _openBtn.IsEnabled = isRunning && File.Exists(_browserFlag) == false;
+        _openBtn.Background = new SolidColorBrush(isRunning && !File.Exists(_browserFlag) ? System.Windows.Media.Color.FromRgb(14, 116, 144) : System.Windows.Media.Color.FromRgb(24, 24, 27));
+
+        if (_window != null)
+        {
+            var dot = (Border?)_window.FindName("statusDot");
+            if (dot != null)
+            {
+                dot.Background = new SolidColorBrush(isRunning ? System.Windows.Media.Color.FromRgb(45, 212, 191) : System.Windows.Media.Color.FromRgb(100, 116, 139));
+            }
+        }
     }
 
     private void MinimizeToTray()
     {
         _isWindowVisible = false;
-        _window.WindowState = WindowState.Minimized;
         _window.Hide();
         _trayIcon?.Visible = true;
     }
@@ -384,13 +518,15 @@ public partial class App : Wpf.Application
             foreach (var proc in Process.GetProcesses().Where(p => p.ProcessName.Contains("node", StringComparison.OrdinalIgnoreCase) || p.ProcessName.Contains("powershell", StringComparison.OrdinalIgnoreCase) || p.ProcessName.Contains("cmd", StringComparison.OrdinalIgnoreCase)).ToList())
             {
                 var cmd = proc.StartInfo?.Arguments ?? string.Empty;
-                if (cmd.Contains("next dev --hostname 0.0.0.0", StringComparison.OrdinalIgnoreCase) || cmd.Contains("npm run dev", StringComparison.OrdinalIgnoreCase))
+                if (cmd.Contains("next dev --hostname 0.0.0.0", StringComparison.OrdinalIgnoreCase)
+                    || cmd.Contains("npm run dev", StringComparison.OrdinalIgnoreCase)
+                    || cmd.Contains("port 3000", StringComparison.OrdinalIgnoreCase))
                 {
                     try { proc.Kill(true); } catch { }
                 }
             }
 
-            File.Delete(_browserFlag);
+            try { File.Delete(_browserFlag); } catch { }
         }
         catch { }
 
