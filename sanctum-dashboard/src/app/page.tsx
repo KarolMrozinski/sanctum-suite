@@ -143,7 +143,7 @@ export default function HomePage() {
           </div>
 
           <div className="mb-5 rounded-xl border border-[#1de9b6]/20 bg-[#122233] px-3 py-2 text-[10px] uppercase tracking-[0.2em] text-[#8ae9cf]">
-            OpenCTI-inspired workspace
+            Sanctum Suite workspace
           </div>
 
           <nav className="space-y-2" aria-label="Main navigation">
