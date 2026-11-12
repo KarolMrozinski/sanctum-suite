@@ -30,6 +30,36 @@ The current implementation focuses on the live-like analyst experience:
 
 The project is now structured as a working local dashboard application with mock CTI data and a native-like launcher wrapper. The runtime serves successfully on `http://localhost:3000`, and the app is designed to behave like a desktop product without losing the browser-based development workflow.
 
+## Technology stack
+
+<div align="center">
+
+| Layer | Stack |
+|---|---|
+| Frontend | Next.js + React + TypeScript |
+| Styling | Tailwind CSS + glassmorphism + cyber UI |
+| Runtime | Node.js + npm + local dev server |
+| Desktop wrapper | .NET + C# + WPF + Windows Forms |
+| Automation | PowerShell + CMD + BAT launcher scripts |
+| Security model | Python + Rust + Ada + APL + HALS |
+
+</div>
+
+<div align="center">
+  <img src="https://img.shields.io/badge/Next.js-16.4.2-000000?style=for-the-badge&logo=next.js&logoColor=white" alt="Next.js 16.4.2" />
+  <img src="https://img.shields.io/badge/React-19-61DAFB?style=for-the-badge&logo=react&logoColor=white" alt="React 19" />
+  <img src="https://img.shields.io/badge/TypeScript-5-3178C6?style=for-the-badge&logo=typescript&logoColor=white" alt="TypeScript 5" />
+  <img src="https://img.shields.io/badge/Tailwind-4-06B6D4?style=for-the-badge&logo=tailwindcss&logoColor=white" alt="Tailwind CSS 4" />
+  <img src="https://img.shields.io/badge/Node.js-20+-339933?style=for-the-badge&logo=node.js&logoColor=white" alt="Node.js" />
+  <img src="https://img.shields.io/badge/npm-10+-CB3837?style=for-the-badge&logo=npm&logoColor=white" alt="npm" />
+  <img src="https://img.shields.io/badge/C%23-9.0-239120?style=for-the-badge&logo=csharp&logoColor=white" alt="C#" />
+  <img src="https://img.shields.io/badge/WPF-.NET-512BD4?style=for-the-badge&logo=.net&logoColor=white" alt="WPF" />
+  <img src="https://img.shields.io/badge/PowerShell-7-5391FE?style=for-the-badge&logo=powershell&logoColor=white" alt="PowerShell" />
+  <img src="https://img.shields.io/badge/Python-3-3776AB?style=for-the-badge&logo=python&logoColor=white" alt="Python" />
+  <img src="https://img.shields.io/badge/Rust-1.80+-000000?style=for-the-badge&logo=rust&logoColor=white" alt="Rust" />
+  <img src="https://img.shields.io/badge/Ada-GNAT-00A9CE?style=for-the-badge&logo=ada&logoColor=white" alt="Ada" />
+</div>
+
 ## Run locally
 
 ```bash
@@ -100,6 +130,22 @@ Sanctum Suite deliberately preserves a premium cyber-ops feel:
 - dense operational surfaces inspired by analyst workbenches
 - clean data-rich cards with strong visual hierarchy
 - minimal, premium chrome for desktop-shell behavior
+
+## Modern capability matrix
+
+<div align="center">
+
+| Capability | Implementation |
+|---|---|
+| Threat intelligence UX | OpenCTI-inspired SOC dashboard with analyst-first information hierarchy |
+| Realistic data model | Mock CTI feeds for threats, entities, alerts, and investigations |
+| Desktop feel | WPF shell with native-style controls, tray behavior, and status polling |
+| Single-instance management | PID file + runtime detection + browser guard to avoid duplicate starts |
+| Windows integration | CMD, PowerShell, and .lnk shortcut entry points for local launch |
+| Multi-language architecture | Python, Rust, Ada, APL, HALS, and security-oriented project modules |
+| Local validation | `npm run build` and live localhost runtime verification |
+
+</div>
 
 ## Notes
 
