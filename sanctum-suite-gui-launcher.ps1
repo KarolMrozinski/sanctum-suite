@@ -37,7 +37,30 @@ function Stop-ManagedProcess {
     }
 }
 
+function Is-AppRunning {
+    if (Test-Path $pidFile) {
+        $pid = (Get-Content $pidFile -Raw).Trim()
+        if ($pid -and $pid -match '^\d+$') {
+            try {
+                $process = Get-Process -Id ([int]$pid) -ErrorAction Stop
+                if ($process) { return $true }
+            } catch {}
+        }
+    }
+
+    try {
+        $processes = Get-CimInstance Win32_Process | Where-Object { $_.Name -match 'node|cmd' -and $_.CommandLine -match 'next dev --hostname 0.0.0.0' }
+        if ($processes) { return $true }
+    } catch {}
+
+    return $false
+}
+
 function Start-App {
+    if (Is-AppRunning) {
+        return $true
+    }
+
     Stop-ManagedProcess
     Remove-Item $stdoutLog, $stderrLog, $browserFlag -Force -ErrorAction SilentlyContinue
 

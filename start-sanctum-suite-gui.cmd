@@ -1,5 +1,5 @@
 @echo off
 setlocal EnableExtensions
 cd /d "%~dp0"
-powershell -NoLogo -NoProfile -ExecutionPolicy Bypass -File "%~dp0sanctum-suite-gui-launcher.ps1"
-exit /b %ERRORLEVEL%
+wscript.exe "%~dp0sanctum-suite-gui-launcher.vbs"
+exit /b 0
