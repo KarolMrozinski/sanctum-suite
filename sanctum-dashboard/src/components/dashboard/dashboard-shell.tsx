@@ -60,21 +60,23 @@ export function DashboardShell({
     };
   }, [activeSection]);
 
+  const liveSignal = liveSnapshot?.stats?.[0]?.value ?? "2,418";
+
   return (
-    <main className="min-h-screen bg-[#071a28] text-slate-100">
-      <div className="flex min-h-screen">
-        <aside className="w-[280px] border-r border-slate-800/90 bg-[#0b1622] px-5 py-6">
+    <main className="min-h-screen bg-transparent text-slate-100">
+      <div className="mx-auto flex min-h-screen max-w-[1800px]">
+        <aside className="w-[280px] border-r border-slate-800/90 bg-[#0b0f13]/95 px-5 py-6 backdrop-blur-sm">
           <div className="flex items-center gap-3 px-2 pb-6">
-            <div className="flex h-10 w-10 items-center justify-center rounded-xl border border-[#36d4ab]/30 bg-[#1de9b6]/10 text-sm font-bold text-[#7ef7d5] shadow-[0_0_24px_rgba(29,233,182,0.25)]">
+            <div className="flex h-10 w-10 items-center justify-center rounded-lg border border-[#6ee7b7]/30 bg-[#0f1d1b] text-sm font-bold text-[#a7f3d0] shadow-[0_0_20px_rgba(110,231,183,0.18)]">
               S
             </div>
             <div>
-              <div className="text-[10px] uppercase tracking-[0.24em] text-[#7fe7d4]">KarolMrozinski</div>
-              <div className="text-lg font-semibold tracking-wide text-white">SANCTUM-SUITE</div>
+              <div className="text-[10px] uppercase tracking-[0.22em] text-[#a7f3d0]">KarolMrozinski</div>
+              <div className="text-lg font-semibold tracking-[0.12em] text-white">SANCTUM-SUITE</div>
             </div>
           </div>
 
-          <div className="mb-5 rounded-xl border border-[#1de9b6]/20 bg-[#122233] px-3 py-2 text-[10px] uppercase tracking-[0.2em] text-[#8ae9cf]">
+          <div className="claude-terminal mb-5 rounded-xl px-3 py-2 text-[10px] uppercase tracking-[0.2em] text-[#9ee7d6]">
             Sanctum Suite workspace
           </div>
 
@@ -87,14 +89,14 @@ export function DashboardShell({
                   key={id}
                   href={href}
                   className={[
-                    "flex w-full items-center justify-between rounded-xl border px-3 py-2.5 text-left text-sm transition",
+                    "claude-button flex w-full items-center justify-between rounded-lg border px-3 py-2.5 text-left text-sm transition-all duration-200",
                     isActive
-                      ? "border-[#1de9b6]/30 bg-[#132b3a] text-white shadow-[inset_0_0_0_1px_rgba(29,233,182,0.18)]"
-                      : "border-transparent bg-transparent text-slate-300 hover:border-slate-700 hover:bg-slate-900/60 hover:text-white",
+                      ? "border-[#6ee7b7]/25 bg-[#101c1b] text-[#effaf5] shadow-[inset_0_0_0_1px_rgba(110,231,183,0.08),0_0_0_1px_rgba(110,231,183,0.05)]"
+                      : "border-transparent bg-transparent text-slate-300 hover:border-slate-700 hover:bg-[#10161b] hover:text-white",
                   ].join(" ")}
                 >
                   <span>{label}</span>
-                  <span className="rounded-full border border-slate-700 bg-slate-900/80 px-2 py-0.5 text-[10px] font-medium text-slate-200">
+                  <span className="rounded-full border border-slate-700 bg-[#0b1116] px-2 py-0.5 text-[10px] font-medium text-slate-200">
                     {count}
                   </span>
                 </Link>
@@ -102,38 +104,43 @@ export function DashboardShell({
             })}
           </nav>
 
-          <div className="mt-8 rounded-2xl border border-slate-800 bg-[#0d1a2c] p-4">
+          <div className="panel-surface mt-8 rounded-2xl p-4">
             <div className="mb-3 flex items-center justify-between text-[10px] uppercase tracking-[0.2em] text-slate-400">
               <span>Signal</span>
-              <span className="text-[#8ae9cf]">Live</span>
+              <span className="text-[#9ee7d6]">Live</span>
             </div>
             <div className="space-y-3">
               <div>
                 <div className="mb-1 flex justify-between text-xs text-slate-300">
                   <span>Threat score</span>
-                  <span className="text-white">87/100</span>
+                  <span className="text-white">{liveSignal}</span>
                 </div>
-                <div className="h-2 overflow-hidden rounded-full bg-slate-800">
-                  <div className="h-full w-[87%] rounded-full bg-gradient-to-r from-[#1de9b6] to-[#6dd7ff]" />
+                <div className="h-2 overflow-hidden rounded-full bg-[#11181d]">
+                  <div className="h-full w-[87%] rounded-full bg-gradient-to-r from-[#6ee7b7] via-[#82d7ff] to-[#bcd3ff]" />
                 </div>
               </div>
               <div className="flex items-center justify-between text-xs text-slate-400">
                 <span>Analyst queue</span>
-                <span className="font-medium text-[#8ae9cf]">06 pending</span>
+                <span className="font-medium text-[#9ee7d6]">06 pending</span>
               </div>
             </div>
           </div>
         </aside>
 
         <div className="flex-1">
-          <header className="flex items-center justify-between border-b border-slate-800 bg-[#091c2b]/80 px-6 py-4 backdrop-blur-sm">
+          <header className="flex items-center justify-between border-b border-slate-800 bg-[#0b1116]/80 px-6 py-4 backdrop-blur-sm">
             <div>
               <div className="text-[10px] uppercase tracking-[0.22em] text-slate-400">Threat intelligence workspace</div>
-              <h1 className="mt-1 text-2xl font-semibold text-white">{sectionTitleMap[activeSection]}</h1>
+              <h1 className="mt-1 text-2xl font-semibold tracking-tight text-white sm:text-3xl">{sectionTitleMap[activeSection]}</h1>
             </div>
             <div className="flex items-center gap-3">
-              <div className="rounded-full border border-slate-700 bg-[#0d1d2d] px-3 py-1.5 text-xs text-slate-300">02:42 UTC</div>
-              <button type="button" className="rounded-full border border-[#1de9b6]/30 bg-[#113d35] px-4 py-2 text-sm font-medium text-[#8feccc] transition hover:bg-[#174c42]">
+              <div className="rounded-full border border-slate-700 bg-[#0c1217] px-3 py-1.5 text-xs text-slate-300 shadow-inner shadow-slate-950/50">
+                02:42 UTC
+              </div>
+              <button
+                type="button"
+                className="claude-button rounded-full border border-[#6ee7b7]/20 bg-[#111d1d] px-4 py-2 text-sm font-medium text-[#9ee7d6] transition hover:bg-[#162822]"
+              >
                 Run sweep
               </button>
             </div>

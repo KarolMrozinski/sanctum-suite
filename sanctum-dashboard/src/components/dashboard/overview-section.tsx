@@ -5,24 +5,24 @@ export function OverviewSection({ snapshot }: { snapshot: DashboardSnapshot }) {
     <>
       <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
         {snapshot.stats.map((item) => (
-          <div key={item.label} className="rounded-2xl border border-slate-800 bg-[#0d1b2b] p-4 shadow-[0_0_0_1px_rgba(148,163,184,0.06)]">
-            <div className="flex items-center justify-between text-xs uppercase tracking-[0.18em] text-slate-400">
+          <div key={item.label} className="metric-card rounded-2xl p-4">
+            <div className="flex items-center justify-between text-[10px] uppercase tracking-[0.14em] text-slate-400">
               <span>{item.label}</span>
-              <span className="text-[#8ae9cf]">{item.delta}</span>
+              <span className="text-[#9ee7d6]">{item.delta}</span>
             </div>
-            <div className="mt-5 text-3xl font-semibold text-white">{item.value}</div>
+            <div className="mt-5 text-3xl font-semibold tracking-tight text-white">{item.value}</div>
           </div>
         ))}
       </section>
 
       <section className="grid gap-6 xl:grid-cols-[1.3fr_0.7fr]">
-        <div className="rounded-2xl border border-slate-800 bg-[#0d1b2b] p-5">
+        <div className="panel-surface rounded-2xl p-5">
           <div className="mb-4 flex items-center justify-between">
             <div>
-              <div className="text-[10px] uppercase tracking-[0.2em] text-slate-400">Threat landscape</div>
+              <div className="section-kicker">Threat landscape</div>
               <h2 className="mt-1 text-xl font-semibold text-white">Active detection categories</h2>
             </div>
-            <a href="/threats" className="text-sm text-[#8feccc] hover:text-[#b7f7e6]">
+            <a href="/threats" className="text-sm text-[#9ee7d6] hover:text-[#c9f8eb]">
               View all →
             </a>
           </div>
@@ -45,8 +45,8 @@ export function OverviewSection({ snapshot }: { snapshot: DashboardSnapshot }) {
           </div>
         </div>
 
-        <div className="rounded-2xl border border-slate-800 bg-[#0d1b2b] p-5">
-          <div className="mb-4 text-[10px] uppercase tracking-[0.2em] text-slate-400">Priority entities</div>
+        <div className="panel-surface rounded-2xl p-5">
+          <div className="mb-4 section-kicker">Priority entities</div>
           <div className="space-y-3">
             {snapshot.entities.slice(0, 4).map((entity) => (
               <div key={entity.id} className="flex items-center justify-between rounded-xl border border-slate-800 bg-[#0f2237] px-3 py-3">
@@ -65,10 +65,10 @@ export function OverviewSection({ snapshot }: { snapshot: DashboardSnapshot }) {
       </section>
 
       <section className="grid gap-6 xl:grid-cols-[1.1fr_0.9fr]">
-        <div className="rounded-2xl border border-slate-800 bg-[#0d1b2b] p-5">
+        <div className="panel-surface rounded-2xl p-5">
           <div className="mb-4 flex items-center justify-between">
             <div>
-              <div className="text-[10px] uppercase tracking-[0.2em] text-slate-400">Analyst notes</div>
+              <div className="section-kicker">Analyst notes</div>
               <h2 className="mt-1 text-xl font-semibold text-white">Recent operational events</h2>
             </div>
             <div className="rounded-full border border-slate-700 bg-slate-900/80 px-2.5 py-1 text-[10px] uppercase tracking-[0.18em] text-slate-300">24h</div>
@@ -92,8 +92,8 @@ export function OverviewSection({ snapshot }: { snapshot: DashboardSnapshot }) {
           </div>
         </div>
 
-        <div className="rounded-2xl border border-slate-800 bg-[#0d1b2b] p-5">
-          <div className="mb-4 text-[10px] uppercase tracking-[0.2em] text-slate-400">System summary</div>
+        <div className="panel-surface rounded-2xl p-5">
+          <div className="mb-4 section-kicker">System summary</div>
           <div className="space-y-4">
             <div className="rounded-xl border border-slate-800 bg-[#0f2237] p-4">
               <div className="text-sm text-slate-400">Incident readiness</div>
