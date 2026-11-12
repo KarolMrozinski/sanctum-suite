@@ -23,6 +23,8 @@ public partial class App : Wpf.Application
     private readonly string _pidFile = Path.Combine(ResolveRepoRoot(), ".sanctum-suite.pid");
     private readonly string _browserFlag = Path.Combine(ResolveRepoRoot(), ".sanctum-suite.browser-opened");
     private readonly HttpClient _client = new();
+    private readonly object _startupLock = new();
+    private bool _startupInProgress;
     private const string AppUrl = "http://localhost:3000";
     private Wpf.Window _window = null!;
     private readonly DispatcherTimer _timer = new();
@@ -121,6 +123,7 @@ public partial class App : Wpf.Application
 
         var statusDot = new Border
         {
+            Name = "statusDot",
             Width = 10,
             Height = 10,
             CornerRadius = new CornerRadius(5),
@@ -294,6 +297,16 @@ public partial class App : Wpf.Application
 
     private async Task StartAppAsync()
     {
+        lock (_startupLock)
+        {
+            if (_startupInProgress)
+            {
+                return;
+            }
+
+            _startupInProgress = true;
+        }
+
         try
         {
             var appProjectDir = _appDir;
@@ -347,7 +360,7 @@ public partial class App : Wpf.Application
             {
                 try
                 {
-                    var resp = await _client.GetAsync(AppUrl);
+                    using var resp = await _client.GetAsync(AppUrl);
                     if (resp.IsSuccessStatusCode)
                     {
                         started = true;
@@ -374,6 +387,13 @@ public partial class App : Wpf.Application
             _status.Text = "Status: error";
             RefreshStatus();
             Wpf.MessageBox.Show(ex.Message, "Sanctum Suite");
+        }
+        finally
+        {
+            lock (_startupLock)
+            {
+                _startupInProgress = false;
+            }
         }
     }
 
@@ -445,10 +465,11 @@ public partial class App : Wpf.Application
             {
                 var cmd = proc.StartInfo?.Arguments ?? string.Empty;
                 var processName = proc.ProcessName ?? string.Empty;
-                if ((processName.Contains("node", StringComparison.OrdinalIgnoreCase) || processName.Contains("powershell", StringComparison.OrdinalIgnoreCase))
+                if ((processName.Contains("node", StringComparison.OrdinalIgnoreCase) || processName.Contains("powershell", StringComparison.OrdinalIgnoreCase) || processName.Contains("cmd", StringComparison.OrdinalIgnoreCase))
                     && (cmd.Contains("next dev --hostname 0.0.0.0", StringComparison.OrdinalIgnoreCase)
                         || cmd.Contains("npm run dev", StringComparison.OrdinalIgnoreCase)
-                        || cmd.Contains("port 3000", StringComparison.OrdinalIgnoreCase)))
+                        || cmd.Contains("port 3000", StringComparison.OrdinalIgnoreCase)
+                        || cmd.Contains("sanctum-dashboard", StringComparison.OrdinalIgnoreCase)))
                 {
                     return true;
                 }
@@ -464,12 +485,16 @@ public partial class App : Wpf.Application
         var isRunning = IsAppRunning();
         _status.Text = isRunning ? "Status: running" : "Status: stopped";
         _status.Foreground = new SolidColorBrush(isRunning ? System.Windows.Media.Color.FromRgb(127, 247, 211) : System.Windows.Media.Color.FromRgb(226, 232, 240));
-        _startBtn.IsEnabled = !isRunning;
-        _startBtn.Background = new SolidColorBrush(isRunning ? System.Windows.Media.Color.FromRgb(30, 41, 59) : System.Windows.Media.Color.FromRgb(14, 116, 144));
+
+        _startBtn.IsEnabled = !isRunning && !_startupInProgress;
+        _startBtn.Background = new SolidColorBrush(!isRunning && !_startupInProgress ? System.Windows.Media.Color.FromRgb(14, 116, 144) : System.Windows.Media.Color.FromRgb(30, 41, 59));
+
         _stopBtn.IsEnabled = isRunning;
         _stopBtn.Background = new SolidColorBrush(isRunning ? System.Windows.Media.Color.FromRgb(51, 65, 85) : System.Windows.Media.Color.FromRgb(30, 41, 59));
-        _openBtn.IsEnabled = isRunning && File.Exists(_browserFlag) == false;
-        _openBtn.Background = new SolidColorBrush(isRunning && !File.Exists(_browserFlag) ? System.Windows.Media.Color.FromRgb(14, 116, 144) : System.Windows.Media.Color.FromRgb(24, 24, 27));
+
+        var browserOpened = File.Exists(_browserFlag);
+        _openBtn.IsEnabled = isRunning && !browserOpened;
+        _openBtn.Background = new SolidColorBrush(isRunning && !browserOpened ? System.Windows.Media.Color.FromRgb(14, 116, 144) : System.Windows.Media.Color.FromRgb(24, 24, 27));
 
         if (_window != null)
         {

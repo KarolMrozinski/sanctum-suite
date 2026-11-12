@@ -68,16 +68,10 @@ function Start-App {
     $process.Id | Set-Content -Path $pidFile
 
     $deadline = (Get-Date).AddSeconds(90)
-    $openedBrowser = $false
     while ((Get-Date) -lt $deadline) {
         try {
             $response = Invoke-WebRequest -Uri 'http://localhost:3000' -UseBasicParsing -TimeoutSec 2 -ErrorAction Stop
             if ($response.StatusCode -ge 200 -and $response.StatusCode -lt 500) {
-                if (-not $openedBrowser) {
-                    Start-Process 'http://localhost:3000'
-                    $openedBrowser = $true
-                    Set-Content -Path $browserFlag -Value 'opened'
-                }
                 return $true
             }
         } catch {}
