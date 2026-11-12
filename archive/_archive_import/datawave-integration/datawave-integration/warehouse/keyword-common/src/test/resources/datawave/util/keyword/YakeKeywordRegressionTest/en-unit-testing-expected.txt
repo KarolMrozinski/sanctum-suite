@@ -1,2 +1,0 @@
-kent beck=0.3154
-unit testing=0.2956

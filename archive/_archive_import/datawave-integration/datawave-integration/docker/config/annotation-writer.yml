@@ -1,5 +1,0 @@
-# Application annotation + profile writer. Backend selection and tuning remain shared.
-annotation:
-  deployment:
-    overlays:
-      writer: true

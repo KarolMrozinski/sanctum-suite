@@ -1,4 +1,0 @@
-{"openCTI_version":"7.260722.0","type":"jsonFeeds","configuration": {
-  "name": "jsonFeedWithoutMapper",
-  "uri": "http://jsonserver.invalid/api/data"
-}}

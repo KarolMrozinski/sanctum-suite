@@ -1,6 +1,0 @@
-apiVersion: v2
-name: sanctum-suite-phases
-description: Multi-phase live-ready deployment for GCP, ELK, Terraform, Kafka, BAM, HIRS, RIM, legacy, AI, QKD, neuromorphic, mission, and governance integrations.
-type: application
-version: 0.1.0
-appVersion: "6.0.0"

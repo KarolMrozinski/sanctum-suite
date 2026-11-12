@@ -1,1 +1,0 @@
-export const CATALOG_POLLING_INTERVAL_MS = 60000;
