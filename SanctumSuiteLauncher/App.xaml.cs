@@ -25,7 +25,7 @@ public partial class App : Wpf.Application
     private readonly HttpClient _client = new();
     private readonly object _startupLock = new();
     private bool _startupInProgress;
-    private const string AppUrl = "http://localhost:3000";
+    private string AppUrl => Environment.GetEnvironmentVariable("SANCTUM_APP_URL") ?? "http://localhost:3000";
     private Wpf.Window _window = null!;
     private readonly DispatcherTimer _timer = new();
     private Process? _nodeProcess;
@@ -337,10 +337,12 @@ public partial class App : Wpf.Application
             StopApp(false);
             try { File.Delete(_browserFlag); } catch { }
 
+            var port = ExtractPort(AppUrl);
+            var host = ExtractHost(AppUrl);
             var startInfo = new ProcessStartInfo
             {
                 FileName = "powershell.exe",
-                Arguments = $"-NoLogo -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -Command \"Set-Location '{appProjectDir}'; npm run dev -- --hostname 0.0.0.0 --port 3000\"",
+                Arguments = $"-NoLogo -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -Command \"Set-Location '{appProjectDir}'; npm run dev -- --hostname {host} --port {port}\"",
                 UseShellExecute = false,
                 CreateNoWindow = true,
                 RedirectStandardOutput = false,
@@ -436,6 +438,26 @@ public partial class App : Wpf.Application
         }
     }
 
+    private static string ExtractHost(string url)
+    {
+        if (Uri.TryCreate(url, UriKind.Absolute, out var uri))
+        {
+            return uri.Host;
+        }
+
+        return "localhost";
+    }
+
+    private static int ExtractPort(string url)
+    {
+        if (Uri.TryCreate(url, UriKind.Absolute, out var uri) && uri.Port > 0)
+        {
+            return uri.Port;
+        }
+
+        return 3000;
+    }
+
     private void OpenBrowserOnce()
     {
         TryOpenBrowser(true);
@@ -443,6 +465,10 @@ public partial class App : Wpf.Application
 
     private bool IsAppRunning()
     {
+        var targetUrl = AppUrl;
+        var expectedHost = ExtractHost(targetUrl);
+        var expectedPort = ExtractPort(targetUrl);
+
         if (File.Exists(_pidFile))
         {
             var value = File.ReadAllText(_pidFile).Trim();
@@ -466,11 +492,18 @@ public partial class App : Wpf.Application
             {
                 var cmd = proc.StartInfo?.Arguments ?? string.Empty;
                 var processName = proc.ProcessName ?? string.Empty;
-                if ((processName.Contains("node", StringComparison.OrdinalIgnoreCase) || processName.Contains("powershell", StringComparison.OrdinalIgnoreCase) || processName.Contains("cmd", StringComparison.OrdinalIgnoreCase))
-                    && (cmd.Contains("next dev --hostname 0.0.0.0", StringComparison.OrdinalIgnoreCase)
-                        || cmd.Contains("npm run dev", StringComparison.OrdinalIgnoreCase)
-                        || cmd.Contains("port 3000", StringComparison.OrdinalIgnoreCase)
-                        || cmd.Contains("sanctum-dashboard", StringComparison.OrdinalIgnoreCase)))
+                var isNodeOrShell = processName.Contains("node", StringComparison.OrdinalIgnoreCase)
+                    || processName.Contains("powershell", StringComparison.OrdinalIgnoreCase)
+                    || processName.Contains("cmd", StringComparison.OrdinalIgnoreCase);
+
+                var matchesDevServer = cmd.Contains("next dev", StringComparison.OrdinalIgnoreCase)
+                    || cmd.Contains("npm run dev", StringComparison.OrdinalIgnoreCase);
+
+                var matchesTargetUrl = cmd.Contains(expectedHost, StringComparison.OrdinalIgnoreCase)
+                    || cmd.Contains($"--port {expectedPort}", StringComparison.OrdinalIgnoreCase)
+                    || cmd.Contains("sanctum-dashboard", StringComparison.OrdinalIgnoreCase);
+
+                if (isNodeOrShell && (matchesDevServer || matchesTargetUrl))
                 {
                     return true;
                 }
@@ -537,9 +570,15 @@ public partial class App : Wpf.Application
             foreach (var proc in Process.GetProcesses().Where(p => p.ProcessName.Contains("node", StringComparison.OrdinalIgnoreCase) || p.ProcessName.Contains("powershell", StringComparison.OrdinalIgnoreCase) || p.ProcessName.Contains("cmd", StringComparison.OrdinalIgnoreCase)).ToList())
             {
                 var cmd = proc.StartInfo?.Arguments ?? string.Empty;
-                if (cmd.Contains("next dev --hostname 0.0.0.0", StringComparison.OrdinalIgnoreCase)
+                var targetUrl = AppUrl;
+                var host = ExtractHost(targetUrl);
+                var port = ExtractPort(targetUrl);
+
+                if (cmd.Contains("next dev", StringComparison.OrdinalIgnoreCase)
                     || cmd.Contains("npm run dev", StringComparison.OrdinalIgnoreCase)
-                    || cmd.Contains("port 3000", StringComparison.OrdinalIgnoreCase))
+                    || cmd.Contains($"--hostname {host}", StringComparison.OrdinalIgnoreCase)
+                    || cmd.Contains($"--port {port}", StringComparison.OrdinalIgnoreCase)
+                    || cmd.Contains("sanctum-dashboard", StringComparison.OrdinalIgnoreCase))
                 {
                     try { proc.Kill(true); } catch { }
                 }

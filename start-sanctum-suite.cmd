@@ -2,18 +2,37 @@
 setlocal EnableExtensions
 cd /d "%~dp0"
 
+set "APP_URL=%SANCTUM_APP_URL%"
+if not defined APP_URL set "APP_URL=http://localhost:3000"
+
 set "EXE_PATH=%~dp0SanctumSuiteLauncher.exe"
 set "APP_DIR=%~dp0sanctum-dashboard"
-set "APP_URL=http://localhost:3000"
+set "LOCAL_TARGET=0"
+
+echo "%APP_URL%" | findstr /I /C:"localhost" /C:"127.0.0.1" /C:"0.0.0.0" >nul
+if not errorlevel 1 set "LOCAL_TARGET=1"
 
 if exist "%EXE_PATH%" (
     echo [Sanctum Suite] Uruchamianie aplikacji desktopowej...
+    echo [Sanctum Suite] Target URL: %APP_URL%
     start "" "%EXE_PATH%"
     exit /b 0
 )
 
 if not exist "%APP_DIR%\package.json" (
     echo [Sanctum Suite] Blad: brak folderu sanctum-dashboard.
+    exit /b 1
+)
+
+if "%LOCAL_TARGET%"=="0" (
+    echo [Sanctum Suite] Konfigurowany jest zewnętrzny adres aplikacji: %APP_URL%
+    echo [Sanctum Suite] Pomijam lokalny start Node.js i sprawdzam tylko zdalny endpoint.
+    for /l %%I in (1,1,60) do (
+        powershell -NoLogo -NoProfile -ExecutionPolicy Bypass -Command "try { $r = Invoke-WebRequest -UseBasicParsing -Uri '%APP_URL%' -TimeoutSec 3; if ($r.StatusCode -ge 200 -and $r.StatusCode -lt 500) { exit 0 } } catch { exit 1 }" >nul 2>&1
+        if not errorlevel 1 goto app_ready
+        ping -n 2 127.0.0.1 >nul
+    )
+    echo [Sanctum Suite] Nie udalo sie potwierdzic dostepnosci zdalnego adresu %APP_URL%.
     exit /b 1
 )
 
@@ -43,7 +62,7 @@ if not exist "%APP_DIR%\node_modules" (
     popd
 )
 
-echo [Sanctum Suite] Startowanie aplikacji...
+echo [Sanctum Suite] Startowanie aplikacji pod %APP_URL%...
 start "" /B powershell -NoLogo -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -Command "Set-Location '%APP_DIR%'; npm run dev -- --hostname 0.0.0.0 --port 3000"
 
 for /l %%I in (1,1,120) do (

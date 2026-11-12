@@ -7,6 +7,8 @@ $stdoutLog = Join-Path $root 'sanctum-suite-stdout.log'
 $stderrLog = Join-Path $root 'sanctum-suite-stderr.log'
 $browserFlag = Join-Path $root '.sanctum-suite.browser-opened'
 $iconPath = Join-Path $root 'sanctum-suite-icon.ico'
+$appUrl = $env:SANCTUM_APP_URL
+if (-not $appUrl) { $appUrl = 'http://localhost:3000' }
 
 function Ensure-Dependencies {
     if (-not (Test-Path (Join-Path $appDir 'package.json'))) {
@@ -70,7 +72,7 @@ function Start-App {
     $deadline = (Get-Date).AddSeconds(90)
     while ((Get-Date) -lt $deadline) {
         try {
-            $response = Invoke-WebRequest -Uri 'http://localhost:3000' -UseBasicParsing -TimeoutSec 2 -ErrorAction Stop
+            $response = Invoke-WebRequest -Uri $appUrl -UseBasicParsing -TimeoutSec 2 -ErrorAction Stop
             if ($response.StatusCode -ge 200 -and $response.StatusCode -lt 500) {
                 return $true
             }
@@ -176,9 +178,9 @@ $openButton.ForeColor = [System.Drawing.Color]::White
 $openButton.FlatStyle = 'Flat'
 $openButton.Add_Click({
     if (Test-Path $browserFlag) {
-        Start-Process 'http://localhost:3000'
+    Start-Process $appUrl
     } else {
-        Start-Process 'http://localhost:3000'
+    Start-Process $appUrl
         Set-Content -Path $browserFlag -Value 'opened'
     }
 })
