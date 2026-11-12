@@ -13,8 +13,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "SANCTUM-SUITE | Security Engineering Toolkit",
-  description: "A modular security toolkit for audit workflows, AI safety experiments, compliance support, and operational reporting.",
+  title: "SANCTUM-SUITE | OpenCTI-inspired Security Workspace",
+  description: "A modular security intelligence workspace inspired by OpenCTI, built for Sanctum Suite operations and threat monitoring.",
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {

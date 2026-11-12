@@ -1,0 +1,245 @@
+import { Locator, Page } from '@playwright/test';
+import FiltersPageModel from './filters.pageModel';
+import TextFieldPageModel from './field/TextField.pageModel';
+import SelectFieldPageModel from './field/SelectField.pageModel';
+
+type WidgetPerspective = 'Entities' | 'Knowledge graph' | 'Activity & history';
+
+export default class DashboardWidgetsPageModel {
+  private labelPerspective?: 'entities' | 'relationships' | 'audits';
+
+  filters: FiltersPageModel;
+  subFilters: FiltersPageModel;
+  titleField: TextFieldPageModel;
+  dateAttributeMain: SelectFieldPageModel;
+  dateAttributeSub: SelectFieldPageModel;
+  attributeFieldMain: SelectFieldPageModel;
+  attributeFieldSub: SelectFieldPageModel;
+  breakdownField: SelectFieldPageModel;
+  breakdownLimit: SelectFieldPageModel;
+  breakdownOrder: SelectFieldPageModel;
+
+  constructor(private page: Page) {
+    this.filters = new FiltersPageModel(this.page, this.page.getByTestId('widget-selection-0'));
+    this.subFilters = new FiltersPageModel(this.page, this.page.getByTestId('widget-selection-1'));
+    this.titleField = new TextFieldPageModel(this.page, 'Title', 'text');
+    // Named 'Relative time' until now, which was never this field's own label: on
+    // MUI several Selects here set labelId="relative" while DashboardRelativeDateSelect
+    // renders <InputLabel id="relative">Relative time</InputLabel> elsewhere on the
+    // page. Duplicate ids resolve to the FIRST match, so unrelated fields all
+    // answered to that name. Converted, each field carries its own.
+    this.dateAttributeMain = new SelectFieldPageModel(this.page, 'Date attribute', false, this.page.getByTestId('widget-params-selection-0'), true);
+    this.dateAttributeSub = new SelectFieldPageModel(this.page, 'Date attribute', false, this.page.getByTestId('widget-params-selection-1'), true);
+    this.attributeFieldMain = new SelectFieldPageModel(this.page, 'Attribute', false, this.page.getByTestId('widget-params-selection-0'), true);
+    this.attributeFieldSub = new SelectFieldPageModel(this.page, 'Attribute', false, this.page.getByTestId('widget-params-selection-1'), true);
+    const breakdownSelection = this.page.getByTestId('widget-breakdown-selection');
+    this.breakdownField = new SelectFieldPageModel(this.page, 'Break down by', false, breakdownSelection, true);
+    this.breakdownLimit = new SelectFieldPageModel(this.page, 'Maximum number of series', false, breakdownSelection, true);
+    this.breakdownOrder = new SelectFieldPageModel(this.page, 'Order', false, breakdownSelection, true);
+  }
+
+  getCreateWidgetButton() {
+    return this.page.getByRole('button', { name: 'Create Widget' });
+  }
+
+  async openWidgetModal() {
+    return this.page.getByRole('button', { name: 'Create Widget' }).click();
+  }
+
+  selectWidget(widgetName: string) {
+    return this.widgetDialog().getByLabel(widgetName, { exact: true }).click();
+  }
+
+  selectPerspective(perspective: WidgetPerspective) {
+    if (perspective === 'Entities') this.labelPerspective = 'entities';
+    if (perspective === 'Knowledge graph') this.labelPerspective = 'relationships';
+    if (perspective === 'Activity & history') this.labelPerspective = 'audits';
+    return this.widgetDialog().getByLabel(perspective, { exact: true }).click();
+  }
+
+  /**
+   * Widget and perspective cards live in the creation dialog. They used to be
+   * reachable page-wide, but the design-system rail keeps a submenu's content
+   * region mounted while closed — a `hidden` region labelled by its parent, so
+   * `getByLabel('Entities')` now matches the navigation as well as the card.
+   * Scoping to the dialog anchors on where the card actually is.
+   */
+  private widgetDialog() {
+    return this.page.getByRole('dialog');
+  }
+
+  fillLabel(label: string) {
+    const filtersLabelField = new TextFieldPageModel(this.page, `label (${this.labelPerspective})`, 'text');
+    return filtersLabelField.fill(label);
+  }
+
+  validateFilters() {
+    return this.page.getByRole('button', { name: 'validate' }).click();
+  }
+
+  createWidget() {
+    return this.page.getByTestId('widget-submit-button').click();
+  }
+
+  /** Same button as the creation one, labelled 'Update' when editing an existing widget. */
+  updateWidget() {
+    return this.page.getByTestId('widget-submit-button').click();
+  }
+
+  /** Reopens the configuration dialog of an existing widget. */
+  async openUpdateWidgetModal() {
+    await this.getActionsWidgetsPopover().click();
+    await this.getActionButton('Update').click();
+  }
+
+  /**
+   * Jumps to one step of the widget config stepper.
+   * Scoped to the dialog and exact, otherwise 'Filters' also matches the 'Clear filters' and
+   * 'Validate filters' buttons of the filter step itself. The steps are tabs: MUI marks the
+   * current one with `aria-selected="true"` AND disables it, so clicking it would hang: no-op instead.
+   */
+  async goToStep(step: 'Visualization' | 'Perspective' | 'Filters' | 'Parameters') {
+    const stepButton = this.page.getByRole('dialog').getByRole('tab', { name: step, exact: true });
+    if (await stepButton.getAttribute('aria-selected') === 'true') return;
+    await stepButton.click();
+  }
+
+  getBreakdownSelection() {
+    return this.page.getByTestId('widget-breakdown-selection');
+  }
+
+  /**
+   * Hovers the breakdown controls, to show the tooltip of the disabled ones. A disabled control gets no pointer
+   * events (FDS-WORKAROUND #68: its wrapper carries the tooltip), so the pointer lands on that wrapper.
+   */
+  hoverBreakdownSelection() {
+    return this.getBreakdownSelection().hover();
+  }
+
+  /** The dataset of the Filters step at this index, from 0. */
+  getDataSelection(index: number) {
+    return this.page.getByTestId(`widget-selection-${index}`);
+  }
+
+  /** Alert of the Filters step, shown when the widget can be broken down in the Parameters step. */
+  getBreakdownInfoMessage() {
+    return this.page.getByText('You can break this dataset down into one series per field value in the Parameters step.');
+  }
+
+  getBreakdownOtherSwitch() {
+    return this.getBreakdownSelection().getByRole('switch', { name: 'Include Other' });
+  }
+
+  getDisplayLegendSwitch() {
+    return this.page.getByLabel('Display legend');
+  }
+
+  /** Adds a second dataset from the Filters step (the "+" button below the datasets). */
+  addDataSelection() {
+    return this.page.getByRole('button', { name: 'Add', exact: true }).click();
+  }
+
+  /** The cell of a widget in the dashboard grid, found by its title: its chart is never one of another widget. */
+  getWidgetCard(title: string) {
+    return this.page.locator('.react-grid-item').filter({ hasText: title });
+  }
+
+  getChartCanvas(widgetTitle: string) {
+    return this.getWidgetCard(widgetTitle).locator('.apexcharts-canvas');
+  }
+
+  /** The names of the legend of the chart of a widget, in their order. */
+  getChartLegendEntries(widgetTitle: string): Locator {
+    return this.getWidgetCard(widgetTitle).locator('.apexcharts-legend-text');
+  }
+
+  getChartLegendEntry(widgetTitle: string, name: string): Locator {
+    return this.getChartLegendEntries(widgetTitle).filter({ hasText: name });
+  }
+
+  getItemFromWidgetList(name: string) {
+    return this.page.getByTestId(name);
+  }
+
+  getItemFromWidgetTimeline(name: string) {
+    return this.page.getByText(name);
+  }
+
+  getActionsWidgetsPopover() {
+    return this.page.getByLabel('Widget popover of actions');
+  }
+
+  getActionButton(name: string) {
+    return this.page.getByRole('menuitem', { name });
+  }
+
+  getConfirmButton() {
+    return this.page.getByRole('button', { name: 'Confirm' });
+  }
+
+  getIconFromWidgetTimeline() {
+    return this.page.getByTestId('BiohazardIcon').first();
+  }
+
+  getWidgetNumberValue(name: string, value: string) {
+    return this.page.getByText(name).locator('../../..').getByText(value);
+  }
+
+  addEntitiesSelection() {
+    return this.page.getByRole('button', { name: 'entities' }).click();
+  }
+
+  // region Premade widgets
+
+  async createListOfMalwaresWidget() {
+    await this.openWidgetModal();
+    await this.selectWidget('List');
+    await this.selectPerspective('Entities');
+    await this.fillLabel('Malwares');
+    await this.filters.addFilter('Entity type', 'Malware');
+    await this.filters.addFilter('Label', 'e2e');
+    await this.validateFilters();
+    await this.titleField.fill('List of malwares');
+    await this.createWidget();
+  }
+
+  async createTimelineOfMalwaresWidget() {
+    await this.openWidgetModal();
+    await this.selectWidget('Timeline');
+    await this.selectPerspective('Entities');
+    await this.fillLabel('Malware');
+    await this.filters.addFilter('Entity type', 'Malware');
+    await this.filters.addFilter('Label', 'e2e');
+    await this.validateFilters();
+    await this.titleField.fill('Timeline of malwares');
+    await this.createWidget();
+  }
+
+  async createNumberOfEntities() {
+    await this.openWidgetModal();
+    await this.selectWidget('Number');
+    await this.selectPerspective('Entities');
+    await this.filters.addFilter('Entity type', 'Entity');
+    await this.filters.addFilter('Label', 'e2e');
+    await this.validateFilters();
+    await this.titleField.fill('Number of entities');
+    await this.dateAttributeMain.selectOption('created (Functional date)');
+    await this.createWidget();
+  }
+
+  async createHorizontalBreakdownOfMalwares() {
+    await this.openWidgetModal();
+    await this.selectWidget('Horizontal Bar');
+    await this.selectPerspective('Knowledge graph');
+    await this.filters.addFilter('Source type', 'Malware', 'Relationship filters');
+    await this.filters.addFilter('Relationship type', 'targets', 'Relationship filters');
+    await this.addEntitiesSelection();
+    await this.subFilters.addFilter('Entity type', 'Malware');
+    await this.validateFilters();
+    await this.attributeFieldMain.selectOption('Entity');
+    await this.attributeFieldSub.selectOption('Malware_types');
+    await this.createWidget();
+  }
+
+  // endregion
+}

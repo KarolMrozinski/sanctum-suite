@@ -1,0 +1,115 @@
+import React, { FunctionComponent, useState } from 'react';
+import { graphql, useFragment } from 'react-relay';
+import Grid from '@mui/material/Grid';
+import CustomFieldValuesDisplay from '@components/common/custom_fields/CustomFieldValuesDisplay';
+import List from '@mui/material/List';
+import ListItem from '@mui/material/ListItem';
+import ListItemIcon from '@mui/material/ListItemIcon';
+import ListItemText from '@mui/material/ListItemText';
+import ListItemButton from '@mui/material/ListItemButton';
+import { Link } from 'react-router';
+import { useFormatter } from '../../../../components/i18n';
+import ItemIcon from '../../../../components/ItemIcon';
+import ExpandableMarkdown from '../../../../components/ExpandableMarkdown';
+import FieldOrEmpty from '../../../../components/FieldOrEmpty';
+import { SecurityCoverageDetails_securityCoverage$key } from './__generated__/SecurityCoverageDetails_securityCoverage.graphql';
+import SecurityCoverageVulnerabilities from './SecurityCoverageVulnerabilities';
+import { isNotEmptyField } from '../../../../utils/utils';
+import ExternalLinkPopover from '../../../../components/ExternalLinkPopover';
+import Card from '../../../../components/common/card/Card';
+import Label from '../../../../components/common/label/Label';
+import { EMPTY_VALUE } from '../../../../utils/String';
+
+const securityCoverageDetailsFragment = graphql`
+  fragment SecurityCoverageDetails_securityCoverage on SecurityCoverage {
+    id
+    entity_type
+    customFieldValues {
+      ...CustomFieldValuesDisplay_values @relay(mask: false)
+    }
+    name
+    description
+    external_uri
+    objectCovered {
+      id
+      entity_type
+      representative {
+          main
+      }
+    }
+    ...SecurityCoverageVulnerabilities_securityCoverage
+  }
+`;
+
+interface SecurityCoverageDetailsProps {
+  securityCoverage: SecurityCoverageDetails_securityCoverage$key;
+}
+
+const SecurityCoverageDetails: FunctionComponent<SecurityCoverageDetailsProps> = ({
+  securityCoverage,
+}) => {
+  const { t_i18n } = useFormatter();
+  const data = useFragment(securityCoverageDetailsFragment, securityCoverage);
+  const [displayExternalLink, setDisplayExternalLink] = useState(false);
+
+  return (
+    <div style={{ height: '100%' }}>
+      <Card title={t_i18n('Entity details')}>
+        <Grid container={true} spacing={2}>
+          <Grid size={12}>
+            <Label>
+              {t_i18n('Description')}
+            </Label>
+            <ExpandableMarkdown source={data.description} limit={300} />
+          </Grid>
+          <Grid size={12}>
+            <Label>
+              {t_i18n('Name')}
+            </Label>
+            {data.name || EMPTY_VALUE}
+          </Grid>
+          <Grid size={6}>
+            <Label>
+              {t_i18n('Covered entity')}
+            </Label>
+            <List style={{ marginTop: -10 }}>
+              <FieldOrEmpty source={data.objectCovered}>
+                {data.objectCovered && (
+                  <ListItem
+                    dense={true}
+                    divider={true}
+                    disablePadding={true}
+                  >
+                    <ListItemButton
+                      component={Link}
+                      to={`/dashboard/id/${data.objectCovered.id}`}
+                    >
+                      <ListItemIcon>
+                        <ItemIcon type={data.objectCovered.entity_type} />
+                      </ListItemIcon>
+                      <ListItemText primary={data.objectCovered.representative?.main} />
+                    </ListItemButton>
+                  </ListItem>
+                )}
+              </FieldOrEmpty>
+            </List>
+          </Grid>
+          <CustomFieldValuesDisplay entityType={data.entity_type} values={data.customFieldValues ?? []} />
+          <Grid size={12}>
+            <SecurityCoverageVulnerabilities securityCoverage={data} />
+          </Grid>
+        </Grid>
+      </Card>
+
+      {isNotEmptyField(data.external_uri) && (
+        <ExternalLinkPopover
+          externalLink={data.external_uri}
+          displayExternalLink={displayExternalLink}
+          setDisplayExternalLink={setDisplayExternalLink}
+        />
+      )}
+    </div>
+  );
+};
+
+export default SecurityCoverageDetails;
