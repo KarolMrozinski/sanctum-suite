@@ -235,6 +235,62 @@ export const alertData: Alert[] = [
   { id: "ALT-183", title: "Unusual admin password reset", severity: "Low", source: "IAM", observed: "00:48 UTC", status: "Dismissed", category: "Identity", description: "Password reset was reviewed and attributed to a known internal maintenance task.", timestamp: "00:48 UTC", relatedEntity: "ENT-302" },
 ];
 
+export function getGraphQLDashboardPayload(section: string = "overview", id?: string | null) {
+  const snapshot = getDashboardSnapshot(section);
+  const selectedThreat = id ? snapshot.threats.find((item) => item.id === id) ?? null : null;
+  const selectedEntity = id ? snapshot.entities.find((item) => item.id === id) ?? null : null;
+  const selectedAlert = id ? snapshot.alerts.find((item) => item.id === id) ?? null : null;
+
+  return {
+    dashboard: {
+      section,
+      generatedAt: new Date().toISOString(),
+      status: "live",
+      summary: {
+        openIndicators: snapshot.stats[0]?.value ?? "2,418",
+        criticalCases: snapshot.stats[2]?.value ?? "19",
+        detectionCoverage: snapshot.stats[3]?.value ?? "91%",
+        activeCollectors: 27,
+      },
+      metrics: snapshot.stats,
+      detections: snapshot.detection,
+      timeline: snapshot.events,
+      threats: snapshot.threats,
+      entities: snapshot.entities,
+      investigations: snapshot.investigations,
+      alerts: snapshot.alerts,
+      selected: selectedThreat ?? selectedEntity ?? selectedAlert,
+      selectedId: id ?? null,
+      graph: {
+        nodes: [
+          ...snapshot.threats.slice(0, 3).map((item, index) => ({
+            id: item.id,
+            kind: "threat",
+            label: item.title,
+            severity: item.severity,
+            x: 80 + (index % 3) * 180,
+            y: 80 + Math.floor(index / 3) * 120,
+          })),
+          ...snapshot.entities.slice(0, 3).map((item, index) => ({
+            id: item.id,
+            kind: "entity",
+            label: item.value,
+            severity: item.risk,
+            x: 120 + (index % 3) * 180,
+            y: 180 + Math.floor(index / 3) * 120,
+          })),
+        ],
+        edges: [
+          ["THR-421", "ENT-91"],
+          ["THR-421", "ENT-125"],
+          ["THR-612", "ENT-214"],
+          ["ALT-180", "ENT-91"],
+        ],
+      },
+    },
+  };
+}
+
 export function getSeverityTone(severity: string): string {
   const tones: Record<string, string> = {
     Critical: "border-red-500/40 bg-red-500/10 text-red-200",

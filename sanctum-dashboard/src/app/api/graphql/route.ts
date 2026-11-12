@@ -1,35 +1,46 @@
-import { getDashboardSnapshot } from "@/lib/dashboard-data";
+import { getGraphQLDashboardPayload } from "@/lib/dashboard-data";
 
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
   const section = searchParams.get("section") ?? "overview";
   const id = searchParams.get("id");
-  const snapshot = getDashboardSnapshot(section);
-
-  const selectedThreat = id ? snapshot.threats.find((item) => item.id === id) ?? null : null;
-  const selectedEntity = id ? snapshot.entities.find((item) => item.id === id) ?? null : null;
-  const selectedAlert = id ? snapshot.alerts.find((item) => item.id === id) ?? null : null;
+  const payload = getGraphQLDashboardPayload(section, id);
 
   return Response.json(
     {
-      data: {
-        dashboard: {
-          section,
-          generatedAt: new Date().toISOString(),
-          stats: snapshot.stats,
-          detection: snapshot.detection,
-          events: snapshot.events,
-          entities: snapshot.entities,
-          threats: snapshot.threats,
-          investigations: snapshot.investigations,
-          alerts: snapshot.alerts,
-          selected: selectedThreat ?? selectedEntity ?? selectedAlert,
-          selectedId: id,
-          query: {
-            section,
-            id,
-          },
-        },
+      data: payload,
+      meta: {
+        source: "mock-graphql",
+        version: "1.5.0",
+        generatedAt: new Date().toISOString(),
+      },
+    },
+    {
+      headers: {
+        "Content-Type": "application/json",
+        "Cache-Control": "no-store",
+      },
+    },
+  );
+}
+
+export async function POST(request: Request) {
+  const body = (await request.json()) as {
+    query?: string;
+    variables?: { section?: string; id?: string };
+  };
+
+  const section = body?.variables?.section ?? "overview";
+  const id = body?.variables?.id ?? null;
+  const payload = getGraphQLDashboardPayload(section, id);
+
+  return Response.json(
+    {
+      data: payload,
+      meta: {
+        source: "mock-graphql",
+        operation: body?.query?.includes("query") ? "query" : "mutation",
+        status: "ok",
       },
     },
     {

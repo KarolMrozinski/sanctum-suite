@@ -16,13 +16,20 @@ export async function GET(request: Request) {
 
   return Response.json(
     {
-      ...snapshot,
-      section,
-      selectedId: id,
-      selected,
+      data: {
+        dashboard: {
+          ...snapshot,
+          section,
+          selectedId: id,
+          selected,
+          mode: "live-like",
+          generatedAt: new Date().toISOString(),
+        },
+      },
     },
     {
       headers: {
+        "Content-Type": "application/json",
         "Cache-Control": "no-store",
       },
     },

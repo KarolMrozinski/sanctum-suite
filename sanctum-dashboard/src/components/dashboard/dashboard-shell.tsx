@@ -67,12 +67,11 @@ export function DashboardShell({
       <div className="mx-auto flex min-h-screen max-w-[1800px]">
         <aside className="w-[280px] border-r border-slate-800/90 bg-[#0b0f13]/95 px-5 py-6 backdrop-blur-sm">
           <div className="flex items-center gap-3 px-2 pb-6">
-            <div className="flex h-10 w-10 items-center justify-center rounded-lg border border-[#6ee7b7]/30 bg-[#0f1d1b] text-sm font-bold text-[#a7f3d0] shadow-[0_0_20px_rgba(110,231,183,0.18)]">
+            <div className="flex h-10 w-10 items-center justify-center rounded-lg border border-[#7ef7d3]/35 bg-[#0f1d1b] text-sm font-bold text-[#b5f7e5] shadow-[0_0_20px_rgba(126,247,211,0.18)]">
               S
             </div>
             <div>
-              <div className="text-[10px] uppercase tracking-[0.22em] text-[#a7f3d0]">KarolMrozinski</div>
-              <div className="text-lg font-semibold tracking-[0.12em] text-white">SANCTUM-SUITE</div>
+              <div className="text-lg font-semibold tracking-[0.12em] text-white">SANCTUM SUITE</div>
             </div>
           </div>
 
@@ -91,7 +90,7 @@ export function DashboardShell({
                   className={[
                     "claude-button flex w-full items-center justify-between rounded-lg border px-3 py-2.5 text-left text-sm transition-all duration-200",
                     isActive
-                      ? "border-[#6ee7b7]/25 bg-[#101c1b] text-[#effaf5] shadow-[inset_0_0_0_1px_rgba(110,231,183,0.08),0_0_0_1px_rgba(110,231,183,0.05)]"
+                      ? "border-[#7ef7d3]/25 bg-[#101c1b] text-[#effaf5] shadow-[inset_0_0_0_1px_rgba(126,247,211,0.08),0_0_0_1px_rgba(126,247,211,0.05)]"
                       : "border-transparent bg-transparent text-slate-300 hover:border-slate-700 hover:bg-[#10161b] hover:text-white",
                   ].join(" ")}
                 >
@@ -139,7 +138,7 @@ export function DashboardShell({
               </div>
               <button
                 type="button"
-                className="claude-button rounded-full border border-[#6ee7b7]/20 bg-[#111d1d] px-4 py-2 text-sm font-medium text-[#9ee7d6] transition hover:bg-[#162822]"
+                  className="claude-button rounded-full border border-[#7ef7d3]/20 bg-[#111d1d] px-4 py-2 text-sm font-medium text-[#9ee7d6] transition hover:bg-[#162822]"
               >
                 Run sweep
               </button>
