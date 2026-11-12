@@ -19,52 +19,52 @@
   <img src="https://img.shields.io/badge/Ada-GNAT-00A9CE?style=for-the-badge&logo=ada&logoColor=white" alt="Ada" />
 </div>
 
-## Overview
+## Repository overview
 
-Sanctum Suite is a premium cyber threat-intelligence workspace built as an OpenCTI-inspired dashboard and rebranded around the Sanctum Suite identity. The project combines a dark SOC/CTI aesthetic, glassmorphism panels, real operational sections, and a desktop-style launcher experience so the app feels closer to a native security workstation than a starter Next.js app.
+Sanctum Suite is a premium cyber threat-intelligence workspace built around an OpenCTI-inspired analyst experience and branded as Sanctum Suite. The repository combines a live-like CTI dashboard, a native desktop launcher flow, and a modular security ecosystem for local operations, documentation, integrations, and deployment readiness.
 
-The current implementation focuses on the live-like analyst experience:
+The product currently focuses on:
 
-- Overview with executive and operational KPIs
-- Threats with adversary and campaign context
-- Entities with affected systems, identities, and assets
-- Investigations with timelines and status tracking
-- Alerts with live feed and severity-based monitoring
-- Desktop launcher flow for Windows startup, stop, reopen, and tray/minimize behavior
+- executive and operational overview panels
+- adversary and campaign threat analysis
+- entity, asset, and identity tracking
+- investigations and workflow tracking
+- alert feed and incident severity monitoring
+- native-like Windows startup behavior for desktop-style use
+
+## Premium repo layout
+
+This repository follows a premium, product-oriented structure for quick navigation and future growth:
+
+```text
+app/           # product application and core runtime
+desktop/       # desktop shell, launcher package, and native wrappers
+integrations/  # references, connectors, and external integrations
+security/      # security posture, audit flow, and policy docs
+resources/     # branding, UI assets, icons, and supporting files
+docs/          # product docs, notes, notebooks, and references
+build/         # build, packaging, and release-oriented assets
+reports/       # generated reports, audits, summaries, and exports
+```
+
+Legacy support files remain in the root for compatibility while the premium structure above is the canonical working map.
 
 ## Status
 
-The project is now structured as a working local dashboard application with mock CTI data and a native-like launcher wrapper. The runtime serves successfully on `http://localhost:3000`, and the app is designed to behave like a desktop product without losing the browser-based development workflow.
+The application is working as a local dashboard product with realistic CTI mock data and a hardened launcher flow. The runtime serves successfully on `http://localhost:3000`, and the project is deliberately shaped to behave like a desktop product without losing the direct browser-driven development flow.
 
 ## Technology stack
-
-<div align="center">
 
 | Layer | Stack |
 |---|---|
 | Frontend | Next.js + React + TypeScript |
 | Styling | Tailwind CSS + glassmorphism + cyber UI |
 | Runtime | Node.js + npm + local dev server |
-| Desktop wrapper | .NET + C# + WPF + Windows Forms |
+| Desktop wrapper | .NET + C# + WPF + Windows launcher flow |
 | Automation | PowerShell + CMD + BAT launcher scripts |
 | Security model | Python + Rust + Ada + APL + HALS |
 
-</div>
-
-
-
 ## Run locally
-
-<div align="center">
-
-| Area | Detail |
-|---|---|
-| Local runtime | `http://localhost:3000` |
-| Dashboard mode | Next.js CTI workspace |
-| Startup flow | local app + desktop launcher |
-| Runtime status | live and operating |
-
-</div>
 
 ```bash
 cd sanctum-dashboard
@@ -72,96 +72,59 @@ npm install
 npm run dev
 ```
 
-Then open:
+Open:
 
 - `http://localhost:3000`
 
-If the app is already running, the launcher will not restart it and will only open the browser once for the active session.
-
-## Windows launcher
-
-From the repo root, use the desktop-start scripts:
+Optional Windows launcher entrypoints:
 
 - `start-sanctum-suite.cmd`
 - `run-sanctum-suite.bat`
+- `sanctum-suite-gui-launcher.ps1`
 - `SanctumSuiteLauncher.exe`
-- `Sanctum Suite.lnk`
 
-These entry points are intended to start the dashboard in a single-instance, desktop-like flow and prevent duplicate browser reopen loops while keeping the app stable and easy to manage.
+These entrypoints are built to avoid duplicate launches and preserve a single-instance desktop-like workflow.
 
-## Product structure
-
-```text
-sanctum-dashboard/
-  src/app/
-  src/components/
-  src/lib/
-  public/
-  package.json
-
-root-level launchers/
-  start-sanctum-suite.cmd
-  stop-sanctum-suite.cmd
-  run-sanctum-suite.bat
-  sanctum-suite-gui-launcher.ps1
-  SanctumSuiteLauncher/
-  SanctumSuiteLauncher.exe
-```
-
-## Core sections
+## Core product sections
 
 ### Overview
-Executive-level snapshot of security posture, attack surface coverage, operational visibility, and response readiness.
+Executive-level snapshot of security posture, operational visibility, and response readiness.
 
 ### Threats
-Tracking of adversary campaigns, malware activity, indicators, and evolving risk posture.
+Adversary campaigns, indicators, attack surfaces, and evolving risk posture.
 
 ### Entities
-Inventory of impacted hosts, identities, assets, and stakeholders tied to investigations.
+Hosts, identities, assets, and stakeholder context tied to investigations.
 
 ### Investigations
-Workflows for case management, escalating response actions, and timeline-based analyst context.
+Timeline tracking, analyst workflows, and operational case handling.
 
 ### Alerts
-Live feed of prioritized security incidents, severity states, and operator actions.
+Live incident feed, priority triage, and operator response states.
 
 ## Design language
 
-Sanctum Suite deliberately preserves a premium cyber-ops feel:
+Sanctum Suite takes a premium cyber-ops direction:
 
-- deep navy and graphite UI base
+- deep navy and graphite interface base
 - cyan/teal glow accents and glass panels
-- dense operational surfaces inspired by analyst workbenches
-- clean data-rich cards with strong visual hierarchy
-- minimal, premium chrome for desktop-shell behavior
+- dense analyst workbench layout
+- strong hierarchy and premium minimal chrome
+- high-signal data surfaces for real operational work
 
-## Modern capability matrix
+## Documentation and references
 
-<div align="center">
-
-| Capability | Implementation |
-|---|---|
-| Threat intelligence UX | OpenCTI-inspired SOC dashboard with analyst-first information hierarchy |
-| Realistic data model | Mock CTI feeds for threats, entities, alerts, and investigations |
-| Desktop feel | WPF shell with native-style controls, tray behavior, and status polling |
-| Single-instance management | PID file + runtime detection + browser guard to avoid duplicate starts |
-| Windows integration | CMD, PowerShell, and .lnk shortcut entry points for local launch |
-| Multi-language architecture | Python, Rust, Ada, APL, HALS, and security-oriented project modules |
-| Local validation | `npm run build` and live localhost runtime verification |
-
-</div>
+- [INDEX.md](INDEX.md)
+- [sanctum-dashboard/README.md](sanctum-dashboard/README.md)
+- [security/SECURITY.md](security/SECURITY.md)
+- [DEPLOYMENT.md](DEPLOYMENT.md)
+- [docs](docs)
+- [notebooks/sanctum_deep_dive.ipynb](notebooks/sanctum_deep_dive.ipynb)
 
 ## Notes
 
-This repo combines an actual local web dashboard with Windows launcher artifacts for a more native desktop experience. It is designed for local execution and operator review rather than as a production-grade SOC backend.
+The repository is a hybrid product: a polished local web application with desktop-shell behavior and security-oriented engineering infrastructure. It is built for local execution, operator review, and future deployment readiness.
 
 ## License
 
 See [LICENSE](LICENSE).
-
-## Documentation
-
-- [notebooks/sanctum_deep_dive.ipynb](notebooks/sanctum_deep_dive.ipynb)
-- [sanctum-dashboard/README.md](sanctum-dashboard/README.md)
-- [DEPLOYMENT.md](DEPLOYMENT.md)
-- [SECURITY.md](SECURITY.md)
