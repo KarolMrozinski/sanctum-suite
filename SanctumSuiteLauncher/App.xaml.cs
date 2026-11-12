@@ -257,7 +257,15 @@ public partial class App : Wpf.Application
                         started = true;
                         if (!browserOpened)
                         {
-                            Process.Start(new ProcessStartInfo("http://localhost:3000") { UseShellExecute = true });
+                            try
+                            {
+                                Process.Start(new ProcessStartInfo("http://localhost:3000") { UseShellExecute = true });
+                            }
+                            catch
+                            {
+                                Process.Start(new ProcessStartInfo("cmd.exe", "/c start http://localhost:3000") { UseShellExecute = true });
+                            }
+
                             File.WriteAllText(_browserFlag, "opened");
                             browserOpened = true;
                         }

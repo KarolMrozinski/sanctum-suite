@@ -52,8 +52,15 @@ echo [Sanctum Suite] Aplikacja jest dostepna pod %APP_URL%
 
 powershell -NoLogo -NoProfile -ExecutionPolicy Bypass -Command "$p = Get-CimInstance Win32_Process | Where-Object { $_.CommandLine -match 'npm run dev -- --hostname 0.0.0.0 --port 3000' -or $_.CommandLine -match 'next dev --hostname 0.0.0.0 --port 3000' } | Select-Object -First 1 -ExpandProperty ProcessId; if ($p) { $p | Set-Content -Path '%PID_FILE%' }"
 if not exist "%BROWSER_FLAG%" (
-    start "" "%APP_URL%"
+    call :open_browser
     echo opened > "%BROWSER_FLAG%"
 )
 
+exit /b 0
+
+:open_browser
+start "" "%APP_URL%"
+if errorlevel 1 (
+    powershell -NoLogo -NoProfile -ExecutionPolicy Bypass -Command "Start-Process 'http://localhost:3000'"
+)
 exit /b 0
