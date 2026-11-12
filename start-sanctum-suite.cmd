@@ -3,7 +3,6 @@ setlocal EnableExtensions
 cd /d "%~dp0"
 
 set "APP_DIR=%~dp0sanctum-dashboard"
-set "LOG_FILE=%~dp0sanctum-suite-dev.log"
 set "PID_FILE=%~dp0.sanctum-suite.pid"
 set "STDOUT_LOG=%~dp0sanctum-suite-stdout.log"
 set "STDERR_LOG=%~dp0sanctum-suite-stderr.log"
@@ -44,10 +43,21 @@ if exist "%PID_FILE%" (
 
 del /f /q "%STDOUT_LOG%" "%STDERR_LOG%" >nul 2>&1
 
-powershell -NoLogo -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -Command "$process = Start-Process -FilePath 'npm.cmd' -ArgumentList 'run','dev','--','--hostname','0.0.0.0' -WorkingDirectory '%APP_DIR%' -PassThru -WindowStyle Hidden -RedirectStandardOutput '%STDOUT_LOG%' -RedirectStandardError '%STDERR_LOG%'; $process.Id | Set-Content -Path '%PID_FILE%'"
+echo [Sanctum Suite] Startowanie aplikacji...
 
-powershell -NoLogo -NoProfile -ExecutionPolicy Bypass -Command "$success = $false; for ($i = 0; $i -lt 120; $i++) { try { Invoke-WebRequest -UseBasicParsing -Uri 'http://localhost:3000' -TimeoutSec 2 | Out-Null; $success = $true; break } catch { Start-Sleep -Seconds 1 } }; if ($success) { try { Start-Process 'http://localhost:3000' } catch {} } else { Write-Host '[Sanctum Suite] Nie udalo sie potwierdzic uruchomienia strony. Sprawdz log: %LOG_FILE%' -ForegroundColor Yellow }"
+start "Sanctum Suite" /D "%APP_DIR%" /B cmd /c "npm run dev -- --hostname 0.0.0.0 > "%STDOUT_LOG%" 2> "%STDERR_LOG%""
 
-echo [Sanctum Suite] Uruchomiono. Aplikacja jest dostepna pod http://localhost:3000
+for /l %%I in (1,1,120) do (
+    powershell -NoLogo -NoProfile -ExecutionPolicy Bypass -Command "try { Invoke-WebRequest -UseBasicParsing -Uri 'http://localhost:3000' -TimeoutSec 2 | Out-Null; exit 0 } catch { exit 1 }" >nul 2>&1
+    if not errorlevel 1 goto app_ready
+    ping -n 2 127.0.0.1 >nul
+)
+
+:app_ready
+echo [Sanctum Suite] Aplikacja jest dostepna pod http://localhost:3000
 echo [Sanctum Suite] Do zatrzymania uzyj stop-sanctum-suite.cmd
+start "" http://localhost:3000
+
+powershell -NoLogo -NoProfile -ExecutionPolicy Bypass -Command "$p = Get-CimInstance Win32_Process -Filter \"CommandLine LIKE '%next dev --hostname 0.0.0.0%'\" | Select-Object -First 1 -ExpandProperty ProcessId; if ($p) { $p | Set-Content -Path '%PID_FILE%' }"
+
 exit /b 0

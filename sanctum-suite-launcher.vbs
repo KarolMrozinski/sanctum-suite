@@ -1,6 +1,5 @@
 Set shell = CreateObject("WScript.Shell")
-cmdPath = shell.ExpandEnvironmentStrings("%COMSPEC%")
 scriptDir = CreateObject("Scripting.FileSystemObject").GetParentFolderName(WScript.ScriptFullName)
-launcher = scriptDir & "\start-sanctum-suite.cmd"
+launcher = scriptDir & "\sanctum-suite-gui-launcher.ps1"
 
-shell.Run """" & cmdPath & """ /c """" & launcher & """"", 0, False
+shell.Run "powershell.exe -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File """ & launcher & """", 0, False
