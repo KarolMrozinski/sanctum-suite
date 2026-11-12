@@ -15,5 +15,5 @@ if exist "%PID_FILE%" (
     echo [Sanctum Suite] Brak aktywnego procesu Sanctum Suite.
 )
 
-echo [Sanctum Suite] Zatrzymano launcher Sanctum Suite.
+echo [Sanctum Suite] Stan procesu zakonczony.
 exit /b 0
