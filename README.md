@@ -46,6 +46,22 @@ Sanctum Suite is structured as a high-end local-first CTI environment with a cle
 - Desktop launch shell with URL-aware runtime targeting
 - Clean product architecture and documentation-first repo organization
 
+### Why teams use it
+
+Sanctum Suite is designed to help security teams move from signal to decision without losing context. It presents the operational picture in a cleaner, more actionable way: suspicious activity is grouped, related entities are surfaced, and investigations can be followed with less friction.
+
+## How it works
+
+```text
+Collect telemetry -> correlate entities and indicators -> prioritize investigations -> contain and track response
+```
+
+This flow keeps the platform grounded in a realistic security workflow while preserving the premium product feel of the interface.
+
+## Product story and value
+
+Sanctum Suite exists to make cyber operations feel more focused and more decisive. Whether the task is monitoring a suspicious domain, following a phishing cluster, or reviewing active investigations, the product gives operators one place to understand the signal and respond with confidence.
+
 ## Quick start
 
 ### 1. Run the dashboard locally
@@ -84,6 +100,18 @@ This keeps the lifecycle clean and prevents duplicate process or browser reopen 
 - Entities
 - Investigations
 - Alerts
+
+## Product preview
+
+<div align="center">
+
+<img src="https://img.shields.io/badge/Threat%20Intel-Operational-00E5FF?style=for-the-badge" alt="Threat Intel" />
+<img src="https://img.shields.io/badge/Entity%20Graph-Live-7C3AED?style=for-the-badge" alt="Entity Graph" />
+<img src="https://img.shields.io/badge/Investigation%20Flow-Ready-22C55E?style=for-the-badge" alt="Investigation Flow" />
+
+</div>
+
+This product experience is intentionally tuned to feel like a live security command surface rather than a generic starter app.
 
 ## Root-level naming standard
 

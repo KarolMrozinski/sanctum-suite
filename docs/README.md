@@ -13,7 +13,7 @@
 
 ## Overview
 
-This documentation hub captures the final product direction of Sanctum Suite: a premium cyber operations workspace with a native-like desktop launcher, a live CTI dashboard, and a local-first runtime model designed for professional demos and future deployment expansion.
+This documentation hub captures the product direction of Sanctum Suite: a premium cyber operations workspace built to give analysts a sharper, clearer path from signal to action. The project combines a polished OpenCTI-like dashboard, a local-first desktop launcher, and an organized product architecture designed for demos, evaluation, and future deployment expansion.
 
 ## Finalized scope
 
@@ -22,6 +22,7 @@ This documentation hub captures the final product direction of Sanctum Suite: a 
 - dark cyber styling with glass surfaces, glow accents, and operational hierarchy
 - live-like operational sections: Overview, Threats, Entities, Investigations, Alerts
 - desktop launcher flow designed to feel closer to a native Windows app than a browser wrapper
+- narrative orientation around why teams need cleaner telemetry and focused investigation tooling
 
 ### Runtime and launcher
 - local dev startup via `sanctum-dashboard`
@@ -33,6 +34,18 @@ This documentation hub captures the final product direction of Sanctum Suite: a 
 - premium repo organization aligned to product layering
 - clear separation between app, desktop, integrations, security, resources, docs, build, and reports
 - consistent naming and root-level navigation for easier onboarding
+
+## Why it exists
+
+Sanctum Suite was created to reduce triage noise and make threat-context workflows easier to follow. Instead of forcing analysts through fragmented views, the platform presents a more coherent operating picture: real-time signal review, entity context, incident flow, and clear operational hierarchy in one place.
+
+## How it works
+
+```text
+Collect signals -> correlate entities -> prioritize investigations -> contain and track response
+```
+
+This simple flow defines the product experience and reinforces the platform’s purpose: to help teams move quickly from suspicious activity to decisive action.
 
 ## Documentation map
 

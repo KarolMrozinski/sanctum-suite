@@ -112,6 +112,8 @@ export const overviewStats: OverviewStat[] = [
   { label: "Malware families", value: "84", delta: "+6" },
   { label: "Critical cases", value: "19", delta: "+3" },
   { label: "Detection coverage", value: "91%", delta: "+7.2%" },
+  { label: "MTTD", value: "09m 41s", delta: "-2m 14s" },
+  { label: "Containment SLA", value: "76%", delta: "+11%" },
 ];
 
 export const detectionBars: DetectionBar[] = [
@@ -120,13 +122,28 @@ export const detectionBars: DetectionBar[] = [
   { label: "Supply chain", value: 54 },
   { label: "Ransomware", value: 76 },
   { label: "Malware delivery", value: 49 },
+  { label: "Privilege abuse", value: 63 },
 ];
 
 export const recentEvents: RecentEvent[] = [
-  { time: "08:10", title: "IP cluster pivot observed", detail: "Three blocked hosts matched the same TTP profile." },
-  { time: "09:35", title: "Mail relay anomaly", detail: "Outbound campaigns shifted to a new domain family." },
-  { time: "12:20", title: "New IOC ingested", detail: "Indicators mapped to an active intrusion set in EU-CENTRAL." },
-  { time: "15:05", title: "Case synchronized", detail: "Analyst workflow and collector policy were re-linked." },
+  { time: "08:10", title: "IP cluster pivot observed", detail: "Three blocked hosts matched the same TTP profile and new C2 infrastructure." },
+  { time: "09:35", title: "Mail relay anomaly", detail: "Outbound campaigns shifted to a new domain family across the finance segment." },
+  { time: "12:20", title: "New IOC ingested", detail: "Indicators mapped to an active intrusion set in EU-CENTRAL and EMEA." },
+  { time: "15:05", title: "Case synchronized", detail: "Analyst workflow and collector policy were re-linked to a live incident record." },
+  { time: "16:12", title: "Identity anomaly", detail: "Privileged login pattern drifted outside normal operating hours and regional norms." },
+];
+
+export const processFlow = [
+  { step: "01", title: "Ingest signals", detail: "Collect telemetry from endpoints, identities, mail and cloud assets." },
+  { step: "02", title: "Correlate context", detail: "Map suspicious activity to entities, infrastructure and adversary behavior." },
+  { step: "03", title: "Investigate and act", detail: "Prioritize response, assign ownership and contain active risk." },
+];
+
+export const productHighlights = [
+  { title: "Threat intelligence", metric: "356", detail: "Indicators mapped to active adversary clusters" },
+  { title: "Entity graph", metric: "1.2K", detail: "Linked domains, hashes, identities and IP objects" },
+  { title: "Case velocity", metric: "09m 41s", detail: "Average time to detect and triage signals" },
+  { title: "Containment", metric: "76%", detail: "Response coverage across critical workflows" },
 ];
 
 export const threatData: Threat[] = [

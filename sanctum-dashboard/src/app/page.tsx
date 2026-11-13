@@ -63,6 +63,21 @@ export default function HomePage() {
         </div>
         <InvestigationTimeline investigation={snapshot.investigations[0]} />
       </section>
+
+      <section className="grid gap-6 xl:grid-cols-3">
+        {[
+          { title: "Threat intelligence", value: "356", detail: "Indicators mapped to active adversary clusters" },
+          { title: "Entity graph", value: "1.2K", detail: "Linked domains, hashes, identities and IP objects" },
+          { title: "Case velocity", value: "09m 41s", detail: "Average time to detect and triage signals" },
+        ].map((card) => (
+          <div key={card.title} className="panel-surface rounded-3xl p-5">
+            <div className="text-[10px] uppercase tracking-[0.22em] text-slate-400">Performance</div>
+            <div className="mt-4 text-3xl font-semibold text-white">{card.value}</div>
+            <div className="mt-2 text-sm font-medium text-[#9ee7d6]">{card.title}</div>
+            <div className="mt-3 text-sm text-slate-400">{card.detail}</div>
+          </div>
+        ))}
+      </section>
     </DashboardShell>
   );
 }
