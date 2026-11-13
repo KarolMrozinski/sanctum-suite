@@ -15,6 +15,7 @@ const sectionTitleMap: Record<DashboardSectionKey, string> = {
   threats: "Threat landscape",
   entities: "Entities & indicators",
   investigations: "Investigations",
+  incidents: "Incidents",
   alerts: "Alerts",
 };
 

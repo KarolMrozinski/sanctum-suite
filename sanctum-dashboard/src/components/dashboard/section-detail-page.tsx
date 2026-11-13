@@ -11,11 +11,12 @@ export function SectionDetailPage({
   section,
 }: {
   snapshot: DashboardSnapshot;
-  section: "threats" | "entities" | "alerts";
+  section: "threats" | "entities" | "alerts" | "incidents";
 }) {
   const [selectedThreatId, setSelectedThreatId] = useState(snapshot.threats[0]?.id ?? "");
   const [selectedEntityId, setSelectedEntityId] = useState(snapshot.entities[0]?.id ?? "");
   const [selectedAlertId, setSelectedAlertId] = useState(snapshot.alerts[0]?.id ?? "");
+  const [selectedIncidentId, setSelectedIncidentId] = useState(snapshot.incidents[0]?.id ?? "");
 
   const selectedThreat = useMemo(
     () => snapshot.threats.find((item) => item.id === selectedThreatId) ?? snapshot.threats[0],
@@ -30,6 +31,11 @@ export function SectionDetailPage({
   const selectedAlert = useMemo(
     () => snapshot.alerts.find((item) => item.id === selectedAlertId) ?? snapshot.alerts[0],
     [selectedAlertId, snapshot],
+  );
+
+  const selectedIncident = useMemo(
+    () => snapshot.incidents.find((item) => item.id === selectedIncidentId) ?? snapshot.incidents[0],
+    [selectedIncidentId, snapshot],
   );
 
   const renderThreats = () => (
@@ -134,6 +140,42 @@ export function SectionDetailPage({
     </div>
   );
 
+  const renderIncidents = () => (
+    <div className="grid gap-6 xl:grid-cols-[1.1fr_0.9fr]">
+      <div className="space-y-4">
+        {snapshot.incidents.map((incident) => (
+          <button
+            key={incident.id}
+            type="button"
+            onClick={() => setSelectedIncidentId(incident.id)}
+            className={[
+              "w-full rounded-2xl border bg-[#0d1b2b] p-4 text-left transition",
+              selectedIncident?.id === incident.id
+                ? "border-[#1de9b6]/40 bg-[#102739]"
+                : "border-slate-800 hover:border-slate-700",
+            ].join(" ")}
+          >
+            <div className="flex items-center justify-between gap-4">
+              <div>
+                <div className="text-[10px] uppercase tracking-[0.2em] text-slate-400">{incident.id}</div>
+                <div className="mt-1 text-lg font-semibold text-white">{incident.title}</div>
+              </div>
+              <span className={`inline-flex rounded-full border px-2.5 py-1 text-[10px] uppercase tracking-[0.12em] ${getSeverityTone(incident.severity)}`}>
+                {incident.severity}
+              </span>
+            </div>
+            <div className="mt-3 flex items-center justify-between gap-3 text-sm text-slate-300">
+              <span>{incident.category}</span>
+              <span>{incident.status}</span>
+            </div>
+          </button>
+        ))}
+      </div>
+
+      <DetailPanel item={selectedIncident} itemType="incident" />
+    </div>
+  );
+
   return (
     <DashboardShell section={section}>
       <div className="rounded-2xl border border-slate-800 bg-[#0d1b2b] p-4">
@@ -151,6 +193,7 @@ export function SectionDetailPage({
       {section === "threats" && renderThreats()}
       {section === "entities" && renderEntities()}
       {section === "alerts" && renderAlerts()}
+      {section === "incidents" && renderIncidents()}
     </DashboardShell>
   );
 }

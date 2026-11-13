@@ -1,4 +1,10 @@
-export type DashboardSectionKey = "overview" | "threats" | "entities" | "investigations" | "alerts";
+export type DashboardSectionKey =
+  | "overview"
+  | "threats"
+  | "entities"
+  | "investigations"
+  | "alerts"
+  | "incidents";
 
 export type Severity = "Critical" | "High" | "Medium" | "Low";
 
@@ -64,6 +70,35 @@ export type Alert = {
   relatedEntity: string;
 };
 
+export type IncidentWorkflowStep = {
+  id: string;
+  label: string;
+  owner: string;
+  status: "Queued" | "Active" | "Resolved";
+  eta: string;
+  progress: number;
+  notes: string;
+};
+
+export type Incident = {
+  id: string;
+  title: string;
+  severity: Severity;
+  status: "Open" | "Investigating" | "Contained" | "Resolved";
+  category: string;
+  summary: string;
+  createdAt: string;
+  updatedAt: string;
+  owner: string;
+  confidence: number;
+  impactedSystems: string[];
+  relatedThreats: string[];
+  relatedEntities: string[];
+  evidence: string[];
+  workflow: IncidentWorkflowStep[];
+  actions: { id: string; actor: string; time: string; type: string; summary: string }[];
+};
+
 export type DashboardNavigationItem = {
   id: DashboardSectionKey;
   label: string;
@@ -97,6 +132,7 @@ export type DashboardSnapshot = {
   entities: Entity[];
   investigations: Investigation[];
   alerts: Alert[];
+  incidents: Incident[];
 };
 
 export const dashboardNavigation: DashboardNavigationItem[] = [
@@ -104,6 +140,7 @@ export const dashboardNavigation: DashboardNavigationItem[] = [
   { id: "threats", label: "Threats", href: "/threats", count: "36" },
   { id: "entities", label: "Entities", href: "/entities", count: "64" },
   { id: "investigations", label: "Investigations", href: "/investigations", count: "08" },
+  { id: "incidents", label: "Incidents", href: "/incidents", count: "04" },
   { id: "alerts", label: "Alerts", href: "/alerts", count: "19" },
 ];
 
@@ -252,11 +289,104 @@ export const alertData: Alert[] = [
   { id: "ALT-183", title: "Unusual admin password reset", severity: "Low", source: "IAM", observed: "00:48 UTC", status: "Dismissed", category: "Identity", description: "Password reset was reviewed and attributed to a known internal maintenance task.", timestamp: "00:48 UTC", relatedEntity: "ENT-302" },
 ];
 
+export const incidentData: Incident[] = [
+  {
+    id: "INC-1001",
+    title: "Finance credential theft campaign",
+    severity: "Critical",
+    status: "Investigating",
+    category: "Credential theft",
+    summary: "Active phishing and token theft activity targeted finance users and privileged workflows.",
+    createdAt: "2026-11-12T08:15:00Z",
+    updatedAt: "2026-11-13T01:20:00Z",
+    owner: "A. Szymczak",
+    confidence: 96,
+    impactedSystems: ["Finance identity plane", "Mail gateway", "VPN edge", "Endpoint fleet"],
+    relatedThreats: ["THR-421"],
+    relatedEntities: ["ENT-91", "ENT-125", "ENT-302"],
+    evidence: [
+      "Token replay attempt across privileged sign-ins",
+      "Malicious invoice-themed lure distribution",
+      "Hotmail-style impersonation domain active in outbound mail",
+    ],
+    workflow: [
+      { id: "wf-1", label: "Validate indicators", owner: "M. Kowalczyk", status: "Resolved", eta: "Resolved", progress: 100, notes: "IOC fidelity validated against endpoint and mail telemetry." },
+      { id: "wf-2", label: "Contain access paths", owner: "A. Szymczak", status: "Active", eta: "00:45", progress: 74, notes: "Conditional access and MFA enforcement are being applied to affected roles." },
+      { id: "wf-3", label: "Remediate identity trust", owner: "R. Okafor", status: "Queued", eta: "01:15", progress: 42, notes: "Reviewing token revocation and password reset scope for finance operators." },
+      { id: "wf-4", label: "Executive briefing", owner: "L. Nowak", status: "Queued", eta: "02:00", progress: 16, notes: "Prepare stakeholder update with risk exposure and response status." },
+    ],
+    actions: [
+      { id: "act-1", actor: "A. Szymczak", time: "08:15Z", type: "Case opened", summary: "Open response case after finance-user alerts and suspicious token replay." },
+      { id: "act-2", actor: "M. Kowalczyk", time: "09:42Z", type: "Correlation", summary: "Mapped phishing and domain activity to the APT-29 campaign." },
+      { id: "act-3", actor: "R. Okafor", time: "11:05Z", type: "Mitigation", summary: "Deployed conditional access and password reset lift for impacted identities." },
+    ],
+  },
+  {
+    id: "INC-1002",
+    title: "Signed package abuse in release pipeline",
+    severity: "High",
+    status: "Contained",
+    category: "Supply-chain risk",
+    summary: "A signed and trusted software package path was flagged as a staging method for malicious execution.",
+    createdAt: "2026-11-11T17:40:00Z",
+    updatedAt: "2026-11-12T22:32:00Z",
+    owner: "K. Mrozinski",
+    confidence: 82,
+    impactedSystems: ["Build pipeline", "Package verification", "Artifact registry", "Release environment"],
+    relatedThreats: ["THR-612"],
+    relatedEntities: ["ENT-214"],
+    evidence: [
+      "Signed artifact chain mismatch during validation",
+      "Loader hash matched to malicious staging pattern",
+      "Execution flow diverged from approved release lineage",
+    ],
+    workflow: [
+      { id: "wf-5", label: "Artifact analysis", owner: "K. Mrozinski", status: "Resolved", eta: "Resolved", progress: 100, notes: "Package lineage and signed metadata were reviewed for tampering." },
+      { id: "wf-6", label: "Registry quarantine", owner: "D. Kwiatkowski", status: "Resolved", eta: "Resolved", progress: 100, notes: "Malicious package was removed from the promotion queue and quarantined." },
+      { id: "wf-7", label: "Release rollback", owner: "N. Rybak", status: "Active", eta: "00:30", progress: 68, notes: "Rollback of recent package variant is underway in the staging pipeline." },
+    ],
+    actions: [
+      { id: "act-4", actor: "D. Kwiatkowski", time: "17:40Z", type: "Detection", summary: "Package signature drift triggered a supply-chain review." },
+      { id: "act-5", actor: "K. Mrozinski", time: "18:12Z", type: "Escalation", summary: "Escalated to release engineering and endpoint verification for deeper reverse engineering." },
+    ],
+  },
+  {
+    id: "INC-1003",
+    title: "Data exfiltration via archive transfer",
+    severity: "Critical",
+    status: "Open",
+    category: "Exfiltration",
+    summary: "Encrypted outbound data transfer exceeded expected threshold and matched historical exfiltration behavior.",
+    createdAt: "2026-11-12T02:12:00Z",
+    updatedAt: "2026-11-13T00:55:00Z",
+    owner: "L. Nowak",
+    confidence: 94,
+    impactedSystems: ["Finance storage cluster", "User endpoint network", "Identity gateway", "Archive relay"],
+    relatedThreats: ["THR-204"],
+    relatedEntities: ["ENT-91", "ENT-214"],
+    evidence: [
+      "Large encrypted archive upload observed during off-hours",
+      "Volume and destination pattern matched prior ransomware exfiltration model",
+      "Firewall and EDR outputs aligned on suspicious network activity",
+    ],
+    workflow: [
+      { id: "wf-8", label: "Traffic triage", owner: "L. Nowak", status: "Active", eta: "00:25", progress: 80, notes: "Analyst is narrowing the cluster to the exact destination path and loss window." },
+      { id: "wf-9", label: "Contain network egress", owner: "M. Lis", status: "Queued", eta: "00:55", progress: 25, notes: "Block rules and sinkholing options are being reviewed for safe execution." },
+      { id: "wf-10", label: "Evidence preservation", owner: "E. Wrona", status: "Queued", eta: "01:10", progress: 33, notes: "Volumetric network logs and endpoint traces are being sealed for forensics." },
+    ],
+    actions: [
+      { id: "act-6", actor: "L. Nowak", time: "02:12Z", type: "Detection", summary: "Triggered alert for abnormal archive upload pattern and egress burst." },
+      { id: "act-7", actor: "M. Lis", time: "02:24Z", type: "Blocking", summary: "Network policy review initiated to stop suspicious outbound transfer path." },
+    ],
+  },
+];
+
 export function getGraphQLDashboardPayload(section: string = "overview", id?: string | null) {
   const snapshot = getDashboardSnapshot(section);
   const selectedThreat = id ? snapshot.threats.find((item) => item.id === id) ?? null : null;
   const selectedEntity = id ? snapshot.entities.find((item) => item.id === id) ?? null : null;
   const selectedAlert = id ? snapshot.alerts.find((item) => item.id === id) ?? null : null;
+  const selectedIncident = id ? snapshot.incidents.find((item) => item.id === id) ?? null : null;
 
   return {
     dashboard: {
@@ -276,7 +406,8 @@ export function getGraphQLDashboardPayload(section: string = "overview", id?: st
       entities: snapshot.entities,
       investigations: snapshot.investigations,
       alerts: snapshot.alerts,
-      selected: selectedThreat ?? selectedEntity ?? selectedAlert,
+      incidents: snapshot.incidents,
+      selected: selectedThreat ?? selectedEntity ?? selectedAlert ?? selectedIncident,
       selectedId: id ?? null,
       graph: {
         nodes: [
@@ -331,5 +462,6 @@ export function getDashboardSnapshot(section: string = "overview"): DashboardSna
     entities: entityData,
     investigations: investigationData,
     alerts: alertData,
+    incidents: incidentData,
   };
 }

@@ -1,14 +1,14 @@
 "use client";
 
 import { useMemo } from "react";
-import { getSeverityTone, type Alert, type Entity, type Threat } from "@/lib/dashboard-data";
+import { getSeverityTone, type Alert, type Entity, type Incident, type Threat } from "@/lib/dashboard-data";
 
 export function DetailPanel({
   item,
   itemType,
 }: {
-  item: Threat | Entity | Alert;
-  itemType: "threat" | "entity" | "alert";
+  item: Threat | Entity | Alert | Incident;
+  itemType: "threat" | "entity" | "alert" | "incident";
 }) {
   const meta = useMemo(() => {
     if (itemType === "threat") {
@@ -51,22 +51,47 @@ export function DetailPanel({
       };
     }
 
-    const alert = item as Alert;
+    if (itemType === "alert") {
+      const alert = item as Alert;
+      return {
+        title: alert.title,
+        subtitle: "Alert",
+        status: alert.status,
+        severity: alert.severity,
+        summary: alert.description,
+        chips: [alert.category, alert.source],
+        rows: [
+          ["Alert ID", alert.id],
+          ["Observed", alert.observed],
+          ["Related entity", alert.relatedEntity],
+          ["Timestamp", alert.timestamp],
+        ],
+        timeline: [],
+        relationList: [alert.relatedEntity, alert.category, alert.source],
+      };
+    }
+
+    const incident = item as Incident;
     return {
-      title: alert.title,
-      subtitle: "Alert",
-      status: alert.status,
-      severity: alert.severity,
-      summary: alert.description,
-      chips: [alert.category, alert.source],
+      title: incident.title,
+      subtitle: "Incident",
+      status: incident.status,
+      severity: incident.severity,
+      summary: incident.summary,
+      chips: [incident.category, ...incident.relatedThreats, ...incident.relatedEntities],
       rows: [
-        ["Alert ID", alert.id],
-        ["Observed", alert.observed],
-        ["Related entity", alert.relatedEntity],
-        ["Timestamp", alert.timestamp],
+        ["Incident ID", incident.id],
+        ["Owner", incident.owner],
+        ["Confidence", `${incident.confidence}%`],
+        ["Impacted systems", incident.impactedSystems.join(", ")],
       ],
-      timeline: [],
-      relationList: [alert.relatedEntity, alert.category, alert.source],
+      timeline: incident.workflow.map((step) => ({
+        id: step.id,
+        time: step.eta,
+        title: step.label,
+        detail: step.notes,
+      })),
+      relationList: [...incident.relatedThreats, ...incident.relatedEntities],
     };
   }, [item, itemType]);
 
@@ -90,12 +115,28 @@ export function DetailPanel({
       <div className="mb-5 overflow-hidden rounded-xl border border-slate-800 bg-[#0b1219] p-3">
         <div className="mb-2 flex items-center justify-between text-[10px] uppercase tracking-[0.18em] text-slate-400">
           <span>Confidence</span>
-          <span>{itemType === "threat" ? (item as Threat).confidence : itemType === "entity" ? (item as Entity).confidence : 86}%</span>
+          <span>
+            {itemType === "threat"
+              ? `${(item as Threat).confidence}%`
+              : itemType === "entity"
+                ? `${(item as Entity).confidence}%`
+                : itemType === "incident"
+                  ? `${(item as Incident).confidence}%`
+                  : "86%"}
+          </span>
         </div>
         <div className="h-2 overflow-hidden rounded-full bg-slate-800">
           <div
             className="h-full rounded-full bg-gradient-to-r from-[#6ee7b7] via-[#82d7ff] to-[#bcd3ff]"
-            style={{ width: `${itemType === "threat" ? (item as Threat).confidence : itemType === "entity" ? (item as Entity).confidence : 86}%` }}
+            style={{
+              width: `${itemType === "threat"
+                ? (item as Threat).confidence
+                : itemType === "entity"
+                  ? (item as Entity).confidence
+                  : itemType === "incident"
+                    ? (item as Incident).confidence
+                    : 86}%`,
+            }}
           />
         </div>
       </div>
