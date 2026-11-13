@@ -9,7 +9,7 @@ on:
       - "v*"
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   build-msi:
@@ -85,21 +85,50 @@ jobs:
           $ErrorActionPreference = 'Stop'
           ./desktop/installer/build-msi.ps1 -Configuration Release -Version "1.0.0.0" -OutputPath "release\installer" -Publisher "CN=Karol Mrozinski" -SigningMode $env:SIGNING_MODE -RequireSignedBuild:$($env:REQUIRE_SIGNED_BUILD -eq 'true')
 
+      - name: Generate checksum manifest
+        shell: powershell
+        if: always()
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $files = Get-ChildItem release/installer -File
+          if ($files) {
+            $hashFile = Join-Path 'release/installer' 'sha256sum.txt'
+            foreach ($file in $files) {
+              $hash = (Get-FileHash $file.FullName -Algorithm SHA256).Hash
+              "$hash  $($file.Name)" | Out-File -Append -FilePath $hashFile -Encoding utf8
+            }
+          }
+
       - name: Upload installer artifact
         uses: actions/upload-artifact@v4
         with:
           name: sanctum-suite-msi
-          path: release/installer/*.msi
+          path: release/installer/*
           if-no-files-found: error
           retention-days: 90
 
-      - name: Publish release asset
+      - name: Create or update GitHub release
+        if: github.event_name == 'workflow_dispatch' || github.event_name == 'push'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name || 'v1.0.0' }}
+          name: Sanctum Suite v1.0.0
+          body_path: .github/release-body.md
+          files: |
+            release/installer/*.msi
+            release/installer/*.txt
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Publish release asset on release event
         if: github.event_name == 'release'
         shell: powershell
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           $tag = "${{ github.event.release.tag_name }}"
-          $files = Get-ChildItem release/installer -Filter *.msi | Select-Object -ExpandProperty FullName
-          if (-not $files) { throw "No MSI installer was generated for release upload." }
-          gh release upload $tag $files --repo $env:GITHUB_REPOSITORY
+          $files = Get-ChildItem release/installer -File | Select-Object -ExpandProperty FullName
+          if (-not $files) { throw "No release files were generated for upload." }
+          gh release upload $tag $files --repo $env:GITHUB_REPOSITORY --clobber

@@ -15,6 +15,19 @@
 
 This documentation hub captures the product direction of Sanctum Suite: a premium cyber operations workspace built to give analysts a sharper, clearer path from signal to action. The project combines a polished OpenCTI-like dashboard, a local-first desktop launcher, and an organized product architecture designed for demos, evaluation, and future deployment expansion.
 
+## Release documentation
+
+- [RELEASE_READINESS_CHECKLIST.md](RELEASE_READINESS_CHECKLIST.md) — final production readiness checklist for signed Windows MSI release
+- [RELEASE_NOTES_PUBLIC.md](RELEASE_NOTES_PUBLIC.md) — final public release notes for the Sanctum Suite product story
+- [WINDOWS_INSTALLER.md](WINDOWS_INSTALLER.md) — Windows packaging, signing, and release configuration guidance
+- [SIGNING_POLICY.md](../SIGNING_POLICY.md) — final production signing and compliance policy
+- [GITHUB_RELEASE_TEMPLATE.md](GITHUB_RELEASE_TEMPLATE.md) — release body ready for GitHub public release
+- [GITHUB_SETTINGS_RELEASE_CONFIGURATION.md](GITHUB_SETTINGS_RELEASE_CONFIGURATION.md) — copy-paste GitHub Actions secrets and variables for release settings
+- [GITHUB_RELEASE_BODY_PUBLIC.md](GITHUB_RELEASE_BODY_PUBLIC.md) — final public release body in GitHub UI-ready form
+- [../.github/release-body-v1.0.0.md](../.github/release-body-v1.0.0.md) — final release body prepared specifically for the v1.0.0 public GitHub release
+- [RELEASE_GATE_SOP.md](RELEASE_GATE_SOP.md) — formal release gate sign-off SOP
+- [PRODUCTION_PUBLICATION_RUNBOOK.md](PRODUCTION_PUBLICATION_RUNBOOK.md) — final step-by-step production publication runbook for Windows target
+
 ## Finalized scope
 
 ### Product and experience

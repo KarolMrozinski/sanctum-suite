@@ -180,6 +180,133 @@ Sanctum Suite follows a premium cyber-operations visual system built around:
 
 The project currently sits in a polished local-first operational prototype phase: the CTI interface is fully styled and functional, the desktop launcher layer is substantially improved, and the repo is organized around a more product-ready structure. It is ready for local demos, validation, and future expansion into external deployment or live backend integration.
 
+## Production release posture
+
+Sanctum Suite is positioned as a premium CTI workspace with a realistic Windows release pipeline. The default and most credible production model is:
+
+- EV Code Signing for the public trust identity
+- Azure Trusted Signing in CI/CD for secure cloud-managed signing
+- SHA-256 signing with valid timestamping
+- MSI/WiX as the native Windows installer format
+- optional future compliance or Microsoft validation paths only when the product architecture genuinely requires them
+
+This is intentionally more honest and production-ready than claiming that WHQL, HLK, ELAM, PPL, MVI, NIAPC/NATO, FIPS 140-3, HSM Class 4, or NSA Type 1 are generic requirements for a standard desktop CTI app. The repository supports those modes for future enterprise or defense-aligned scenarios, but they remain conditional when the product is not operating in a specialized compliance environment.
+
+## Required release secrets and variables
+
+The signed release pipeline expects the following GitHub configuration before a final public installer is published.
+
+### Recommended production secrets
+
+- `WINDOWS_CERT_PFX_BASE64`
+- `WINDOWS_CERT_PASSWORD`
+- `WINDOWS_CERT_THUMBPRINT`
+- `AZURE_TENANT_ID`
+- `AZURE_CLIENT_ID`
+- `AZURE_CLIENT_SECRET`
+- `AZURE_TRUSTED_SIGNING_ENDPOINT`
+- `AZURE_TRUSTED_SIGNING_ACCOUNT_NAME`
+- `AZURE_TRUSTED_SIGNING_CERT_PROFILE_NAME`
+- `AZURE_TRUSTED_SIGNING_POLICY` (optional)
+
+### Advanced or compliance-mode secrets
+
+- `ROOT_CA_CERT_PATH`
+- `ROOT_CA_CHAIN_PATH`
+- `MTLS_CLIENT_CERT_PATH`
+- `MTLS_CLIENT_CERT_PASSWORD`
+- `MTLS_CA_BUNDLE_PATH`
+- `BYO_PKI_CONFIG_PATH`
+- `FIPS1403_HSM_MODULE_PATH`
+- `FIPS1403_KEY_LABEL`
+- `NIAPC_NATO_PKI_PROFILE`
+- `HSM_TOKEN`
+- `HSM_KEY_ID`
+- `NSA_TYPE1_KEYRING_PATH`
+- `NSA_TYPE1_PROFILE`
+- `WHQL_SIGNING_CERT_THUMBPRINT`
+- `WHQL_SIGNING_CERT_PFX_BASE64`
+- `HLK_CERT_THUMBPRINT`
+- `HLK_CERT_PFX_BASE64`
+- `ELAM_SIGNING_CERT_THUMBPRINT`
+- `ELAM_SIGNING_CERT_PFX_BASE64`
+- `PPL_SIGNING_CERT_THUMBPRINT`
+- `PPL_SIGNING_CERT_PFX_BASE64`
+- `MVI_SIGNING_CERT_THUMBPRINT`
+- `MVI_SIGNING_CERT_PFX_BASE64`
+
+### Required GitHub variables
+
+- `SIGNING_MODE` = `auto` or `azure-trusted-signing`
+- `REQUIRE_SIGNED_BUILD` = `true`
+- `PUBLISHER` = `CN=Karol Mrozinski`
+- `PRODUCT_NAME` = `Sanctum Suite`
+
+### Final release checklist
+
+- [ ] Windows runner and WiX Toolset available
+- [ ] Node.js 22 and .NET 10 toolchain installed in the pipeline
+- [ ] production dashboard build passes
+- [ ] desktop launcher publish succeeds
+- [ ] MSI generated successfully
+- [ ] signing secret set is present and valid
+- [ ] release artifact is signed before publication
+- [ ] installer tested on a clean Windows environment
+- [ ] final release notes document the signing model and certificate chain
+
+## GitHub Actions secrets template
+
+Use the following template in GitHub repository or environment settings before publishing a signed public release.
+
+```yaml
+# GitHub Actions / release environment secrets
+WINDOWS_CERT_PFX_BASE64: "<base64-encoded-pfx-or-ev-certificate>"
+WINDOWS_CERT_PASSWORD: "<certificate-password>"
+WINDOWS_CERT_THUMBPRINT: "<thumbprint>"
+AZURE_TENANT_ID: "<tenant-id>"
+AZURE_CLIENT_ID: "<client-id>"
+AZURE_CLIENT_SECRET: "<client-secret>"
+AZURE_TRUSTED_SIGNING_ENDPOINT: "https://<region>.codesigning.azure.net"
+AZURE_TRUSTED_SIGNING_ACCOUNT_NAME: "<account-name>"
+AZURE_TRUSTED_SIGNING_CERT_PROFILE_NAME: "<profile-name>"
+AZURE_TRUSTED_SIGNING_POLICY: "<optional-policy-name>"
+ROOT_CA_CERT_PATH: "<optional-root-ca-path>"
+ROOT_CA_CHAIN_PATH: "<optional-chain-path>"
+MTLS_CLIENT_CERT_PATH: "<optional-client-cert-path>"
+MTLS_CLIENT_CERT_PASSWORD: "<optional-client-cert-password>"
+MTLS_CA_BUNDLE_PATH: "<optional-ca-bundle-path>"
+BYO_PKI_CONFIG_PATH: "<optional-pki-config-path>"
+FIPS1403_HSM_MODULE_PATH: "<optional-fips-module-path>"
+FIPS1403_KEY_LABEL: "<optional-key-label>"
+NIAPC_NATO_PKI_PROFILE: "<optional-profile>"
+HSM_TOKEN: "<optional-hsm-token>"
+HSM_KEY_ID: "<optional-key-id>"
+NSA_TYPE1_KEYRING_PATH: "<optional-keyring>"
+NSA_TYPE1_PROFILE: "<optional-profile>"
+WHQL_SIGNING_CERT_THUMBPRINT: "<optional-whql-thumbprint>"
+WHQL_SIGNING_CERT_PFX_BASE64: "<optional-whql-pfx-base64>"
+HLK_CERT_THUMBPRINT: "<optional-hlk-thumbprint>"
+HLK_CERT_PFX_BASE64: "<optional-hlk-pfx-base64>"
+ELAM_SIGNING_CERT_THUMBPRINT: "<optional-elam-thumbprint>"
+ELAM_SIGNING_CERT_PFX_BASE64: "<optional-elam-pfx-base64>"
+PPL_SIGNING_CERT_THUMBPRINT: "<optional-ppl-thumbprint>"
+PPL_SIGNING_CERT_PFX_BASE64: "<optional-ppl-pfx-base64>"
+MVI_SIGNING_CERT_THUMBPRINT: "<optional-mvi-thumbprint>"
+MVI_SIGNING_CERT_PFX_BASE64: "<optional-mvi-pfx-base64>"
+```
+
+GitHub variables:
+
+```yaml
+SIGNING_MODE: "auto" # or azure-trusted-signing / ev
+REQUIRE_SIGNED_BUILD: "true"
+PUBLISHER: "CN=Karol Mrozinski"
+PRODUCT_NAME: "Sanctum Suite"
+BUILD_VERSION: "1.0.0.0"
+```
+
+This is the final release hygiene template used before a public signed Windows installer is published.
+
 ## License
 
 See [LICENSE](LICENSE).
