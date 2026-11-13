@@ -1,0 +1,92 @@
+/*****************************************************************************
+ * Sanctum Suite: Avionics Bus Watchdog & Emergency Isolation Governor (HAL/S)
+ * Monitorowanie przepustowości magistral transmisyjnych i natychmiastowe odcinanie
+ * skompromitowanych linii komunikacyjnych w środowiskach Air-Gap.
+ *****************************************************************************/
+
+COMPILATION UNIT SANCTUM_BUS_WATCHDOG;
+
+    DECLARE MAX_BUS_CHANNELS CONSTANT(8);
+    DECLARE ERROR_THRESHOLD_LIMIT CONSTANT(15);
+    DECLARE MAX_BANDWIDTH_RATE CONSTANT(1048576); -- 1 MB/s limit
+
+    STRUCTURE BUS_CHANNEL_RECORD
+        INTEGER CHANNEL_ID;
+        INTEGER CURRENT_PACKET_RATE;
+        INTEGER ERROR_COUNTER;
+        BOOLEAN CHANNEL_LOCKED;
+        BOOLEAN EMERGENCY_CUTOFF;
+    END;
+
+    STRUCTURE BUS_WATCHDOG_CONTEXT
+        BUS_CHANNEL_RECORD CHANNELS(MAX_BUS_CHANNELS);
+        INTEGER TOTAL_ISOLATED_CHANNELS;
+        BOOLEAN GLOBAL_BUS_HALT;
+    END;
+
+    /*************************************************************************
+     * Inicjalizacja kontekstu monitorowania magistral systemowych
+     * ***********************************************************************/
+    SUBROUTINE INITIALIZE_BUS_WATCHDOG(CONTEXT);
+        OUTPUT BUS_WATCHDOG_CONTEXT CONTEXT;
+        DECLARE C INTEGER;
+        
+        CONTEXT.TOTAL_ISOLATED_CHANNELS = 0;
+        CONTEXT.GLOBAL_BUS_HALT = FALSE;
+        
+        DO C = 1 TO MAX_BUS_CHANNELS;
+            CONTEXT.CHANNELS(C).CHANNEL_ID = C;
+            CONTEXT.CHANNELS(C).CURRENT_PACKET_RATE = 1024;
+            CONTEXT.CHANNELS(C).ERROR_COUNTER = 0;
+            CONTEXT.CHANNELS(C).CHANNEL_LOCKED = FALSE;
+            CONTEXT.CHANNELS(C).EMERGENCY_CUTOFF = FALSE;
+        END;
+    END INITIALIZE_BUS_WATCHDOG;
+
+    /*************************************************************************
+     * Funkcja oceny przepustowości i wykrywania anomalii ruchu na szynie
+     * ***********************************************************************/
+    BOOLEAN FUNCTION EVALUATE_CHANNEL_THROUGHPUT(CHANNEL);
+        INPUT BUS_CHANNEL_RECORD CHANNEL;
+        
+        IF CHANNEL.EMERGENCY_CUTOFF THEN
+            RETURN FALSE;
+        END;
+        
+        IF CHANNEL.CURRENT_PACKET_RATE > MAX_BANDWIDTH_RATE THEN
+            RETURN TRUE; -- Wykryto przekroczenie pasma (DDoS / Flood)
+        END;
+        
+        IF CHANNEL.ERROR_COUNTER >= ERROR_THRESHOLD_LIMIT THEN
+            RETURN TRUE; -- Przekroczony próg błędów transmisji
+        END;
+        
+        RETURN FALSE;
+    END EVALUATE_CHANNEL_THROUGHPUT;
+
+    /*************************************************************************
+     * Procedura egzekwowania kwarantanny i fizycznego odcięcia magistrali
+     * ***********************************************************************/
+    SUBROUTINE EXECUTE_BUS_ISOLATION_PASS(CONTEXT);
+        INPUT OUTPUT BUS_WATCHDOG_CONTEXT CONTEXT;
+        DECLARE IDX INTEGER;
+        DECLARE ISOLATED_TOTAL INTEGER;
+        
+        ISOLATED_TOTAL = 0;
+        
+        DO IDX = 1 TO MAX_BUS_CHANNELS;
+            IF EVALUATE_CHANNEL_THROUGHPUT(CONTEXT.CHANNELS(IDX)) THEN
+                CONTEXT.CHANNELS(IDX).CHANNEL_LOCKED = TRUE;
+                CONTEXT.CHANNELS(IDX).EMERGENCY_CUTOFF = TRUE;
+                ISOLATED_TOTAL = ISOLATED_TOTAL + 1;
+            END;
+        END;
+        
+        CONTEXT.TOTAL_ISOLATED_CHANNELS = ISOLATED_TOTAL;
+        
+        IF ISOLATED_TOTAL >= 4 THEN
+            CONTEXT.GLOBAL_BUS_HALT = TRUE;
+        END;
+    END EXECUTE_BUS_ISOLATION_PASS;
+
+END SANCTUM_BUS_WATCHDOG;

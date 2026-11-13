@@ -1,0 +1,288 @@
+import Typography from '@mui/material/Typography';
+import { ViewListOutlined, ViewModuleOutlined, VisibilityOutlined } from '@mui/icons-material';
+import { ButtonGroup, ButtonGroupItem, IconButton, Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@filigran/design-system';
+import { useEffect, useMemo, useState } from 'react';
+import { createFragmentContainer, graphql, useFragment } from 'react-relay';
+import ListItem from '@mui/material/ListItem';
+// fds:keep-mui the library Tooltip is a compound API; this call site converts with the wider Tooltip wave
+import Tooltip from '@mui/material/Tooltip';
+import { Box, ListItemButton, Stack } from '@mui/material';
+import { Link } from 'react-router';
+import ListItemIcon from '@mui/material/ListItemIcon';
+import ListItemText from '@mui/material/ListItemText';
+import SecurityCoverageScores from '@components/analyses/security_coverages/security_coverage_scores/SecurityCoverageScores';
+import { useTheme } from '@mui/material/styles';
+import { InformationOutline } from 'mdi-material-ui';
+import SecurityCoverageCoveredList from './SecurityCoverageCoveredList';
+import { SecurityCoverageAttackPatternsKillChainPhasesFragment$key } from './__generated__/SecurityCoverageAttackPatternsKillChainPhasesFragment.graphql';
+import { SecurityCoverageAttackPatternsFragment$data } from './__generated__/SecurityCoverageAttackPatternsFragment.graphql';
+import SecurityCoverageAttackPatternsMatrix from './SecurityCoverageAttackPatternsMatrix';
+import SearchInput from '../../../../components/SearchInput';
+import { useFormatter } from '../../../../components/i18n';
+import FieldOrEmpty from '../../../../components/FieldOrEmpty';
+import ItemIcon from '../../../../components/ItemIcon';
+import type { Theme } from '../../../../components/Theme';
+import { capitalizeFirstLetter } from '../../../../utils/String';
+import Card from '../../../../components/common/card/Card';
+import Alert from '../../../../components/Alert';
+import { dedupeCoveredEntities } from './securityCoverageAggregation';
+
+const MAX_ATTACK_PATTERNS = 5000;
+
+const securityCoverageKillChainPhasesFragment = graphql`
+  fragment SecurityCoverageAttackPatternsKillChainPhasesFragment on Query {
+    allAttackPatterns: attackPatterns(first: 1000) {
+      edges {
+        node {
+          killChainPhases {
+            kill_chain_name
+          }
+        }
+      }
+    }
+  }
+`;
+
+// The library item declares a 16x16 glyph.
+const GLYPH = { fontSize: 16 };
+
+interface SecurityCoverageAttackPatternsProps {
+  securityCoverage: SecurityCoverageAttackPatternsFragment$data;
+  dataKillChains: SecurityCoverageAttackPatternsKillChainPhasesFragment$key;
+}
+
+const SecurityCoverageAttackPatternsComponent = ({
+  securityCoverage,
+  dataKillChains,
+}: SecurityCoverageAttackPatternsProps) => {
+  const { t_i18n } = useFormatter();
+  const [searchTerm, setSearchTerm] = useState('');
+  const [viewMode, setViewMode] = useState<'matrix' | 'lines'>('matrix');
+  const [selectedKillChain, setSelectedKillChain] = useState('mitre-attack');
+  const [isModeOnlyActive, setIsModeOnlyActive] = useState(false);
+  const theme = useTheme<Theme>();
+  const killChainsData = useFragment(securityCoverageKillChainPhasesFragment, dataKillChains);
+  const dedupedAttPatterns = useMemo(
+    () => dedupeCoveredEntities(securityCoverage.attPatterns?.entities ?? []),
+    [securityCoverage.attPatterns?.entities],
+  );
+
+  // Extract unique kill chains from all attack patterns
+  const killChainsSet = new Set<string>();
+  if (killChainsData.allAttackPatterns?.edges) {
+    killChainsData.allAttackPatterns.edges.forEach((edge) => {
+      if (edge?.node?.killChainPhases) {
+        edge.node.killChainPhases.forEach((phase) => {
+          if (phase?.kill_chain_name) {
+            killChainsSet.add(phase.kill_chain_name);
+          }
+        });
+      }
+    });
+  }
+  const killChains = Array.from(killChainsSet).sort((a, b) => a.localeCompare(b));
+  const showKillChainSelector = killChains.length > 1;
+
+  const handleKillChainChange = (value: string) => {
+    setSelectedKillChain(value);
+  };
+
+  // Update selected kill chain if current one is not available
+  useEffect(() => {
+    if (killChains.length > 0 && !killChains.includes(selectedKillChain)) {
+      setSelectedKillChain(killChains[0]);
+    }
+  }, [killChains.length, selectedKillChain]); // Use killChains.length instead of killChains to avoid dependency array issues
+
+  return (
+    <Card
+      title={(
+        <Stack
+          direction="row"
+          spacing={1}
+          sx={{
+            alignItems: 'center',
+          }}
+        >
+          <span>{t_i18n('Attack patterns coverage')}</span>
+          <Tooltip title={t_i18n('Average coverage score from Security Coverage Result(s)')}>
+            <InformationOutline fontSize="small" color="primary" />
+          </Tooltip>
+        </Stack>
+      )}
+      action={(
+        <Stack direction="row" spacing={1}>
+          {viewMode === 'matrix' && (
+            <Tooltip
+              title={
+                isModeOnlyActive
+                  ? t_i18n('Display the whole matrix')
+                  : t_i18n('Display only used techniques')
+              }
+            >
+              <span>
+                <IconButton
+                  size="sm"
+                  priority="tertiary"
+                  color={isModeOnlyActive ? 'secondary' : 'primary'}
+                  onClick={() => setIsModeOnlyActive((value) => !value)}
+                  icon={<VisibilityOutlined fontSize="small" />}
+                  aria-label="matrix-mode"
+                />
+              </span>
+            </Tooltip>
+          )}
+          <ButtonGroup
+            size="sm"
+            value={viewMode}
+            onValueChange={(value) => value && setViewMode(value as 'matrix' | 'lines')}
+            aria-label={t_i18n('Change view')}
+          >
+            <Tooltip title={t_i18n('Matrix view')}>
+              <ButtonGroupItem
+                value="matrix"
+                aria-label="matrix view"
+                icon={<ViewModuleOutlined sx={GLYPH} />}
+              />
+            </Tooltip>
+            <Tooltip title={t_i18n('Lines view')}>
+              <ButtonGroupItem
+                value="lines"
+                aria-label="lines view"
+                icon={<ViewListOutlined sx={GLYPH} />}
+              />
+            </Tooltip>
+          </ButtonGroup>
+          <SearchInput
+            variant="thin"
+            onSubmit={setSearchTerm}
+          />
+        </Stack>
+      )}
+    >
+      {(securityCoverage.attPatterns?.count ?? 0) > MAX_ATTACK_PATTERNS && (
+        <Alert
+          severity="warning"
+          style={{ marginBottom: 10 }}
+          content={t_i18n(
+            'Showing {max} of {count} attack patterns. Some results are not displayed.',
+            { values: { max: MAX_ATTACK_PATTERNS, count: securityCoverage.attPatterns?.count ?? 0 } },
+          )}
+        />
+      )}
+      {viewMode === 'matrix' ? (
+        <>
+          {showKillChainSelector && (
+            <Box sx={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 1 }}>
+              <Select
+                value={selectedKillChain}
+                onValueChange={handleKillChainChange}
+              >
+                <SelectTrigger aria-label={t_i18n('Kill chain')}>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent aria-label={t_i18n('Kill chain')}>
+                  {killChains.map((chain) => (
+                    <SelectItem key={chain} value={chain}>
+                      {(() => {
+                        if (chain === 'mitre-attack') return 'Mitre Attack';
+                        if (chain === 'capec') return 'CAPEC';
+                        if (chain === 'disarm') return 'Disarm';
+                        return capitalizeFirstLetter(chain);
+                      })()}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </Box>
+          )}
+          <SecurityCoverageAttackPatternsMatrix
+            securityCoverage={securityCoverage}
+            searchTerm={searchTerm}
+            selectedKillChain={selectedKillChain}
+            isModeOnlyActive={isModeOnlyActive}
+          />
+        </>
+      ) : (
+        <>
+          <div className="clearfix" />
+          <FieldOrEmpty source={securityCoverage.attPatterns?.entities || []}>
+            <SecurityCoverageCoveredList
+              entities={dedupedAttPatterns}
+              style={{ marginTop: -10 }}
+              rowRenderer={(attackPatternEntity) => {
+                const attackPattern = attackPatternEntity.to;
+                const coverage = attackPatternEntity.coverage_information || [];
+                return (
+                  <ListItem
+                    key={attackPatternEntity.relationship_id}
+                    dense={true}
+                    divider={true}
+                    disablePadding={true}
+                  >
+                    <ListItemButton
+                      component={Link}
+                      to={`/dashboard/analyses/security_coverages/${securityCoverage?.id}/relations/${attackPatternEntity.relationship_id}`}
+                      style={{ width: '100%' }}
+                    >
+                      <ListItemIcon>
+                        <ItemIcon color={theme.palette.primary.main} type="attack-pattern" />
+                      </ListItemIcon>
+                      <ListItemText
+                        primary={(
+                          <Box sx={{ display: 'flex', alignItems: 'center', width: '100%' }}>
+                            <Typography variant="body2" component="span" noWrap sx={{ flex: '1 1 10%' }}>{attackPattern?.name}</Typography>
+                            <Box sx={{ flex: '1 1 auto', display: 'flex', justifyContent: 'end' }}>
+                              <SecurityCoverageScores
+                                coverage_information={coverage}
+                                variant="header"
+                              />
+                            </Box>
+                          </Box>
+                        )}
+                      />
+                    </ListItemButton>
+                  </ListItem>
+                );
+              }}
+            />
+          </FieldOrEmpty>
+        </>
+      )}
+    </Card>
+  );
+};
+
+const SecurityCoverageAttackPatterns = createFragmentContainer(
+  SecurityCoverageAttackPatternsComponent,
+  {
+    securityCoverage: graphql`
+      fragment SecurityCoverageAttackPatternsFragment on SecurityCoverage {
+        id
+        attPatterns: coveredAttackPatterns(
+          orderBy: created_at
+          orderMode: asc
+          first: 5000
+        ) {
+          count
+          entities {
+            relationship_id
+            coverage_information {
+              coverage_name
+              coverage_score
+            }
+            to {
+              id
+              parent_types
+              name
+              description
+            }
+          }
+        }
+        ...SecurityCoverageAttackPatternsMatrix_securityCoverage
+      }
+    `,
+  },
+);
+
+export default SecurityCoverageAttackPatterns;

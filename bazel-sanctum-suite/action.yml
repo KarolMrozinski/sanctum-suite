@@ -1,0 +1,49 @@
+name: 'SANCTUM AI Security & Resilience Gate'
+description: 'Runs an explicitly authorized SANCTUM-SUITE audit against a supplied target'
+inputs:
+  target-domain:
+    description: 'Target domain for which you have explicit written authorization to run an audit'
+    required: true
+  authorization:
+    description: 'Set to I_HAVE_AUTHORIZATION to confirm written permission to audit target-domain'
+    required: true
+  authorization-reference:
+    description: 'Reference to the written authorization record'
+    required: true
+  authorized-targets:
+    description: 'Exact comma-separated targets approved by the repository operator'
+    required: true
+  license-key:
+    description: 'Signed SANCTUM entitlement token'
+    required: true
+  license-public-key:
+    description: 'PEM-encoded Ed25519 public key used to verify the entitlement'
+    required: true
+runs:
+  using: 'composite'
+  steps:
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.11'
+    - name: Verify target authorization
+      run: |
+        if [ "$AUTHORIZATION" != "I_HAVE_AUTHORIZATION" ]; then
+          echo "Explicit authorization confirmation is required."
+          exit 1
+        fi
+      env:
+        AUTHORIZATION: ${{ inputs.authorization }}
+      shell: bash
+    - name: Install SANCTUM-SUITE
+      run: pip install -e .
+      shell: bash
+    - name: Run Resilience Audit Gate
+      env:
+        TARGET_DOMAIN: ${{ inputs.target-domain }}
+        AUTHORIZATION_REFERENCE: ${{ inputs.authorization-reference }}
+        SANCTUM_AUTHORIZED_TARGETS: ${{ inputs.authorized-targets }}
+        SANCTUM_LICENSE_KEY: ${{ inputs.license-key }}
+        SANCTUM_LICENSE_PUBLIC_KEY: ${{ inputs.license-public-key }}
+      run: sanctum run-audit --target "$TARGET_DOMAIN" --authorization-reference "$AUTHORIZATION_REFERENCE"
+      shell: bash

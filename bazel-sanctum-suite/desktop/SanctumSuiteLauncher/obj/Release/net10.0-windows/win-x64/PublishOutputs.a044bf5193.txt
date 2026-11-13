@@ -1,0 +1,6 @@
+c:\Users\edgie\Desktop\EEE\sanctum-suite\SanctumSuiteLauncher\bin\Release\net10.0-windows\win-x64\publish\SanctumSuiteLauncher.exe
+c:\Users\edgie\Desktop\EEE\sanctum-suite\SanctumSuiteLauncher\bin\Release\net10.0-windows\win-x64\publish\sanctum-suite-icon.ico
+c:\Users\edgie\Desktop\EEE\sanctum-suite\SanctumSuiteLauncher\bin\Release\net10.0-windows\win-x64\publish\SanctumSuiteLauncher.dll
+c:\Users\edgie\Desktop\EEE\sanctum-suite\SanctumSuiteLauncher\bin\Release\net10.0-windows\win-x64\publish\SanctumSuiteLauncher.deps.json
+c:\Users\edgie\Desktop\EEE\sanctum-suite\SanctumSuiteLauncher\bin\Release\net10.0-windows\win-x64\publish\SanctumSuiteLauncher.runtimeconfig.json
+c:\Users\edgie\Desktop\EEE\sanctum-suite\SanctumSuiteLauncher\bin\Release\net10.0-windows\win-x64\publish\SanctumSuiteLauncher.pdb

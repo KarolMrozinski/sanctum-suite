@@ -1,0 +1,70 @@
+FROM quay.io/wildfly/wildfly:26.1.3.Final-jdk11 AS wildfly
+FROM rockylinux/rockylinux:8
+
+RUN dnf -y install dnf-plugins-core epel-release java-11-openjdk-devel && \
+    dnf config-manager --set-enabled powertools && \
+    chmod -R 777 /usr/lib/jvm/java-11/bin/* && \
+    groupadd -r jboss -g 1000 && \
+    useradd -u 1000 -r -g jboss -m -d /opt/jboss -s /sbin/nologin -c "JBoss User" jboss && \
+    groupadd -r hadoop && \
+    useradd -r -g hadoop -m -d /opt/datawave -s /bin/bash -c "DATAWAVE User" datawave && \
+    chown -R datawave:hadoop /opt/datawave /opt/jboss && \
+    chmod -R ug+rX,o-rx /opt/datawave /opt/jboss
+
+ENV JAVA_VERSION=11 \
+    JAVA_HOME=/usr/lib/jvm/java-11
+
+LABEL version="11"
+
+RUN dnf update -y && \
+    dnf install -y which less bind-utils net-tools lsof nethogs dstat strace htop iperf iperf3 socat iftop xmlstarlet augeas bsdtar unzip
+
+ENV WILDFLY_VERSION 26.1.3.Final \
+    JBOSS_HOME /opt/jboss/wildfly \
+    LAUNCH_JOBS_IN_BACKGROUND true
+
+COPY --from=wildfly /opt/jboss/wildfly /opt/jboss/wildfly
+EXPOSE 8080
+
+CMD ["/opt/jboss/wildfly/bin/standalone.sh","-b","0.0.0.0"]
+
+RUN chown -R datawave:hadoop /opt/jboss && \
+    chmod -R ug+rX,o-rx /opt/jboss
+
+LABEL name="Datawave web service image"
+
+ENV WILDFLY_HOME=/opt/jboss/wildfly \
+    PRESERVE_DATA_DIR=true \
+    PRESERVE_LOG_DIR=true
+
+WORKDIR $WILDFLY_HOME
+
+COPY overlay $WILDFLY_HOME/
+COPY mysql $WILDFLY_HOME/mysql
+COPY *.cli $WILDFLY_HOME/tools/
+COPY ${project.build.finalName}-${build.env}.ear $WILDFLY_HOME/standalone/deployments
+COPY docker-entrypoint.sh /
+
+RUN cp /opt/jboss/.bash* $WILDFLY_HOME && \
+    chown -R datawave:hadoop /docker-entrypoint.sh /opt/jboss && \
+    chmod -R u+rwX /opt/jboss && \
+    chmod u+x /docker-entrypoint.sh  $WILDFLY_HOME/bin/*  $WILDFLY_HOME/tools/*.sh  $WILDFLY_HOME/tools/*.py
+
+USER datawave
+
+# The messaging subsystem authenticates against the application realm, and nothing else creates this
+# user in the image: without it every in-VM connection fails AMQ229031 and is retried forever, which
+# eventually exhausts the heap. The standalone install does the same thing in setup-wildfly.sh.
+RUN $WILDFLY_HOME/bin/add-user.sh -a -u '${hornetq.system.username}' -p '${hornetq.system.password}' -g admin,InternalUser
+
+RUN touch $WILDFLY_HOME/standalone/deployments/${project.build.finalName}-${build.env}.ear.skipdeploy && \
+    $WILDFLY_HOME/bin/jboss-cli.sh --file=$WILDFLY_HOME/tools/add-datawave-configuration.cli && \
+    rm -rf $WILDFLY_HOME/standalone/configuration/standalone_xml_history && \
+    rm -rf $WILDFLY_HOME/standalone/log && \
+    rm -f $WILDFLY_HOME/tools/*.cli && \
+    rm $WILDFLY_HOME/standalone/deployments/${project.build.finalName}-${build.env}.ear.skipdeploy
+
+EXPOSE 8080 8443 9990
+
+ENTRYPOINT ["/docker-entrypoint.sh"]
+CMD ["/opt/jboss/wildfly/bin/standalone.sh", "-b", "0.0.0.0", "-c", "standalone-full.xml"]

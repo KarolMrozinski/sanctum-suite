@@ -1,0 +1,605 @@
+import { describe, it, expect, vi, beforeEach } from 'vitest';
+import * as MiddlewareLoader from '../../../../src/database/middleware-loader';
+import * as Middleware from '../../../../src/database/middleware';
+import * as BackgroundTask from '../../../../src/domain/backgroundTask';
+import * as Redis from '../../../../src/database/redis';
+import * as UserActionListener from '../../../../src/listener/UserActionListener';
+import * as Access from '../../../../src/utils/access';
+import * as CacheModule from '../../../../src/database/cache';
+import * as TelemetryManager from '../../../../src/manager/telemetryManager';
+import * as EnterpriseEdition from '../../../../src/enterprise-edition/ee';
+import { EditOperation, FilterMode, FilterOperator } from '../../../../src/generated/graphql';
+import {
+  customFieldDefinitionAdd,
+  customFieldDefinitionAddEntityType,
+  customFieldDefinitionDelete,
+  customFieldDefinitionEdit,
+  customFieldDefinitionRemoveEntityType,
+  customFieldDefinitionUpdateEntityType,
+  findById,
+  findCustomFieldDefinitionsForEntityType,
+  findCustomFieldDefinitionsPaginated,
+  findCustomFieldStixFilterKeys,
+} from '../../../../src/modules/customField/custom-field-domain';
+import type { BasicStoreEntityCustomFieldDefinition } from '../../../../src/modules/customField/custom-field-types';
+
+vi.mock('../../../../src/database/middleware-loader', () => ({
+  countAllThings: vi.fn(),
+  fullEntitiesList: vi.fn(async () => []),
+  pageEntitiesConnection: vi.fn(async () => ({ edges: [], pageInfo: {} })),
+  storeLoadById: vi.fn(),
+}));
+
+vi.mock('../../../../src/database/middleware', () => ({
+  createEntity: vi.fn(),
+  deleteElementById: vi.fn(),
+  updateAttribute: vi.fn(),
+}));
+
+vi.mock('../../../../src/domain/backgroundTask', () => ({
+  createQueryTask: vi.fn(),
+}));
+
+vi.mock('../../../../src/database/redis', () => ({
+  notify: vi.fn().mockImplementation((_topic, element) => Promise.resolve(element)),
+}));
+
+vi.mock('../../../../src/listener/UserActionListener', () => ({
+  publishUserAction: vi.fn(),
+}));
+
+vi.mock('../../../../src/manager/telemetryManager', () => ({
+  addCustomFieldCreatedCount: vi.fn(),
+}));
+
+vi.mock('../../../../src/database/cache', () => ({
+  getEntitiesListFromCache: vi.fn(async () => []),
+}));
+
+vi.mock('../../../../src/enterprise-edition/ee', () => ({
+  checkEnterpriseEdition: vi.fn(),
+}));
+
+vi.mock('../../../../src/utils/access', async () => {
+  const actual = await vi.importActual('../../../../src/utils/access') as object;
+  return {
+    ...actual,
+    executionContext: vi.fn(() => ({ source: 'testing' })),
+  };
+});
+
+const mockContext = { source: 'testing' } as any;
+const mockUser = { id: 'user-1' } as any;
+
+const makeDefinition = (overrides: Partial<BasicStoreEntityCustomFieldDefinition> = {}): BasicStoreEntityCustomFieldDefinition => ({
+  id: 'cf-id-1',
+  standard_id: 'custom-field-definition--id-1',
+  entity_type: 'CustomFieldDefinition',
+  name: 'x_opencti_cf_field',
+  label: 'Field',
+  description: '',
+  field_type: 'string',
+  entity_types: [],
+  entity_type_settings: [],
+  multiple: false,
+  ...overrides,
+} as unknown as BasicStoreEntityCustomFieldDefinition);
+
+const seedCustomFieldDefinitions = (...definitions: BasicStoreEntityCustomFieldDefinition[]) => {
+  vi.mocked(CacheModule.getEntitiesListFromCache).mockResolvedValue(definitions);
+};
+
+beforeEach(() => {
+  // resetAllMocks (not clearAllMocks) so a mockImplementation set by one test (e.g. making
+  // checkEnterpriseEdition reject) never leaks into the next test.
+  vi.resetAllMocks();
+  seedCustomFieldDefinitions();
+  vi.mocked(MiddlewareLoader.fullEntitiesList).mockResolvedValue([]);
+  vi.mocked(MiddlewareLoader.pageEntitiesConnection).mockResolvedValue({ edges: [], pageInfo: {} } as any);
+  vi.mocked(Redis.notify).mockImplementation((_topic: string, element: any) => Promise.resolve(element));
+  vi.mocked(Access.executionContext).mockReturnValue({ source: 'testing' } as any);
+});
+
+describe('findById / findCustomFieldDefinitionsPaginated / findCustomFieldDefinitionsForEntityType', () => {
+  it('findById delegates to storeLoadById with the CustomFieldDefinition type', async () => {
+    vi.mocked(MiddlewareLoader.storeLoadById).mockResolvedValue(makeDefinition() as any);
+    await findById(mockContext, mockUser, 'cf-id-1');
+    expect(MiddlewareLoader.storeLoadById).toHaveBeenCalledWith(mockContext, mockUser, 'cf-id-1', 'CustomFieldDefinition');
+  });
+
+  it('findCustomFieldDefinitionsPaginated delegates to pageEntitiesConnection', async () => {
+    const opts = { first: 10 } as any;
+    await findCustomFieldDefinitionsPaginated(mockContext, mockUser, opts);
+    expect(MiddlewareLoader.pageEntitiesConnection).toHaveBeenCalledWith(mockContext, mockUser, ['CustomFieldDefinition'], opts);
+  });
+
+  it('findCustomFieldDefinitionsForEntityType builds an entity_types filter', async () => {
+    await findCustomFieldDefinitionsForEntityType(mockContext, mockUser, 'Case-Incident');
+    expect(MiddlewareLoader.pageEntitiesConnection).toHaveBeenCalledWith(mockContext, mockUser, ['CustomFieldDefinition'], {
+      filters: {
+        mode: FilterMode.And,
+        filters: [{ key: ['entity_types'], values: ['Case-Incident'], operator: FilterOperator.Eq }],
+        filterGroups: [],
+      },
+    });
+  });
+});
+
+describe('findCustomFieldStixFilterKeys', () => {
+  it('returns the names of all definitions when no entityType is given', async () => {
+    seedCustomFieldDefinitions(
+      makeDefinition({ name: 'x_opencti_cf_score' }),
+      makeDefinition({ name: 'x_opencti_cf_label' }),
+    );
+    const result = await findCustomFieldStixFilterKeys(mockContext, mockUser, null);
+    expect(result.sort()).toEqual(['x_opencti_cf_label', 'x_opencti_cf_score']);
+  });
+
+  it('filters definitions by entity type when provided', async () => {
+    seedCustomFieldDefinitions(
+      makeDefinition({ name: 'x_opencti_cf_score', entity_types: ['Case-Incident'] }),
+      makeDefinition({ name: 'x_opencti_cf_label', entity_types: ['Report'] }),
+    );
+    const result = await findCustomFieldStixFilterKeys(mockContext, mockUser, 'Case-Incident');
+    expect(result).toEqual(['x_opencti_cf_score']);
+  });
+
+  it('returns an empty array when no definition matches the entity type', async () => {
+    seedCustomFieldDefinitions(makeDefinition({ name: 'x_opencti_cf_score', entity_types: ['Report'] }));
+    const result = await findCustomFieldStixFilterKeys(mockContext, mockUser, 'Case-Incident');
+    expect(result).toEqual([]);
+  });
+});
+
+describe('customFieldDefinitionAdd', () => {
+  const validInput = {
+    name: 'x_opencti_cf_score',
+    label: 'Score',
+    description: 'Score of the entity',
+    field_type: 'integer',
+  } as any;
+
+  it('throws when the description is missing or blank', async () => {
+    await expect(customFieldDefinitionAdd(mockContext, mockUser, { ...validInput, description: undefined }))
+      .rejects.toThrow('The description of a custom field is required');
+    await expect(customFieldDefinitionAdd(mockContext, mockUser, { ...validInput, description: '  ' }))
+      .rejects.toThrow('The description of a custom field is required');
+    expect(Middleware.createEntity).not.toHaveBeenCalled();
+  });
+
+  it.each(['Hello', 'priority', 'x_Priority', 'x_prio-rity', 'x_'])('throws on the malformed alias %s', async (alias) => {
+    await expect(customFieldDefinitionAdd(mockContext, mockUser, { ...validInput, aliases: [alias] }))
+      .rejects.toThrow('An alias must start with "x_" and contain only lowercase letters, numbers and underscores');
+    expect(Middleware.createEntity).not.toHaveBeenCalled();
+  });
+
+  it('throws in Community Edition', async () => {
+    vi.mocked(EnterpriseEdition.checkEnterpriseEdition).mockRejectedValue(new Error('Enterprise edition is not enabled'));
+    await expect(customFieldDefinitionAdd(mockContext, mockUser, validInput)).rejects.toThrow('Enterprise edition is not enabled');
+    expect(Middleware.createEntity).not.toHaveBeenCalled();
+  });
+
+  it('throws when the input attaches the custom field to entity types, managed by the entity type mutations only', async () => {
+    await expect(customFieldDefinitionAdd(mockContext, mockUser, { ...validInput, entity_types: ['Report'] }))
+      .rejects.toThrow('Cannot create a custom field definition attached to entity types');
+    expect(Middleware.createEntity).not.toHaveBeenCalled();
+  });
+
+  it('throws on an invalid technical name', async () => {
+    await expect(customFieldDefinitionAdd(mockContext, mockUser, { ...validInput, name: 'invalid_name' }))
+      .rejects.toThrow('Technical name must start with "x_opencti_cf_"');
+    expect(Middleware.createEntity).not.toHaveBeenCalled();
+    expect(TelemetryManager.addCustomFieldCreatedCount).not.toHaveBeenCalled();
+  });
+
+  it('throws when the technical name already exists', async () => {
+    seedCustomFieldDefinitions(makeDefinition({ name: 'x_opencti_cf_score' }));
+    await expect(customFieldDefinitionAdd(mockContext, mockUser, validInput))
+      .rejects.toThrow('A custom field with this technical name already exists');
+  });
+
+  it('throws when the label already exists', async () => {
+    seedCustomFieldDefinitions(makeDefinition({ name: 'x_opencti_cf_other', label: 'Score' }));
+    await expect(customFieldDefinitionAdd(mockContext, mockUser, validInput))
+      .rejects.toThrow('A custom field with this label already exists');
+  });
+
+  it('throws when the new name collides with an existing alias', async () => {
+    seedCustomFieldDefinitions(makeDefinition({ name: 'x_opencti_cf_other', aliases: ['x_opencti_cf_score'] } as any));
+    await expect(customFieldDefinitionAdd(mockContext, mockUser, validInput))
+      .rejects.toThrow('A custom field with this technical name already exists');
+  });
+
+  it('throws when a provided alias collides with an existing name or alias', async () => {
+    seedCustomFieldDefinitions(makeDefinition({ name: 'x_opencti_cf_existing' }));
+    await expect(customFieldDefinitionAdd(mockContext, mockUser, { ...validInput, aliases: ['x_opencti_cf_existing'] }))
+      .rejects.toThrow('A custom field with this alias already exists');
+  });
+
+  it('throws on an unsupported field_type', async () => {
+    await expect(customFieldDefinitionAdd(mockContext, mockUser, { ...validInput, field_type: 'unsupported' }))
+      .rejects.toThrow('Unsupported custom field type');
+  });
+
+  it('throws when min_value is greater than max_value', async () => {
+    await expect(customFieldDefinitionAdd(mockContext, mockUser, { ...validInput, min_value: 10, max_value: 5 }))
+      .rejects.toThrow('min_value cannot be greater than max_value');
+  });
+
+  it('throws when select_options is missing for a select field', async () => {
+    await expect(customFieldDefinitionAdd(mockContext, mockUser, { ...validInput, field_type: 'select', select_options: [] }))
+      .rejects.toThrow('select_options must be provided');
+  });
+
+  it('creates the entity, forces multiple=true for multi_select, notifies and publishes the user action', async () => {
+    const created = { id: 'cf-id-1', name: 'x_opencti_cf_tags' };
+    vi.mocked(Middleware.createEntity).mockResolvedValue(created as any);
+    const input = { ...validInput, name: 'x_opencti_cf_tags', field_type: 'multi_select', select_options: ['a', 'b'], multiple: false };
+    await customFieldDefinitionAdd(mockContext, mockUser, input);
+    expect(Middleware.createEntity).toHaveBeenCalledWith(
+      mockContext,
+      mockUser,
+      expect.objectContaining({ multiple: true }),
+      'CustomFieldDefinition',
+    );
+    expect(UserActionListener.publishUserAction).toHaveBeenCalledWith(expect.objectContaining({
+      event_scope: 'create',
+      message: 'creates custom field definition `x_opencti_cf_tags`',
+    }));
+    expect(Redis.notify).toHaveBeenCalledWith(expect.any(String), created, mockUser);
+    expect(TelemetryManager.addCustomFieldCreatedCount).toHaveBeenCalledTimes(1);
+  });
+
+  it('respects the provided multiple flag for a non-multi_select field type', async () => {
+    const created = { id: 'cf-id-1', name: 'x_opencti_cf_score' };
+    vi.mocked(Middleware.createEntity).mockResolvedValue(created as any);
+    await customFieldDefinitionAdd(mockContext, mockUser, { ...validInput, multiple: true });
+    expect(Middleware.createEntity).toHaveBeenCalledWith(
+      mockContext,
+      mockUser,
+      expect.objectContaining({ multiple: true }),
+      'CustomFieldDefinition',
+    );
+  });
+});
+
+describe('customFieldDefinitionDelete', () => {
+  it('deletes the entity, notifies, publishes the action and schedules the cascade cleanup', async () => {
+    const element = { id: 'cf-id-1', name: 'x_opencti_cf_score', entity_types: ['Case-Incident'] };
+    vi.mocked(Middleware.deleteElementById).mockResolvedValue(element as any);
+
+    await customFieldDefinitionDelete(mockContext, mockUser, 'cf-id-1');
+
+    expect(Middleware.deleteElementById).toHaveBeenCalledWith(mockContext, mockUser, 'cf-id-1', 'CustomFieldDefinition');
+    expect(Redis.notify).toHaveBeenCalledWith(expect.any(String), element, mockUser);
+    expect(UserActionListener.publishUserAction).toHaveBeenCalledWith(expect.objectContaining({ event_scope: 'delete' }));
+    expect(BackgroundTask.createQueryTask).toHaveBeenCalledWith(
+      expect.anything(),
+      Access.SYSTEM_USER,
+      expect.objectContaining({
+        filters: expect.stringContaining('x_opencti_cf_score'),
+      }),
+    );
+  });
+});
+
+describe('customFieldDefinitionEdit', () => {
+  it('throws when trying to edit an immutable key (field_type or name)', async () => {
+    await expect(customFieldDefinitionEdit(mockContext, mockUser, 'cf-id-1', [{ key: 'field_type', value: ['string'] } as any]))
+      .rejects.toThrow('Cannot modify immutable fields');
+    expect(Middleware.updateAttribute).not.toHaveBeenCalled();
+  });
+
+  it('throws when trying to edit the entity types, managed by the entity type mutations only', async () => {
+    await expect(customFieldDefinitionEdit(mockContext, mockUser, 'cf-id-1', [{ key: 'entity_types', value: ['Report'] } as any]))
+      .rejects.toThrow('Cannot modify the entity types of a custom field definition');
+    await expect(customFieldDefinitionEdit(mockContext, mockUser, 'cf-id-1', [{ key: 'entity_type_settings', value: [] } as any]))
+      .rejects.toThrow('Cannot modify the entity types of a custom field definition');
+  });
+
+  it('throws when the new label is already used by another definition', async () => {
+    seedCustomFieldDefinitions(makeDefinition({ id: 'cf-id-2', label: 'Existing label' }));
+    await expect(customFieldDefinitionEdit(mockContext, mockUser, 'cf-id-1', [{ key: 'label', value: ['Existing label'] } as any]))
+      .rejects.toThrow('A custom field with this label already exists');
+  });
+
+  it('does not throw when editing the label to the same value on the same definition', async () => {
+    seedCustomFieldDefinitions(makeDefinition({ id: 'cf-id-1', label: 'Same label' }));
+    vi.mocked(Middleware.updateAttribute).mockResolvedValue({ element: makeDefinition({ id: 'cf-id-1' }) } as any);
+    await expect(customFieldDefinitionEdit(mockContext, mockUser, 'cf-id-1', [{ key: 'label', value: ['Same label'] } as any]))
+      .resolves.not.toThrow();
+  });
+
+  it('throws when removing a select option still used by existing entities', async () => {
+    const definition = makeDefinition({ field_type: 'select', select_options: ['a', 'b'] });
+    vi.mocked(MiddlewareLoader.storeLoadById).mockResolvedValue(definition as any);
+    vi.mocked(MiddlewareLoader.countAllThings).mockResolvedValue(3);
+    const edit = [{ key: 'select_options', value: ['a'], operation: EditOperation.Replace } as any];
+    await expect(customFieldDefinitionEdit(mockContext, mockUser, 'cf-id-1', edit))
+      .rejects.toThrow('Cannot remove a select option that is still used');
+    expect(Middleware.updateAttribute).not.toHaveBeenCalled();
+  });
+
+  it('allows removing a select option not used by any entity', async () => {
+    const definition = makeDefinition({ field_type: 'select', select_options: ['a', 'b'] });
+    vi.mocked(MiddlewareLoader.storeLoadById).mockResolvedValue(definition as any);
+    vi.mocked(MiddlewareLoader.countAllThings).mockResolvedValue(0);
+    vi.mocked(Middleware.updateAttribute).mockResolvedValue({ element: definition } as any);
+    const edit = [{ key: 'select_options', value: ['a'], operation: EditOperation.Replace } as any];
+    await expect(customFieldDefinitionEdit(mockContext, mockUser, 'cf-id-1', edit)).resolves.not.toThrow();
+    expect(Middleware.updateAttribute).toHaveBeenCalled();
+  });
+
+  it('throws when tightening min_value beyond an already-stored value', async () => {
+    const definition = makeDefinition({ field_type: 'integer', min_value: 0, max_value: 100 });
+    vi.mocked(MiddlewareLoader.storeLoadById).mockResolvedValue(definition as any);
+    vi.mocked(MiddlewareLoader.countAllThings).mockResolvedValue(2);
+    const edit = [{ key: 'min_value', value: ['10'] } as any];
+    await expect(customFieldDefinitionEdit(mockContext, mockUser, 'cf-id-1', edit))
+      .rejects.toThrow('Cannot restrict the value range');
+    expect(Middleware.updateAttribute).not.toHaveBeenCalled();
+  });
+
+  it('allows tightening min_value when no stored value falls out of bounds', async () => {
+    const definition = makeDefinition({ field_type: 'integer', min_value: 0, max_value: 100 });
+    vi.mocked(MiddlewareLoader.storeLoadById).mockResolvedValue(definition as any);
+    vi.mocked(MiddlewareLoader.countAllThings).mockResolvedValue(0);
+    vi.mocked(Middleware.updateAttribute).mockResolvedValue({ element: definition } as any);
+    const edit = [{ key: 'min_value', value: ['10'] } as any];
+    await expect(customFieldDefinitionEdit(mockContext, mockUser, 'cf-id-1', edit)).resolves.not.toThrow();
+    expect(Middleware.updateAttribute).toHaveBeenCalled();
+  });
+
+  it('updates the attribute, notifies and publishes the action on success', async () => {
+    const updatedElem = makeDefinition({ id: 'cf-id-1', name: 'x_opencti_cf_score' });
+    vi.mocked(Middleware.updateAttribute).mockResolvedValue({ element: updatedElem } as any);
+    const edit = [{ key: 'description', value: ['New description'] } as any];
+    await customFieldDefinitionEdit(mockContext, mockUser, 'cf-id-1', edit);
+    expect(Middleware.updateAttribute).toHaveBeenCalledWith(mockContext, mockUser, 'cf-id-1', 'CustomFieldDefinition', edit);
+    expect(UserActionListener.publishUserAction).toHaveBeenCalledWith(expect.objectContaining({ event_scope: 'update' }));
+    expect(Redis.notify).toHaveBeenCalledWith(expect.any(String), updatedElem, mockUser);
+  });
+});
+
+describe('customFieldDefinitionEdit - aliases format and description', () => {
+  it('throws when a new alias is malformed', async () => {
+    const edit = [{ key: 'aliases', value: ['x_valid', 'Hello'], operation: EditOperation.Replace } as any];
+    await expect(customFieldDefinitionEdit(mockContext, mockUser, 'cf-id-1', edit))
+      .rejects.toThrow('An alias must start with "x_" and contain only lowercase letters, numbers and underscores');
+    expect(Middleware.updateAttribute).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ['emptied', { key: 'description', value: [''] }],
+    ['removed', { key: 'description', value: ['Current description'], operation: EditOperation.Remove }],
+  ])('throws when the description is %s', async (_, descriptionEdit) => {
+    await expect(customFieldDefinitionEdit(mockContext, mockUser, 'cf-id-1', [descriptionEdit as any]))
+      .rejects.toThrow('The description of a custom field is required');
+    expect(Middleware.updateAttribute).not.toHaveBeenCalled();
+  });
+});
+
+describe('customFieldDefinitionEdit - aliases uniqueness', () => {
+  it('throws when a new alias is already used as the technical name or an alias of another definition', async () => {
+    seedCustomFieldDefinitions(makeDefinition({ id: 'cf-id-2', name: 'x_opencti_cf_other' }));
+    const edit = [{ key: 'aliases', value: ['x_opencti_cf_other'], operation: EditOperation.Add } as any];
+    await expect(customFieldDefinitionEdit(mockContext, mockUser, 'cf-id-1', edit))
+      .rejects.toThrow('A custom field with this alias already exists');
+    expect(Middleware.updateAttribute).not.toHaveBeenCalled();
+  });
+
+  it('does not check uniqueness when the aliases edit is a Remove operation', async () => {
+    seedCustomFieldDefinitions(makeDefinition({ id: 'cf-id-2', name: 'x_opencti_cf_other' }));
+    vi.mocked(Middleware.updateAttribute).mockResolvedValue({ element: makeDefinition({ id: 'cf-id-1' }) } as any);
+    const edit = [{ key: 'aliases', value: ['x_opencti_cf_other'], operation: EditOperation.Remove } as any];
+    await expect(customFieldDefinitionEdit(mockContext, mockUser, 'cf-id-1', edit)).resolves.not.toThrow();
+    expect(Middleware.updateAttribute).toHaveBeenCalled();
+  });
+
+  it('allows a new alias that is not used by any other definition', async () => {
+    seedCustomFieldDefinitions(makeDefinition({ id: 'cf-id-2', name: 'x_opencti_cf_other' }));
+    vi.mocked(Middleware.updateAttribute).mockResolvedValue({ element: makeDefinition({ id: 'cf-id-1' }) } as any);
+    const edit = [{ key: 'aliases', value: ['x_opencti_cf_free'], operation: EditOperation.Add } as any];
+    await expect(customFieldDefinitionEdit(mockContext, mockUser, 'cf-id-1', edit)).resolves.not.toThrow();
+    expect(Middleware.updateAttribute).toHaveBeenCalled();
+  });
+});
+
+describe('customFieldDefinitionEdit - integer bounds edge cases', () => {
+  it('throws when tightening max_value beyond an already-stored value', async () => {
+    const definition = makeDefinition({ field_type: 'integer', min_value: 0, max_value: 100 });
+    vi.mocked(MiddlewareLoader.storeLoadById).mockResolvedValue(definition as any);
+    vi.mocked(MiddlewareLoader.countAllThings).mockResolvedValue(2);
+    const edit = [{ key: 'max_value', value: ['50'] } as any];
+    await expect(customFieldDefinitionEdit(mockContext, mockUser, 'cf-id-1', edit))
+      .rejects.toThrow('Cannot restrict the value range');
+    expect(Middleware.updateAttribute).not.toHaveBeenCalled();
+  });
+
+  it('throws when the edited bounds are incoherent (min greater than max)', async () => {
+    const definition = makeDefinition({ field_type: 'integer', min_value: 0, max_value: 100 });
+    vi.mocked(MiddlewareLoader.storeLoadById).mockResolvedValue(definition as any);
+    vi.mocked(MiddlewareLoader.countAllThings).mockResolvedValue(0);
+    const edit = [{ key: 'min_value', value: ['200'] } as any];
+    await expect(customFieldDefinitionEdit(mockContext, mockUser, 'cf-id-1', edit))
+      .rejects.toThrow('min_value cannot be greater than max_value');
+    expect(Middleware.updateAttribute).not.toHaveBeenCalled();
+  });
+
+  it('does not re-check bounds for a non-integer field type', async () => {
+    const definition = makeDefinition({ field_type: 'string' });
+    vi.mocked(MiddlewareLoader.storeLoadById).mockResolvedValue(definition as any);
+    vi.mocked(Middleware.updateAttribute).mockResolvedValue({ element: definition } as any);
+    const edit = [{ key: 'min_value', value: ['10'] } as any];
+    await expect(customFieldDefinitionEdit(mockContext, mockUser, 'cf-id-1', edit)).resolves.not.toThrow();
+    expect(MiddlewareLoader.countAllThings).not.toHaveBeenCalled();
+  });
+});
+
+describe('customFieldDefinitionEdit - select_options edit operations', () => {
+  it('does not check usage when EditOperation is Add (nothing removed)', async () => {
+    const definition = makeDefinition({ field_type: 'select', select_options: ['a', 'b'] });
+    vi.mocked(MiddlewareLoader.storeLoadById).mockResolvedValue(definition as any);
+    vi.mocked(Middleware.updateAttribute).mockResolvedValue({ element: definition } as any);
+    const edit = [{ key: 'select_options', value: ['c'], operation: EditOperation.Add } as any];
+    await expect(customFieldDefinitionEdit(mockContext, mockUser, 'cf-id-1', edit)).resolves.not.toThrow();
+    expect(MiddlewareLoader.countAllThings).not.toHaveBeenCalled();
+    expect(Middleware.updateAttribute).toHaveBeenCalled();
+  });
+
+  it('checks usage for the removed options with EditOperation.Remove', async () => {
+    const definition = makeDefinition({ field_type: 'select', select_options: ['a', 'b'] });
+    vi.mocked(MiddlewareLoader.storeLoadById).mockResolvedValue(definition as any);
+    vi.mocked(MiddlewareLoader.countAllThings).mockResolvedValue(1);
+    const edit = [{ key: 'select_options', value: ['a'], operation: EditOperation.Remove } as any];
+    await expect(customFieldDefinitionEdit(mockContext, mockUser, 'cf-id-1', edit))
+      .rejects.toThrow('Cannot remove a select option that is still used');
+  });
+
+  it('does not check usage for a non-select/multi_select field type', async () => {
+    const definition = makeDefinition({ field_type: 'string' });
+    vi.mocked(MiddlewareLoader.storeLoadById).mockResolvedValue(definition as any);
+    vi.mocked(Middleware.updateAttribute).mockResolvedValue({ element: definition } as any);
+    const edit = [{ key: 'select_options', value: ['a'], operation: EditOperation.Replace } as any];
+    await expect(customFieldDefinitionEdit(mockContext, mockUser, 'cf-id-1', edit)).resolves.not.toThrow();
+    expect(MiddlewareLoader.countAllThings).not.toHaveBeenCalled();
+  });
+});
+
+describe('customFieldDefinitionAddEntityType', () => {
+  it('throws when the definition does not exist', async () => {
+    vi.mocked(MiddlewareLoader.storeLoadById).mockResolvedValue(null as any);
+    await expect(customFieldDefinitionAddEntityType(mockContext, mockUser, 'cf-id-1', 'Case-Incident', true))
+      .rejects.toThrow('Custom field definition not found');
+  });
+
+  it('attaches the entity type with its mandatory/default_value settings', async () => {
+    const definition = makeDefinition({ entity_types: [], entity_type_settings: [] });
+    vi.mocked(MiddlewareLoader.storeLoadById).mockResolvedValue(definition as any);
+    vi.mocked(Middleware.updateAttribute).mockResolvedValue({ element: definition } as any);
+    await customFieldDefinitionAddEntityType(mockContext, mockUser, 'cf-id-1', 'Case-Incident', true, '5');
+    expect(Middleware.updateAttribute).toHaveBeenCalledWith(
+      mockContext,
+      mockUser,
+      'cf-id-1',
+      'CustomFieldDefinition',
+      [
+        { key: 'entity_types', value: ['Case-Incident'], operation: EditOperation.Replace },
+        { key: 'entity_type_settings', value: [{ entity_type: 'Case-Incident', mandatory: true, default_value: '5' }], operation: EditOperation.Replace },
+      ],
+    );
+  });
+});
+
+describe('customFieldDefinitionUpdateEntityType', () => {
+  it('throws when the definition does not exist', async () => {
+    vi.mocked(MiddlewareLoader.storeLoadById).mockResolvedValue(null as any);
+    await expect(customFieldDefinitionUpdateEntityType(mockContext, mockUser, 'cf-id-1', 'Case-Incident', true))
+      .rejects.toThrow('Custom field definition not found');
+  });
+
+  it('throws when the definition is not currently attached to the entity type', async () => {
+    const definition = makeDefinition({ entity_types: ['Report'] });
+    vi.mocked(MiddlewareLoader.storeLoadById).mockResolvedValue(definition as any);
+    await expect(customFieldDefinitionUpdateEntityType(mockContext, mockUser, 'cf-id-1', 'Case-Incident', true))
+      .rejects.toThrow('Custom field definition is not attached to this entity type');
+  });
+
+  it('updates the settings for an already-attached entity type', async () => {
+    const definition = makeDefinition({ entity_types: ['Case-Incident'], entity_type_settings: [{ entity_type: 'Case-Incident', mandatory: false }] });
+    vi.mocked(MiddlewareLoader.storeLoadById).mockResolvedValue(definition as any);
+    vi.mocked(Middleware.updateAttribute).mockResolvedValue({ element: definition } as any);
+    await customFieldDefinitionUpdateEntityType(mockContext, mockUser, 'cf-id-1', 'Case-Incident', true, '10');
+    expect(Middleware.updateAttribute).toHaveBeenCalledWith(
+      mockContext,
+      mockUser,
+      'cf-id-1',
+      'CustomFieldDefinition',
+      [{ key: 'entity_type_settings', value: [{ entity_type: 'Case-Incident', mandatory: true, default_value: '10' }], operation: EditOperation.Replace }],
+    );
+  });
+});
+
+describe('customFieldDefinitionRemoveEntityType', () => {
+  it('throws when the definition does not exist', async () => {
+    vi.mocked(MiddlewareLoader.storeLoadById).mockResolvedValue(null as any);
+    await expect(customFieldDefinitionRemoveEntityType(mockContext, mockUser, 'cf-id-1', 'Case-Incident'))
+      .rejects.toThrow('Custom field definition not found');
+  });
+
+  it('detaches the entity type, updates settings and schedules the cleanup task scoped to that entity type', async () => {
+    const definition = makeDefinition({
+      name: 'x_opencti_cf_score',
+      entity_types: ['Case-Incident', 'Report'],
+      entity_type_settings: [{ entity_type: 'Case-Incident', mandatory: true }, { entity_type: 'Report', mandatory: false }],
+    });
+    vi.mocked(MiddlewareLoader.storeLoadById).mockResolvedValue(definition as any);
+    vi.mocked(Middleware.updateAttribute).mockResolvedValue({ element: definition } as any);
+
+    await customFieldDefinitionRemoveEntityType(mockContext, mockUser, 'cf-id-1', 'Case-Incident');
+
+    expect(Middleware.updateAttribute).toHaveBeenCalledWith(
+      mockContext,
+      mockUser,
+      'cf-id-1',
+      'CustomFieldDefinition',
+      [
+        { key: 'entity_types', value: ['Report'], operation: EditOperation.Replace },
+        { key: 'entity_type_settings', value: [{ entity_type: 'Report', mandatory: false }], operation: EditOperation.Replace },
+      ],
+    );
+    expect(BackgroundTask.createQueryTask).toHaveBeenCalledWith(
+      expect.anything(),
+      Access.SYSTEM_USER,
+      expect.objectContaining({ filters: expect.stringContaining('"Case-Incident"') }),
+    );
+  });
+});
+
+describe('custom field definitions management in Community Edition', () => {
+  it.each([
+    ['delete', () => customFieldDefinitionDelete(mockContext, mockUser, 'cf-id-1')],
+    ['edit', () => customFieldDefinitionEdit(mockContext, mockUser, 'cf-id-1', [{ key: 'label', value: ['New label'] } as any])],
+    ['attach to an entity type', () => customFieldDefinitionAddEntityType(mockContext, mockUser, 'cf-id-1', 'Case-Incident', false)],
+    ['make a custom field mandatory', () => {
+      vi.mocked(MiddlewareLoader.storeLoadById).mockResolvedValue(makeDefinition({ entity_types: ['Case-Incident'] }) as any);
+      return customFieldDefinitionUpdateEntityType(mockContext, mockUser, 'cf-id-1', 'Case-Incident', true);
+    }],
+    ['detach from an entity type', () => customFieldDefinitionRemoveEntityType(mockContext, mockUser, 'cf-id-1', 'Case-Incident')],
+  ])('refuses to %s a custom field definition', async (_, mutation) => {
+    vi.mocked(EnterpriseEdition.checkEnterpriseEdition).mockRejectedValue(new Error('Enterprise edition is not enabled'));
+    await expect(mutation()).rejects.toThrow('Enterprise edition is not enabled');
+    expect(Middleware.updateAttribute).not.toHaveBeenCalled();
+    expect(Middleware.deleteElementById).not.toHaveBeenCalled();
+  });
+});
+
+describe('making a mandatory custom field optional in Community Edition', () => {
+  const definition = makeDefinition({
+    entity_types: ['Case-Incident'],
+    entity_type_settings: [{ entity_type: 'Case-Incident', mandatory: true, default_value: '10' }],
+  });
+
+  beforeEach(() => {
+    vi.mocked(EnterpriseEdition.checkEnterpriseEdition).mockRejectedValue(new Error('Enterprise edition is not enabled'));
+    vi.mocked(MiddlewareLoader.storeLoadById).mockResolvedValue(definition as any);
+    vi.mocked(Middleware.updateAttribute).mockResolvedValue({ element: definition } as any);
+  });
+
+  it('is allowed, so that the creation of the entities is never blocked', async () => {
+    await customFieldDefinitionUpdateEntityType(mockContext, mockUser, 'cf-id-1', 'Case-Incident', false, '10');
+    expect(Middleware.updateAttribute).toHaveBeenCalledWith(
+      mockContext,
+      mockUser,
+      'cf-id-1',
+      'CustomFieldDefinition',
+      [{ key: 'entity_type_settings', value: [{ entity_type: 'Case-Incident', mandatory: false, default_value: '10' }], operation: EditOperation.Replace }],
+    );
+  });
+
+  it('refuses to change the default value at the same time', async () => {
+    await expect(customFieldDefinitionUpdateEntityType(mockContext, mockUser, 'cf-id-1', 'Case-Incident', false, '20'))
+      .rejects.toThrow('Enterprise edition is not enabled');
+    expect(Middleware.updateAttribute).not.toHaveBeenCalled();
+  });
+});

@@ -1,0 +1,623 @@
+package datawave.ingest.mapreduce.job;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+
+import java.io.File;
+import java.io.IOException;
+import java.lang.reflect.Method;
+import java.net.URI;
+import java.net.URL;
+import java.text.SimpleDateFormat;
+import java.util.ArrayList;
+import java.util.Calendar;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+
+import org.apache.accumulo.core.fate.zookeeper.ZooCache;
+import org.apache.commons.codec.binary.Base64;
+import org.apache.hadoop.conf.Configuration;
+import org.apache.hadoop.fs.FileStatus;
+import org.apache.hadoop.fs.FileSystem;
+import org.apache.hadoop.fs.Path;
+import org.apache.hadoop.fs.RawLocalFileSystem;
+import org.apache.hadoop.io.Text;
+import org.apache.hadoop.mapred.JobConf;
+import org.apache.hadoop.mapreduce.MRJobConfig;
+import org.apache.hadoop.util.StringUtils;
+import org.apache.log4j.Level;
+import org.apache.log4j.Logger;
+import org.apache.zookeeper.ZooKeeper;
+import org.easymock.EasyMock;
+import org.junit.jupiter.api.AfterAll;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Disabled;
+import org.junit.jupiter.api.Test;
+
+import datawave.ingest.data.config.ingest.AccumuloHelper;
+import datawave.ingest.util.ShardLocationTrieMap;
+import datawave.webservice.query.data.ObjectSizeOf;
+
+public class TableSplitsCacheTest {
+
+    public static final String PASSWORD = "passw0rd";
+    public static final String HOST_NAME = "localhost";
+    public static final String USER_NAME = "staff";
+    protected static final Logger logger = Logger.getLogger(TableSplitsCacheTest.class);
+    protected static Level testDriverLevel;
+    protected static Level uutLevel;
+    protected static Level zooCacheLevel;
+    protected static Level zooKeeperLevel;
+
+    protected static long FILE_STATUS_LENGTH = 1000l;
+    protected static boolean FILE_STATUS_IS_DIRECTORY = true;
+    protected static int FILE_STATUS_REPLICATION = 3;
+    protected static long FILE_STATUS_BLOCK_SIZE = 1024l;
+    protected static long FILE_STATUS_MODIFICATION_TIME;
+    protected static long FILE_STATUS_ACCESS_TIME;
+    protected static String FILE_STATUS_USER;
+    protected static String FILE_STATUS_GROUP;
+
+    public static class WrappedLocalFileSystem extends RawLocalFileSystem {
+
+        @Override
+        public FileStatus getFileStatus(Path f) throws IOException {
+
+            String path = f.toString();
+            if (new File(path).exists()) {
+                return new FileStatus(TableSplitsCacheTest.FILE_STATUS_LENGTH, TableSplitsCacheTest.FILE_STATUS_IS_DIRECTORY,
+                                TableSplitsCacheTest.FILE_STATUS_REPLICATION, TableSplitsCacheTest.FILE_STATUS_BLOCK_SIZE,
+                                TableSplitsCacheTest.FILE_STATUS_MODIFICATION_TIME, TableSplitsCacheTest.FILE_STATUS_ACCESS_TIME, null,
+                                TableSplitsCacheTest.FILE_STATUS_USER, TableSplitsCacheTest.FILE_STATUS_GROUP, f);
+            } else {
+                return null;
+            }
+
+        }
+
+        @Override
+        public void setConf(Configuration conf) {
+
+            TableSplitsCacheTest.logger.debug("TableSplitsCacheTest.WrappedDistributedFileSystem.setConfig called....");
+
+            super.setConf(conf);
+        }
+
+        @Override
+        protected int getDefaultPort() {
+            return 8080;
+        }
+
+        @Override
+        public URI getUri() {
+
+            return URI.create("file:///localhost");
+
+        }
+
+        @Override
+        public void initialize(URI uri, Configuration conf) throws IOException {
+
+            TableSplitsCacheTest.logger.debug("TableSplitsCacheTest.WrappedDistributedFileSystem.initialize called....");
+            super.initialize(uri, conf);
+        }
+
+        @Override
+        public void close() throws IOException {
+
+            TableSplitsCacheTest.logger.debug("TableSplitsCacheTest.WrappedDistributedFileSystem.close called....");
+
+            try {
+                super.close();
+            } catch (Throwable t) {
+                TableSplitsCacheTest.logger.debug(String.format(
+                                "DistributedFileSystem handled base class excpetion: %s with messge %s (caused by the missing DfsClient instance...)",
+                                t.getClass().getName(), t.getMessage()));
+            }
+        }
+    }
+
+    protected void createMockFileSystem() throws Exception {
+
+        FileSystem fs = new TableSplitsCacheTest.WrappedLocalFileSystem();
+
+        mockConfiguration.put(FileSystem.FS_DEFAULT_NAME_KEY, "file:///localhost");
+
+        // Lifted from DfsMonitorTest
+        mockConfiguration.put("fs.file.impl", TableSplitsCacheTest.WrappedLocalFileSystem.class.getName());
+        mockConfiguration.put("fs.automatic.close", "false");
+        mockConfiguration.put(MRJobConfig.CACHE_FILES, ".");
+
+        Configuration conf = (Configuration) createMockJobConf();
+        fs.setConf(conf);
+        fs.initialize(URI.create("file:///localhost"), conf);
+
+        addFileSystemForTesting(FileSystem.getDefaultUri(conf), conf, fs);
+
+    }
+
+    @BeforeEach
+    public void setup() throws Exception {
+
+        mockConfiguration.clear();
+        mockConfiguration.put(TableSplitsCache.REFRESH_SPLITS, "false");
+        testDriverLevel = logger.getLevel();
+        logger.setLevel(Level.ALL);
+
+        Logger uutLog = Logger.getLogger(TableSplitsCache.class);
+        uutLevel = uutLog.getLevel();
+        uutLog.setLevel(Level.ALL);
+
+        Logger zcLog = Logger.getLogger(ZooCache.class);
+        zooCacheLevel = zcLog.getLevel();
+        zcLog.setLevel(Level.ALL);
+
+        Logger zkLog = Logger.getLogger(ZooKeeper.class);
+        zooKeeperLevel = zkLog.getLevel();
+        zkLog.setLevel(Level.ALL);
+
+        createMockFileSystem();
+
+        TableSplitsCacheTest.FILE_STATUS_MODIFICATION_TIME = TableSplitsCacheTest.FILE_STATUS_ACCESS_TIME = 0l;
+
+        TableSplitsCacheTest.FILE_STATUS_USER = TableSplitsCacheTest.USER_NAME;
+        TableSplitsCacheTest.FILE_STATUS_GROUP = TableSplitsCacheTest.USER_NAME;
+    }
+
+    public void setSplitsCacheDir() {
+        URL url = TableSplitsCacheTest.class.getResource("/datawave/ingest/mapreduce/job/all-splits.txt");
+        assertNotNull(url, "TableSplitsCacheTest#setup failed to load test cache directory.");
+        mockConfiguration.put(TableSplitsCache.SPLITS_CACHE_DIR, url.getPath().substring(0, url.getPath().lastIndexOf(Path.SEPARATOR)));
+    }
+
+    public void setSplitsCacheDir(String splitsCacheDir) {
+        mockConfiguration.put(TableSplitsCache.SPLITS_CACHE_DIR, splitsCacheDir);
+    }
+
+    @AfterEach
+    public void teardown() {
+
+        logger.setLevel(testDriverLevel);
+        Logger.getLogger(TableSplitsCache.class).setLevel(uutLevel);
+        Logger.getLogger(ZooCache.class).setLevel(zooCacheLevel);
+        Logger.getLogger(ZooKeeper.class).setLevel(zooKeeperLevel);
+        TableSplitsCache.clear();
+
+    }
+
+    @AfterAll
+    public static void teardownClass() throws Exception {
+
+        addFileSystemForTesting(URI.create("file:///localhost"), null, null);
+    }
+
+    private static void addFileSystemForTesting(URI uri, Configuration conf, FileSystem fs) throws Exception {
+        Method method = FileSystem.class.getDeclaredMethod("addFileSystemForTesting", URI.class, Configuration.class, FileSystem.class);
+        method.setAccessible(true);
+        method.invoke(null, uri, conf, fs);
+    }
+
+    protected Map<String,String> mockConfiguration = new HashMap<>();
+
+    protected void setupConfiguration() {
+
+        mockConfiguration.put(AccumuloHelper.USERNAME, USER_NAME);
+        mockConfiguration.put(AccumuloHelper.INSTANCE_NAME, HOST_NAME);
+        mockConfiguration.put(AccumuloHelper.PASSWORD, Base64.encodeBase64String(PASSWORD.getBytes()));
+        mockConfiguration.put(AccumuloHelper.ZOOKEEPERS, HOST_NAME);
+        mockConfiguration.put(FileSystem.FS_DEFAULT_NAME_KEY, "file:///");
+
+        TableSplitsCacheTest.FILE_STATUS_MODIFICATION_TIME = Long.MAX_VALUE;
+        TableSplitsCacheTest.FILE_STATUS_ACCESS_TIME = 0l;
+
+    }
+
+    protected JobConf createMockJobConf() {
+        JobConf mocked = EasyMock.createMock(JobConf.class);
+
+        EasyMock.expect(mocked.getTrimmed("fs.defaultFS", "file:///")).andReturn("file:///").anyTimes();
+
+        mocked.get(EasyMock.anyObject(String.class), EasyMock.anyObject(String.class));
+        EasyMock.expectLastCall().andAnswer(() -> {
+
+            String key = (String) EasyMock.getCurrentArguments()[0];
+            String results = (String) EasyMock.getCurrentArguments()[1];
+
+            if (mockConfiguration.containsKey(key)) {
+
+                results = mockConfiguration.get(key);
+            }
+
+            return results;
+        }).anyTimes();
+
+        mocked.getLong(EasyMock.anyObject(String.class), EasyMock.anyLong());
+        EasyMock.expectLastCall().andAnswer(() -> {
+
+            String key = (String) EasyMock.getCurrentArguments()[0];
+            long results = (Long) EasyMock.getCurrentArguments()[1];
+
+            if (mockConfiguration.containsKey(key)) {
+
+                try {
+
+                    results = Long.parseLong(mockConfiguration.get(key));
+
+                } catch (Throwable t) {
+
+                    logger.debug(String.format("MockConfiguration#getLong threw exception: %s", t.getClass().getName()));
+                }
+            }
+
+            return results;
+        }).anyTimes();
+
+        mocked.get(EasyMock.anyObject(String.class));
+        EasyMock.expectLastCall().andAnswer(() -> {
+
+            String key = (String) EasyMock.getCurrentArguments()[0];
+
+            return mockConfiguration.get(key);
+        }).anyTimes();
+
+        mocked.getBoolean(EasyMock.anyObject(String.class), EasyMock.anyBoolean());
+        EasyMock.expectLastCall().andAnswer(() -> {
+            String key = (String) EasyMock.getCurrentArguments()[0];
+            boolean results = (Boolean) EasyMock.getCurrentArguments()[1];
+
+            if (mockConfiguration.containsKey(key)) {
+
+                try {
+
+                    results = Boolean.parseBoolean(mockConfiguration.get(key));
+
+                } catch (Throwable t) {
+
+                    logger.debug(String.format("MockConfiguration#getLong threw exception: %s", t.getClass().getName()));
+                }
+            }
+
+            return results;
+        }).anyTimes();
+
+        mocked.getInt(EasyMock.anyObject(String.class), EasyMock.anyInt());
+        EasyMock.expectLastCall().andAnswer(() -> {
+
+            String key = (String) EasyMock.getCurrentArguments()[0];
+            int results = (Integer) EasyMock.getCurrentArguments()[1];
+
+            if (mockConfiguration.containsKey(key)) {
+
+                try {
+
+                    results = Integer.parseInt(mockConfiguration.get(key));
+
+                } catch (Throwable t) {
+
+                    logger.debug(String.format("MockConfiguration#getLong threw exception: %s", t.getClass().getName()));
+                }
+            }
+
+            return results;
+        }).anyTimes();
+
+        mocked.set(EasyMock.anyObject(String.class), EasyMock.anyObject(String.class));
+        EasyMock.expectLastCall().andAnswer(() -> {
+
+            String key = (String) EasyMock.getCurrentArguments()[0];
+            String value = (String) EasyMock.getCurrentArguments()[1];
+
+            mockConfiguration.put(key, value);
+
+            return null;
+        }).anyTimes();
+
+        mocked.getStrings(EasyMock.anyObject(String.class));
+        EasyMock.expectLastCall().andAnswer(() -> {
+            String key = (String) EasyMock.getCurrentArguments()[0];
+            String[] results = null;
+
+            if (mockConfiguration.containsKey(key)) {
+                results = StringUtils.getStrings(mockConfiguration.get(key));
+            }
+
+            return results;
+        }).anyTimes();
+
+        EasyMock.replay(mocked);
+
+        return mocked;
+    }
+
+    @Test
+    public void testCtorWithNullArgument() {
+        logger.info("testCtorWithNullArgument called...");
+        setSplitsCacheDir();
+
+        try {
+
+            assertThrows(IllegalArgumentException.class, () -> TableSplitsCache.getCurrentCache(null));
+
+        } finally {
+
+            logger.info("testCtorWithNullArgument completed.");
+        }
+    }
+
+    @Test
+    public void testCtorWithValidArgument() throws IOException {
+        logger.info("testCtorWithValidArgument called...");
+        setSplitsCacheDir();
+
+        try {
+
+            TableSplitsCache uut = TableSplitsCache.getCurrentCache(createMockJobConf());
+
+            assertNotNull(uut, "TableSplitsCache constructor failed to construct an instance.");
+
+        } finally {
+            logger.info("testCtorWithValidArgument completed.");
+        }
+    }
+
+    @Test
+    public void testGetSplitsNoFile() throws IOException {
+        logger.info("testGetSplitsNoFile called...");
+        setupConfiguration();
+
+        try {
+            TableSplitsCache uut = TableSplitsCache.getCurrentCache(createMockJobConf());
+            assertNotNull(uut, "TableSplitsCache constructor failed to construct an instance.");
+            assertThrows(IOException.class, uut::getSplits);
+        } finally {
+
+            logger.info("testGetSplitsNoFile completed.");
+        }
+    }
+
+    @Test
+    public void testUpdateNoFile() throws IOException {
+        logger.info("testUpdateNoFile called...");
+        setupConfiguration();
+        setSplitsCacheDir(String.format("/random/dir%s/must/not/exist", (int) (Math.random() * 100) + 1));
+        try {
+            TableSplitsCache uut = TableSplitsCache.getCurrentCache(createMockJobConf());
+            uut.update();
+            assertNotNull(uut, "TableSplitsCache constructor failed to construct an instance.");
+            assertThrows(IOException.class, uut::getSplits);
+        } finally {
+
+            logger.info("testUpdateNoFile completed.");
+        }
+
+    }
+
+    @Test
+    public void testGetFileStatus() {
+        logger.info("testGetFileStatus called...");
+        setSplitsCacheDir();
+        setupConfiguration();
+        try {
+            TableSplitsCache uut = TableSplitsCache.getCurrentCache(createMockJobConf());
+            FileStatus fileStatus = uut.getFileStatus();
+            assertNotNull(fileStatus, "FileStatus");
+        } finally {
+
+            logger.info("testGetFileStatus completed.");
+        }
+
+    }
+
+    @Test
+    public void testGetSplitsNoArgument() throws IOException {
+        logger.info("testGetSplitsNoArgument called...");
+        setSplitsCacheDir();
+        setupConfiguration();
+
+        try {
+
+            TableSplitsCache uut = TableSplitsCache.getCurrentCache(createMockJobConf());
+
+            assertNotNull(uut, "TableSplitsCache constructor failed to construct an instance.");
+
+            Map<Integer,List<Text>> resultsSet = uut.getSplits();
+
+            assertNotNull(resultsSet, "TableSplitsCache#getSplits() failed created a map of tables and their splits");
+            assertFalse(resultsSet.isEmpty(), "TableSplitsCache#getSplits() incorrectly populated map of tables and their splits");
+            assertEquals(3, resultsSet.size(), "TableSplitsCache#getSplits() incorrectly populated map of tables and their splits");
+
+            List<Text> listings = new ArrayList(resultsSet.get(uut.getTableCacheId("shard")));
+            assertNotNull(listings, "TableSplitsCache#getSplits() failed to a list of splits");
+            assertFalse(listings.isEmpty(), "TableSplitsCache#getSplits() incorrectly populated the list of splits");
+            assertEquals(5, listings.size(), "TableSplitsCache#getSplits() incorrectly populated the list of splits");
+
+            listings = new ArrayList(resultsSet.get(uut.getTableCacheId("shard1")));
+            assertNotNull(listings, "TableSplitsCache#getSplits() failed to a list of splits");
+            assertFalse(listings.isEmpty(), "TableSplitsCache#getSplits() incorrectly populated the list of splits");
+            assertEquals(1, listings.size(), "TableSplitsCache#getSplits() incorrectly populated the list of splits");
+
+        } finally {
+
+            logger.info("testGetSplitsNoArgument completed.");
+        }
+    }
+
+    @Test
+    public void testGetSplitsWithArgumentThatMatches() throws IOException {
+        logger.info("testGetSplitsWithArgumentThatMatches called...");
+        setSplitsCacheDir();
+        setupConfiguration();
+
+        try {
+
+            TableSplitsCache uut = TableSplitsCache.getCurrentCache(createMockJobConf());
+
+            assertNotNull(uut, "TableSplitsCache constructor failed to construct an instance.");
+
+            List<Text> resultsSet = uut.getSplits().get(uut.getTableCacheId("shard"));
+
+            assertNotNull(resultsSet, "TableSplitsCache#getSplits() failed to a list of splits");
+            assertFalse(resultsSet.isEmpty(), "TableSplitsCache#getSplits() incorrectly populated the list of splits");
+            assertEquals(5, resultsSet.size(), "TableSplitsCache#getSplits() incorrectly populated the list of splits");
+        } finally {
+
+            logger.info("testGetSplitsWithArgumentThatMatches completed.");
+        }
+    }
+
+    @Test
+    public void testGetSplitsWithArgumentThatDoesNotMatch() throws IOException {
+        logger.info("testGetSplitsWithArgumentThatDoesNotMatch called...");
+        setSplitsCacheDir();
+        setupConfiguration();
+
+        try {
+
+            TableSplitsCache uut = TableSplitsCache.getCurrentCache(createMockJobConf());
+
+            assertNotNull(uut, "TableSplitsCache constructor failed to construct an instance.");
+
+            List<Text> resultsSet = uut.getSplits("bad-table");
+
+            assertNotNull(resultsSet, "TableSplitsCache#getSplits() failed to a list of splits");
+            assertTrue(resultsSet.isEmpty(), "TableSplitsCache#getSplits() incorrectly populated the list of splits");
+
+        } finally {
+
+            logger.info("testGetSplitsWithArgumentThatDoesNotMatch completed.");
+        }
+    }
+
+    @Test
+    public void testGetSplitsTrimByPassed() throws IOException {
+        logger.info("testGetSplitsTrimByPassed called...");
+        setSplitsCacheDir();
+        setupConfiguration();
+
+        try {
+
+            TableSplitsCache uut = TableSplitsCache.getCurrentCache(createMockJobConf());
+            uut.getSplits();
+
+            assertNotNull(uut, "TableSplitsCache constructor failed to construct an instance.");
+
+            List<Text> resultsSet = uut.getSplits("shard", Integer.MAX_VALUE);
+
+            assertNotNull(resultsSet, "TableSplitsCache#getSplits() failed to a list of splits");
+            assertFalse(resultsSet.isEmpty(), "TableSplitsCache#getSplits() incorrectly populated the list of splits");
+            assertEquals(5, resultsSet.size(), "TableSplitsCache#getSplits() incorrectly populated the list of splits");
+
+        } finally {
+
+            logger.info("testGetSplitsTrimByPassed completed.");
+        }
+    }
+
+    @Test
+    public void testGetSplitsTrimmed() throws IOException {
+        logger.info("testGetSplitsTrimmed called...");
+        setSplitsCacheDir();
+        setupConfiguration();
+
+        try {
+
+            TableSplitsCache uut = TableSplitsCache.getCurrentCache(createMockJobConf());
+            uut.getSplits();
+            assertNotNull(uut, "TableSplitsCache constructor failed to construct an instance.");
+
+            List<Text> resultsSet = uut.getSplits("shard", 2);
+
+            assertNotNull(resultsSet, "TableSplitsCache#getSplits() failed to a list of splits");
+            assertFalse(resultsSet.isEmpty(), "TableSplitsCache#getSplits() incorrectly populated the list of splits");
+            assertEquals(2, resultsSet.size(), "TableSplitsCache#getSplits() incorrectly populated the list of splits");
+
+        } finally {
+
+            logger.info("testGetSplitsTrimmed completed.");
+        }
+    }
+
+    @Test
+    public void testTrimTableSplits() {
+        setSplitsCacheDir();
+        int reducers = 487;
+        int numsplits = 195365;
+        // generate the initial splits
+        List<Text> splits = new ArrayList<>(numsplits);
+        for (int i = 0; i < numsplits; i++) {
+            splits.add(new Text(Integer.toString(i)));
+        }
+        List<Text> newSplits = TableSplitsCache.trimSplits(splits, reducers - 1);
+        assertEquals((reducers - 1), newSplits.size(), "split count");
+        assertEquals(401, Integer.parseInt(newSplits.get(0).toString()), "first split");
+        assertEquals(402, numsplits - Integer.parseInt(newSplits.get(newSplits.size() - 1).toString()), "num splits - last split");
+        int lastsplit = 0;
+        for (int i = 0; i < newSplits.size(); i++) {
+            int split = Integer.parseInt(newSplits.get(i).toString());
+            assertTrue((split - lastsplit) >= 401, "split size");
+            assertTrue((split - lastsplit) <= 402, "split size");
+            lastsplit = split;
+        }
+    }
+
+    @Test
+    public void testLocs() throws IOException {
+        setSplitsCacheDir();
+        TableSplitsCache splitsCache = TableSplitsCache.getCurrentCache(createMockJobConf());
+        splitsCache.getSplitsAndLocation();
+        assertEquals(5, splitsCache.getSplitsAndLocationByTable("shard").size());
+        assertEquals(1, splitsCache.getSplitsAndLocationByTable("shard1").size());
+        assertEquals(0, splitsCache.getSplitsAndLocationByTable("someOtherTable").size());
+
+    }
+
+    @Disabled
+    @Test
+    public void testTrieSize() {
+        Map<Text,String> map = new HashMap<>();
+        fillMap(map);
+        System.out.println("Hashmap size: " + ObjectSizeOf.Sizer.getObjectSize(map));
+        map = new ShardLocationTrieMap<>();
+        fillMap(map);
+        System.out.println("Triemap size: " + ObjectSizeOf.Sizer.getObjectSize(map));
+    }
+
+    private void fillMap(Map<Text,String> map) {
+        List<String> tservers = getTservers();
+        Calendar c = Calendar.getInstance();
+        c.set(Calendar.YEAR, 1980);
+        c.set(Calendar.MONTH, 0);
+        c.set(Calendar.DATE, 1);
+        SimpleDateFormat format = new SimpleDateFormat("yyyyMMdd");
+        String date = format.format(c.getTime());
+        int tserver = 0;
+        while (date.compareTo("2025") < 0) {
+            for (int shard = 0; shard < 1000; shard++) {
+                String row = date + '_' + shard;
+                String location = tservers.get(tserver);
+                tserver = (tserver + 1) % tservers.size();
+                map.put(new Text(row), location);
+            }
+            c.add(Calendar.DATE, 1);
+            date = format.format(c.getTime());
+        }
+    }
+
+    private List<String> getTservers() {
+        List<String> tservers = new ArrayList<>();
+        for (int row = 200; row < 250; row++) {
+            for (int node = 0; node < 40; node++) {
+                for (int port = 1000; port < 1005; port++) {
+                    tservers.add("r" + row + "n" + node + ":" + port);
+                }
+            }
+        }
+        return tservers;
+    }
+
+}

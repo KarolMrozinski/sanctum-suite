@@ -1,0 +1,72 @@
+/*****************************************************************************
+ * Sanctum Suite: Avionics Physical Bus Hardware Isolator (HAL/S)
+ * Ostateczna warstwa obrony fizycznej pozwalająca na odcięcie zasilania
+ * i linii sygnałowych interfejsów zewnętrznych w przypadku krytycznego zagrożenia.
+ *****************************************************************************/
+
+COMPILATION UNIT SANCTUM_PHYSICAL_ISOLATOR;
+
+    DECLARE TOTAL_PHYSICAL_LINES CONSTANT(6);
+
+    STRUCTURE PHYSICAL_LINE_RECORD
+        INTEGER LINE_ID;
+        INTEGER CURRENT_VOLTAGE_MV;
+        BOOLEAN RELAY_TRIPPED;
+        BOOLEAN PHYSICALLY_DISCONNECTED;
+    END;
+
+    STRUCTURE PHYSICAL_ISOLATION_CONTEXT
+        PHYSICAL_LINE_RECORD LINES(TOTAL_PHYSICAL_LINES);
+        INTEGER DISCONNECTED_TOTAL;
+        BOOLEAN SYSTEM_TOTAL_ISOLATION;
+    END;
+
+    /*************************************************************************
+     * Inicjalizacja kontekstu fizycznego izolatora magistral
+     * ***********************************************************************/
+    SUBROUTINE INITIALIZE_PHYSICAL_ISOLATOR(CONTEXT);
+        OUTPUT PHYSICAL_ISOLATION_CONTEXT CONTEXT;
+        DECLARE P INTEGER;
+        
+        CONTEXT.DISCONNECTED_TOTAL = 0;
+        CONTEXT.SYSTEM_TOTAL_ISOLATION = FALSE;
+        
+        DO P = 1 TO TOTAL_PHYSICAL_LINES;
+            CONTEXT.LINES(P).LINE_ID = P;
+            CONTEXT.LINES(P).CURRENT_VOLTAGE_MV = 3300; -- 3.3V Standard
+            CONTEXT.LINES(P).RELAY_TRIPPED = FALSE;
+            CONTEXT.LINES(P).PHYSICALLY_DISCONNECTED = FALSE;
+        END;
+    END INITIALIZE_PHYSICAL_ISOLATOR;
+
+    /*************************************************************************
+     * Procedura natychmiastowego odcięcia fizycznego linii sygnałowych
+     * ***********************************************************************/
+    SUBROUTINE EXECUTE_PHYSICAL_CUTOFF(CONTEXT, TARGET_LINE_ID);
+        INPUT OUTPUT PHYSICAL_ISOLATION_CONTEXT CONTEXT;
+        INPUT INTEGER TARGET_LINE_ID;
+        DECLARE IDX INTEGER;
+        DECLARE CUT_COUNT INTEGER;
+        
+        CUT_COUNT = 0;
+        
+        DO IDX = 1 TO TOTAL_PHYSICAL_LINES;
+            IF CONTEXT.LINES(IDX).LINE_ID = TARGET_LINE_ID OR CONTEXT.SYSTEM_TOTAL_ISOLATION THEN
+                CONTEXT.LINES(IDX).RELAY_TRIPPED = TRUE;
+                CONTEXT.LINES(IDX).PHYSICALLY_DISCONNECTED = TRUE;
+                CONTEXT.LINES(IDX).CURRENT_VOLTAGE_MV = 0;
+            END;
+            
+            IF CONTEXT.LINES(IDX).PHYSICALLY_DISCONNECTED THEN
+                CUT_COUNT = CUT_COUNT + 1;
+            END;
+        END;
+        
+        CONTEXT.DISCONNECTED_TOTAL = CUT_COUNT;
+        
+        IF CUT_COUNT >= 4 THEN
+            CONTEXT.SYSTEM_TOTAL_ISOLATION = TRUE;
+        END;
+    END EXECUTE_PHYSICAL_CUTOFF;
+
+END SANCTUM_PHYSICAL_ISOLATOR;

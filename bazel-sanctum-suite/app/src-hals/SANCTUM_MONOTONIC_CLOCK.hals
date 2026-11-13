@@ -1,0 +1,79 @@
+/*****************************************************************************
+ * Sanctum Suite: Avionics Monotonic Clock & Time Synchronization Governor (HAL/S)
+ * Zabezpieczenie przed atakami typu NTP Spoofing / Time-shifting w środowiskach
+ * odizolowanych poprzez weryfikację skoków czasu monotonicznego.
+ *****************************************************************************/
+
+COMPILATION UNIT SANCTUM_MONOTONIC_CLOCK;
+
+    DECLARE MAX_ALLOWED_DRIFT CONSTANT(5.0); -- Maksymalny dozwolony drift w sekundach
+
+    STRUCTURE MONOTONIC_CLOCK_CONTEXT
+        SCALAR REFERENCE_SYSTEM_TIME;
+        SCALAR HARDWARE_TICK_COUNTER;
+        SCALAR LAST_VALIDATED_TIME;
+        BOOLEAN TIME_DRIFT_DETECTED;
+        BOOLEAN CLOCK_LOCKED_DOWN;
+    END;
+
+    /*************************************************************************
+     * Inicjalizacja bezpiecznego zegara monotonicznego
+     * ***********************************************************************/
+    SUBROUTINE INITIALIZE_MONOTONIC_CLOCK(CLOCK);
+        OUTPUT MONOTONIC_CLOCK_CONTEXT CLOCK;
+        
+        CLOCK.REFERENCE_SYSTEM_TIME = 1000.0;
+        CLOCK.HARDWARE_TICK_COUNTER = 1000.0;
+        CLOCK.LAST_VALIDATED_TIME = 1000.0;
+        CLOCK.TIME_DRIFT_DETECTED = FALSE;
+        CLOCK.CLOCK_LOCKED_DOWN = FALSE;
+    END INITIALIZE_MONOTONIC_CLOCK;
+
+    /*************************************************************************
+     * Funkcja weryfikacji skoków czasu i odporności na manipulację
+     * ***********************************************************************/
+    BOOLEAN FUNCTION CHECK_TIME_MANIPULATION(CLOCK, NEW_TIMESTAMP);
+        INPUT MONOTONIC_CLOCK_CONTEXT CLOCK;
+        INPUT SCALAR NEW_TIMESTAMP;
+        DECLARE TIME_DELTA SCALAR;
+        
+        IF CLOCK.CLOCK_LOCKED_DOWN THEN
+            RETURN FALSE;
+        END;
+        
+        IF NEW_TIMESTAMP < CLOCK.LAST_VALIDATED_TIME THEN
+            RETURN TRUE; -- Wykryto cofnięcie czasu (Time-rollback attack)
+        END;
+        
+        TIME_DELTA = NEW_TIMESTAMP - CLOCK.LAST_VALIDATED_TIME;
+        
+        IF TIME_DELTA > MAX_ALLOWED_DRIFT THEN
+            RETURN TRUE; -- Wykryto nadmierny skok czasu
+        END;
+        
+        RETURN FALSE;
+    END CHECK_TIME_MANIPULATION;
+
+    /*************************************************************************
+     * Procedura synchronizacji i aktualizacji bezpiecznego czasu
+     * ***********************************************************************/
+    SUBROUTINE UPDATE_SYSTEM_CLOCK(CLOCK, EXTERNAL_TIME, SYNC_STATUS);
+        INPUT OUTPUT MONOTONIC_CLOCK_CONTEXT CLOCK;
+        INPUT SCALAR EXTERNAL_TIME;
+        OUTPUT BOOLEAN SYNC_STATUS;
+        
+        SYNC_STATUS = FALSE;
+        
+        IF CHECK_TIME_MANIPULATION(CLOCK, EXTERNAL_TIME) THEN
+            CLOCK.TIME_DRIFT_DETECTED = TRUE;
+            CLOCK.CLOCK_LOCKED_DOWN = TRUE;
+            SYNC_STATUS = FALSE;
+        ELSE
+            CLOCK.REFERENCE_SYSTEM_TIME = EXTERNAL_TIME;
+            CLOCK.LAST_VALIDATED_TIME = EXTERNAL_TIME;
+            CLOCK.TIME_DRIFT_DETECTED = FALSE;
+            SYNC_STATUS = TRUE;
+        END;
+    END UPDATE_SYSTEM_CLOCK;
+
+END SANCTUM_MONOTONIC_CLOCK;

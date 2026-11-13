@@ -1,0 +1,88 @@
+/*****************************************************************************
+ * Sanctum Suite: Emergency Isolation & Cluster Power Governor (HAL/S)
+ * Autonomiczne procedury bezpieczeństwa, odłączania magistral i kwarantanny węzłów
+ *****************************************************************************/
+
+COMPILATION UNIT SANCTUM_EMERGENCY_SHUTDOWN;
+
+    DECLARE MAX_NODES CONSTANT(32);
+    DECLARE CRITICAL_THERMAL_LIMIT CONSTANT(85.5);
+    DECLARE CRITICAL_VOLTAGE_DROP CONSTANT(10.2);
+
+    STRUCTURE NODE_HEALTH_STATE
+        INTEGER NODE_ID;
+        SCALAR CORE_TEMPERATURE;
+        SCALAR BUS_VOLTAGE;
+        BOOLEAN IS_QUARANTINED;
+        BOOLEAN EMERGENCY_DISCONNECTED;
+    END;
+
+    STRUCTURE CLUSTER_SAFETY_CONTEXT
+        NODE_HEALTH_STATE NODES(MAX_NODES);
+        INTEGER TOTAL_ACTIVE_NODES;
+        BOOLEAN SYSTEM_LOCKDOWN_ACTIVE;
+    END;
+
+    /*************************************************************************
+     * Inicjalizacja kontekstu bezpieczeństwa klastra
+     * ***********************************************************************/
+    SUBROUTINE INIT_CLUSTER_SAFETY(CONTEXT);
+        OUTPUT CLUSTER_SAFETY_CONTEXT CONTEXT;
+        DECLARE K INTEGER;
+        
+        CONTEXT.TOTAL_ACTIVE_NODES = MAX_NODES;
+        CONTEXT.SYSTEM_LOCKDOWN_ACTIVE = FALSE;
+        
+        DO K = 1 TO MAX_NODES;
+            CONTEXT.NODES(K).NODE_ID = K;
+            CONTEXT.NODES(K).CORE_TEMPERATURE = 45.0;
+            CONTEXT.NODES(K).BUS_VOLTAGE = 12.0;
+            CONTEXT.NODES(K).IS_QUARANTINED = FALSE;
+            CONTEXT.NODES(K).EMERGENCY_DISCONNECTED = FALSE;
+        END;
+    END INIT_CLUSTER_SAFETY;
+
+    /*************************************************************************
+     * Procedura skanowania sensorów sprzętowych i oceny zagrożenia
+     * ***********************************************************************/
+    SUBROUTINE EVALUATE_CLUSTER_CONDITIONS(CONTEXT, THREAT_DETECTED);
+        INPUT OUTPUT CLUSTER_SAFETY_CONTEXT CONTEXT;
+        OUTPUT BOOLEAN THREAT_DETECTED;
+        DECLARE IDX INTEGER;
+        
+        THREAT_DETECTED = FALSE;
+        
+        DO IDX = 1 TO CONTEXT.TOTAL_ACTIVE_NODES;
+            IF CONTEXT.NODES(IDX).CORE_TEMPERATURE > CRITICAL_THERMAL_LIMIT THEN
+                CONTEXT.NODES(IDX).IS_QUARANTINED = TRUE;
+                THREAT_DETECTED = TRUE;
+            END;
+            
+            IF CONTEXT.NODES(IDX).BUS_VOLTAGE < CRITICAL_VOLTAGE_DROP THEN
+                CONTEXT.NODES(IDX).EMERGENCY_DISCONNECTED = TRUE;
+                THREAT_DETECTED = TRUE;
+            END;
+        END;
+        
+        IF THREAT_DETECTED THEN
+            CONTEXT.SYSTEM_LOCKDOWN_ACTIVE = TRUE;
+        END;
+    END EVALUATE_CLUSTER_CONDITIONS;
+
+    /*************************************************************************
+     * Wykonanie awaryjnego odizolowania magistral w klastrze Air-Gap
+     * ***********************************************************************/
+    SUBROUTINE EXECUTE_AIR_GAP_ISOLATION(CONTEXT);
+        INPUT OUTPUT CLUSTER_SAFETY_CONTEXT CONTEXT;
+        DECLARE M INTEGER;
+        
+        IF CONTEXT.SYSTEM_LOCKDOWN_ACTIVE THEN
+            DO M = 1 TO CONTEXT.TOTAL_ACTIVE_NODES;
+                IF CONTEXT.NODES(M).IS_QUARANTINED OR CONTEXT.NODES(M).EMERGENCY_DISCONNECTED THEN
+                    CONTEXT.NODES(M).BUS_VOLTAGE = 0.0;
+                END;
+            END;
+        END;
+    END EXECUTE_AIR_GAP_ISOLATION;
+
+END SANCTUM_EMERGENCY_SHUTDOWN;

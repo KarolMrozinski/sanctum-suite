@@ -1,0 +1,14 @@
+filegroup(
+    name = "live_runtime",
+    srcs = glob(
+        ["**/*"],
+        exclude = [
+            "**/.git/**",
+            "**/bazel-*/**",
+            "**/target/**",
+            "**/node_modules/**",
+        ],
+        allow_empty = True,
+    ),
+    visibility = ["//visibility:public"],
+)

@@ -1,0 +1,1159 @@
+import Button from '@common/button/Button';
+import IconButton from '@common/button/IconButton';
+import AddIcon from '@mui/icons-material/Add';
+import DeleteIcon from '@mui/icons-material/Delete';
+import Alert from '@mui/material/Alert';
+import CircularProgress from '@mui/material/CircularProgress';
+import Divider from '@mui/material/Divider';
+import FormControlLabel from '@mui/material/FormControlLabel';
+import FormHelperText from '@mui/material/FormHelperText';
+import Typography from '@mui/material/Typography';
+import { styled } from '@mui/material/styles';
+import { Field, FieldArray, Form, Formik, FormikHelpers } from 'formik';
+import React, { ComponentProps, FunctionComponent, useEffect, useMemo, useState } from 'react';
+import { fetchQuery, graphql, PreloadedQuery, usePreloadedQuery, useQueryLoader, useRelayEnvironment } from 'react-relay';
+import { useNavigate, useParams } from 'react-router';
+import * as Yup from 'yup';
+import Breadcrumbs from '../../../../../components/Breadcrumbs';
+import Loader, { LoaderVariant } from '../../../../../components/Loader';
+import TextField from '../../../../../components/TextField';
+import Card from '../../../../../components/common/card/Card';
+import MarkdownField from '../../../../../components/fields/markdownField/MarkdownField';
+import { useFormatter } from '../../../../../components/i18n';
+import { environment } from '../../../../../relay/environment';
+import { FieldOption } from '../../../../../utils/field';
+import useApiMutation from '../../../../../utils/hooks/useApiMutation';
+import { DeferredCreationContext } from '../../../../../utils/hooks/useDeferredCreation';
+import useIntakePendingStore from '../../../../../utils/hooks/useIntakePendingStore';
+import useEntitySettings from '../../../../../utils/hooks/useEntitySettings';
+import useGranted, { BYPASS, INGESTION, MODULES } from '../../../../../utils/hooks/useGranted';
+import useImportAccess from '../../../../../utils/hooks/useImportAccess';
+import AuthorizedMembersField from '../../../common/form/AuthorizedMembersField';
+import CreatedByField from '../../../common/form/CreatedByField';
+import ObjectAssigneeField from '../../../common/form/ObjectAssigneeField';
+import ObjectParticipantField from '../../../common/form/ObjectParticipantField';
+import StixCoreObjectsField from '../../../common/form/StixCoreObjectsField';
+import { FormSchemaDefinition } from '../Form.d';
+import { FormFieldRendererProps } from './FormFieldRenderer';
+import FormFields from './FormFields';
+import { computeDraftPolicy, convertFormSchemaToYupSchema, getSubmitErrorMessage, prepareFormSubmission } from './FormViewUtils';
+import { FormViewQuery } from './__generated__/FormViewQuery.graphql';
+import TextareaField from '../../../../../components/TextareaField';
+import { Checkbox } from '@filigran/design-system';
+
+const Container = styled('div')({
+  margin: 0,
+  padding: '0 0 50px 0',
+});
+
+const Section = styled('div')({
+  marginTop: 30,
+});
+
+const SectionTitle = styled(Typography)({
+  marginBottom: 15,
+  fontWeight: 500,
+});
+
+const SubmitButton = styled(Button)({
+  '&&': {
+    marginTop: 20,
+    float: 'right',
+  },
+});
+
+const PollingContainer = styled('div')({
+  display: 'flex',
+  flexDirection: 'column',
+  alignItems: 'center',
+  justifyContent: 'center',
+  height: '100vh',
+});
+
+const FieldGroup = styled('div')({
+  marginBottom: 20,
+  padding: 15,
+  border: '1px solid rgba(255, 255, 255, 0.12)',
+  borderRadius: 4,
+  position: 'relative',
+});
+
+const DeleteButton = styled(IconButton)({
+  position: 'absolute',
+  top: 5,
+  right: 5,
+});
+
+const AddButton = styled(Button)({
+  '&&': {
+    marginTop: 10,
+    marginBottom: 20,
+  },
+});
+
+const ParsedTextareaField = styled(TextareaField)({
+  '&&': {
+    width: '100%',
+    marginTop: 20,
+  },
+});
+
+const ParsedTextField = styled((props: ComponentProps<typeof TextField>) => <TextField {...props} />)({
+  '&&': {
+    width: '100%',
+    marginTop: 20,
+  },
+});
+
+export const formViewQuery = graphql`
+  query FormViewQuery($id: ID!) {
+    form(id: $id) {
+      id
+      name
+      description
+      active
+      form_schema
+    }
+  }
+`;
+
+const formSubmitMutation = graphql`
+  mutation FormViewMutation($input: FormSubmissionInput!, $isDraft: Boolean!) {
+    formSubmit(input: $input, isDraft: $isDraft) {
+      success
+      bundleId
+      message
+      entityId
+    }
+  }
+`;
+
+const entityCheckQuery = graphql`
+  query FormViewEntityCheckQuery($id: String!) {
+    stixCoreObject(id: $id) {
+      id
+      entity_type
+    }
+  }
+`;
+
+// What the draft page loads: draftWorkspace alone is not enough (e.g. its workflow needs Create / Update knowledge)
+const draftCheckQuery = graphql`
+  query FormViewDraftCheckQuery($id: String!) {
+    draftWorkspace(id: $id) {
+      id
+      ...DraftRootFragment
+    }
+  }
+`;
+
+interface FormViewInnerProps {
+  queryRef: PreloadedQuery<FormViewQuery>;
+  embedded?: boolean;
+  onSuccess?: () => void;
+}
+
+interface EntityCheckResult {
+  stixCoreObject?: {
+    id: string;
+  } | null;
+}
+
+interface FormInitialValues {
+  [key: string]: string | boolean | string[] | Date | Record<string, unknown> | Record<string, unknown>[] | number | FieldOption[] | null;
+}
+
+const FormViewInner: FunctionComponent<FormViewInnerProps> = ({ queryRef, embedded = false, onSuccess }) => {
+  const { t_i18n } = useFormatter();
+  const navigate = useNavigate();
+  const [submitted, setSubmitted] = useState(false);
+  // A submission into a draft the user cannot open: confirm it instead of navigating to a page that does not exist for them
+  const [submittedToDraft, setSubmittedToDraft] = useState(false);
+  const [isCheckingDraft, setIsCheckingDraft] = useState(false);
+  const [submitError, setSubmitError] = useState<string | null>(null);
+  const [pollingEntityId, setPollingEntityId] = useState<string | null>(null);
+  const [pollingEntityType, setPollingEntityType] = useState<string | null>(null);
+  const [pollingTimeout, setPollingTimeout] = useState(false);
+  const isConnectorReader = useGranted([MODULES]);
+  const isGrantedIngestion = useGranted([INGESTION]);
+  const isBypass = useGranted([BYPASS]);
+  const { isForcedFormSubmissionToDraft } = useImportAccess();
+  const relayEnvironment = useRelayEnvironment();
+  const pendingStore = useIntakePendingStore();
+
+  const data = usePreloadedQuery(formViewQuery, queryRef);
+  const { form } = data;
+
+  // isSubmitInFlight covers the whole request: Formik resets isSubmitting as soon as the (async)
+  // submit handler returns, before the server answers.
+  const [commitFormMutation, isSubmitInFlight] = useApiMutation(formSubmitMutation);
+  const entitySettings = useEntitySettings();
+
+  if (!form) {
+    return (
+      <Container>
+        <Alert severity="error">{t_i18n('Form not found')}</Alert>
+      </Container>
+    );
+  }
+
+  if (!form.active) {
+    return (
+      <Container>
+        <Alert severity="warning">{t_i18n('This form is currently inactive')}</Alert>
+      </Container>
+    );
+  }
+
+  const { form_schema } = form;
+  const schema = React.useMemo(() => JSON.parse(form_schema) as FormSchemaDefinition, [form_schema]);
+  const draftPolicy = useMemo(
+    () => computeDraftPolicy(schema.draftDefaults, isBypass),
+    [schema.draftDefaults, isBypass],
+  );
+  const { initialValues, mainEntityFields } = React.useMemo(() => {
+    const parsedSchema = schema;
+    const inits: FormInitialValues = {};
+
+    // Initialize values for main entity fields
+    const mFields = parsedSchema.fields.filter((field) => field.attributeMapping.entity === 'main_entity');
+
+    // Initialize draft defaults.
+    // A field should be registered in Formik if:
+    // - the user can see and fill it (isEditable, or bypass who sees all fields), OR
+    // - it has a default value to pre-populate silently on submission.
+    if (draftPolicy.name.initialized) {
+      inits.draftName = parsedSchema.draftDefaults?.name?.defaultValue || '';
+    }
+
+    if (draftPolicy.description.initialized) {
+      inits.draftDescription = parsedSchema.draftDefaults?.description?.defaultValue || '';
+    }
+
+    const assigneeDef = parsedSchema.draftDefaults?.objectAssignee;
+    if (draftPolicy.objectAssignee.initialized) {
+      inits.draftObjectAssignee = assigneeDef?.defaults || [];
+    }
+
+    const participantDef = parsedSchema.draftDefaults?.objectParticipant;
+    if (draftPolicy.objectParticipant.initialized) {
+      inits.draftObjectParticipant = participantDef?.defaults || [];
+    }
+
+    if (parsedSchema.draftDefaults?.author?.type === 'static' && parsedSchema.draftDefaults.author.defaultValue) {
+      inits.draftAuthor = {
+        value: parsedSchema.draftDefaults.author.defaultValue,
+        label: parsedSchema.draftDefaults.author.defaultValueLabel || parsedSchema.draftDefaults.author.defaultValue,
+        type: parsedSchema.draftDefaults.author.defaultValueType,
+      };
+    } else if (draftPolicy.author.initialized) {
+      inits.draftAuthor = null;
+    }
+
+    if (draftPolicy.authorizedMembers.initialized) {
+      inits.draftAuthorizedMembers = parsedSchema.draftDefaults?.authorizedMembers?.defaults || [];
+    }
+
+    // If main entity lookup is enabled, initialize the lookup field
+    if (parsedSchema.mainEntityLookup) {
+      if (parsedSchema.mainEntityMultiple) {
+        inits.mainEntityLookup = [];
+      } else {
+        inits.mainEntityLookup = '';
+      }
+    } else if (parsedSchema.mainEntityMultiple && parsedSchema.mainEntityFieldMode === 'parsed') {
+      // For parsed mode, just initialize a single text field
+      inits.mainEntityParsed = '';
+      // Also initialize additional fields for parsed mode
+      const fieldsObj: Record<string, unknown> = {};
+      mFields.forEach((field) => {
+        if (field.type === 'checkbox' || field.type === 'toggle') {
+          fieldsObj[field.name] = field.defaultValue !== undefined ? field.defaultValue : false;
+        } else if (field.name === 'is_family' && inits[field.name] === undefined) {
+          inits[field.name] = false;
+        } else if (field.type === 'multiselect' || field.type === 'objectMarking' || field.type === 'objectLabel' || field.type === 'externalReferences' || field.type === 'files') {
+          fieldsObj[field.name] = field.defaultValue || [];
+        } else if (field.type === 'datetime') {
+          fieldsObj[field.name] = field.defaultValue || new Date().toISOString();
+        } else {
+          fieldsObj[field.name] = field.defaultValue || '';
+        }
+      });
+      inits.mainEntityFields = fieldsObj;
+    } else if (parsedSchema.mainEntityMultiple && parsedSchema.mainEntityFieldMode === 'multiple') {
+      // For multi mode, initialize an array with one set of fields
+      const fieldGroup: Record<string, unknown> = {};
+      mFields.forEach((field) => {
+        if (field.type === 'checkbox' || field.type === 'toggle') {
+          fieldGroup[field.name] = field.defaultValue !== undefined ? field.defaultValue : false;
+        } else if (field.type === 'multiselect' || field.type === 'objectMarking' || field.type === 'objectLabel' || field.type === 'externalReferences' || field.type === 'files') {
+          fieldGroup[field.name] = field.defaultValue || [];
+        } else if (field.type === 'datetime') {
+          fieldGroup[field.name] = field.defaultValue || new Date().toISOString();
+        } else {
+          fieldGroup[field.name] = field.defaultValue || '';
+        }
+      });
+      inits.mainEntityGroups = [fieldGroup];
+    } else {
+      // Single entity mode
+      mFields.forEach((field) => {
+        if (field.type === 'checkbox' || field.type === 'toggle') {
+          inits[field.name] = field.defaultValue !== undefined ? field.defaultValue : false;
+        } else if (field.type === 'multiselect' || field.type === 'objectMarking' || field.type === 'objectLabel' || field.type === 'externalReferences' || field.type === 'files') {
+          inits[field.name] = field.defaultValue || [];
+        } else if (field.type === 'datetime') {
+          inits[field.name] = field.defaultValue || new Date().toISOString();
+        } else {
+          inits[field.name] = field.defaultValue || '';
+        }
+      });
+    }
+
+    // Initialize values for relationships if any
+    if (parsedSchema.relationships) {
+      parsedSchema.relationships.forEach((relationship) => {
+        inits[`relationship_${relationship.id}`] = {};
+        // Initialize fields for each relationship
+        if (relationship.fields) {
+          const relationshipFields: Record<string, unknown> = {};
+          relationship.fields.forEach((field) => {
+            if (field.type === 'checkbox' || field.type === 'toggle') {
+              relationshipFields[field.name] = field.defaultValue !== undefined ? field.defaultValue : false;
+            } else if (field.type === 'multiselect' || field.type === 'objectMarking' || field.type === 'objectLabel' || field.type === 'externalReferences') {
+              relationshipFields[field.name] = field.defaultValue || [];
+            } else if (field.type === 'datetime') {
+              relationshipFields[field.name] = field.defaultValue || new Date().toISOString();
+            } else {
+              relationshipFields[field.name] = field.defaultValue || '';
+            }
+          });
+          inits[`relationship_${relationship.id}`] = relationshipFields;
+        }
+      });
+    }
+
+    // Initialize values for additional entities if any
+    if (parsedSchema.additionalEntities) {
+      parsedSchema.additionalEntities.forEach((entity) => {
+        const entityFields = parsedSchema.fields.filter((field) => field.attributeMapping.entity === entity.id);
+
+        if (entity.lookup) {
+          // Lookup mode
+          if (entity.multiple) {
+            inits[`additional_${entity.id}_lookup`] = [];
+          } else {
+            inits[`additional_${entity.id}_lookup`] = '';
+          }
+        } else if (entity.multiple && entity.fieldMode === 'parsed') {
+          // Parsed mode
+          inits[`additional_${entity.id}_parsed`] = '';
+          // Also initialize additional fields for parsed mode
+          const fieldsObj: Record<string, unknown> = {};
+          entityFields.forEach((field) => {
+            if (field.type === 'checkbox' || field.type === 'toggle') {
+              fieldsObj[field.name] = field.defaultValue !== undefined ? field.defaultValue : false;
+            } else if (field.type === 'multiselect' || field.type === 'objectMarking' || field.type === 'objectLabel' || field.type === 'externalReferences' || field.type === 'files') {
+              fieldsObj[field.name] = field.defaultValue || [];
+            } else if (field.type === 'datetime') {
+              fieldsObj[field.name] = field.defaultValue || new Date().toISOString();
+            } else {
+              fieldsObj[field.name] = field.defaultValue || '';
+            }
+          });
+          inits[`additional_${entity.id}_fields`] = fieldsObj;
+        } else if (entity.multiple && entity.fieldMode === 'multiple') {
+          // Multi mode
+          // Initialize with the minimum amount of field groups
+          const minAmount = entity.minAmount ?? 0;
+          const initialGroups: Record<string, unknown>[] = [];
+
+          for (let i = 0; i < minAmount; i += 1) {
+            const fieldGroup: Record<string, unknown> = {};
+            entityFields.forEach((field) => {
+              if (field.type === 'checkbox' || field.type === 'toggle') {
+                fieldGroup[field.name] = field.defaultValue !== undefined ? field.defaultValue : false;
+              } else if (field.type === 'multiselect' || field.type === 'objectMarking' || field.type === 'objectLabel' || field.type === 'externalReferences' || field.type === 'files') {
+                fieldGroup[field.name] = field.defaultValue || [];
+              } else if (field.type === 'datetime') {
+                fieldGroup[field.name] = field.defaultValue || new Date().toISOString();
+              } else {
+                fieldGroup[field.name] = field.defaultValue || '';
+              }
+            });
+            initialGroups.push(fieldGroup);
+          }
+
+          inits[`additional_${entity.id}_groups`] = initialGroups;
+        } else if (!entity.required) {
+          // Single entity mode - optional entities
+          // For optional entities, only initialize if there are default values
+          // Don't initialize empty values for optional entities
+          const entityValues: Record<string, unknown> = {};
+          let hasDefaultValues = false;
+
+          entityFields.forEach((field) => {
+            // Only initialize if field has a default value
+            if (field.defaultValue !== undefined && field.defaultValue !== null && field.defaultValue !== '') {
+              hasDefaultValues = true;
+              entityValues[field.name] = field.defaultValue;
+            } else if (field.name === 'is_family') {
+              hasDefaultValues = true;
+              entityValues[field.name] = false;
+            }
+          });
+
+          // Only set initial values if there are actual default values
+          if (hasDefaultValues) {
+            inits[`additional_${entity.id}`] = entityValues;
+          }
+        } else {
+          // For required entities, initialize all fields as before
+          const entityValues: Record<string, unknown> = {};
+          entityFields.forEach((field) => {
+            if (field.type === 'checkbox' || field.type === 'toggle') {
+              entityValues[field.name] = field.defaultValue !== undefined ? field.defaultValue : false;
+            } else if (field.type === 'multiselect' || field.type === 'objectMarking' || field.type === 'objectLabel' || field.type === 'externalReferences' || field.type === 'files') {
+              entityValues[field.name] = field.defaultValue || [];
+            } else if (field.type === 'datetime') {
+              entityValues[field.name] = field.defaultValue || new Date().toISOString();
+            } else {
+              entityValues[field.name] = field.defaultValue || '';
+            }
+          });
+          inits[`additional_${entity.id}`] = entityValues;
+        }
+      });
+    }
+
+    return { initialValues: inits, mainEntityFields: mFields };
+  }, [schema, isBypass, draftPolicy]);
+
+  // Initialize isDraft based on schema settings or import context override
+  const [isDraft, setIsDraft] = useState(isForcedFormSubmissionToDraft || schema.isDraftByDefault || false);
+  const deferredCreation = useMemo(() => ({ ...pendingStore, toDraft: isDraft }), [pendingStore, isDraft]);
+
+  const validationSchema = React.useMemo(() => {
+    let baseSchema = convertFormSchemaToYupSchema(schema, t_i18n);
+    const extraShapes: Record<string, Yup.AnySchema> = {};
+    // Validate only when the user can see the field (isEditable) AND is not a bypass user.
+    // Bypass users are never blocked by required validation.
+    if (isDraft && draftPolicy.name.validationRequired) {
+      extraShapes.draftName = Yup.string().trim().required(t_i18n('This field is required'));
+    }
+    if (isDraft && draftPolicy.description.validationRequired) {
+      extraShapes.draftDescription = Yup.string().trim().required(t_i18n('This field is required'));
+    }
+    if (isDraft && draftPolicy.objectAssignee.validationRequired) {
+      extraShapes.draftObjectAssignee = Yup.array().min(1, t_i18n('This field is required'));
+    }
+    if (isDraft && draftPolicy.objectParticipant.validationRequired) {
+      extraShapes.draftObjectParticipant = Yup.array().min(1, t_i18n('This field is required'));
+    }
+    // main_entity_author: empty is always valid (backend inherits from main entity)
+    if (isDraft && draftPolicy.author.validationRequired) {
+      extraShapes.draftAuthor = Yup.object()
+        .nullable()
+        .required(t_i18n('This field is required'));
+    }
+    if (isDraft && draftPolicy.authorizedMembers.validationRequired) {
+      extraShapes.draftAuthorizedMembers = Yup.array()
+        .min(1, t_i18n('This field is required'));
+    }
+    if (Object.keys(extraShapes).length > 0) {
+      baseSchema = baseSchema.shape(extraShapes);
+    }
+    return baseSchema;
+  }, [schema, isDraft, isBypass, t_i18n]);
+
+  // Poll for entity existence with timeout
+  useEffect(() => {
+    if (!pollingEntityId || !pollingEntityType) return undefined;
+
+    const startTime = Date.now();
+    const TIMEOUT = 30000; // 30 seconds timeout
+    // eslint-disable-next-line prefer-const
+    let interval: NodeJS.Timeout;
+
+    const checkEntity = async () => {
+      try {
+        const result = await fetchQuery(
+          environment,
+          entityCheckQuery,
+          { id: pollingEntityId },
+        ).toPromise() as EntityCheckResult | null;
+        if (result?.stixCoreObject?.id) {
+          if (onSuccess) onSuccess(); // Close dialog before navigating
+          navigate(`/dashboard/id/${pollingEntityId}`);
+          if (interval) clearInterval(interval);
+          return true;
+        }
+      } catch {
+        // Entity doesn't exist yet, continue polling
+      }
+
+      // Check if timeout reached
+      if (Date.now() - startTime >= TIMEOUT) {
+        // Timeout reached, set flag and redirect to fallback
+        setPollingTimeout(true);
+        setTimeout(() => {
+          if (onSuccess) onSuccess(); // Close dialog before navigating
+          const fallbackPath = isConnectorReader
+            ? '/dashboard/integrations/deployed'
+            : '/dashboard';
+          navigate(fallbackPath);
+        }, 2000); // Give user time to see the timeout message
+        if (interval) clearInterval(interval);
+        return true;
+      }
+
+      return false;
+    };
+
+    // Start polling
+    checkEntity();
+    interval = setInterval(checkEntity, 2000); // Check every 2 seconds
+
+    // Cleanup
+    return () => {
+      if (interval) clearInterval(interval);
+    };
+  }, [pollingEntityId, pollingEntityType, navigate, isConnectorReader, onSuccess]);
+
+  // The draft of the submission is opened only when the user can load its page, else the submission is confirmed
+  const openDraftOrConfirm = async (draftId?: string) => {
+    setIsCheckingDraft(true); // the submission is done but the form stays on screen until the check answers
+    const result = draftId
+      ? await fetchQuery(relayEnvironment, draftCheckQuery, { id: draftId }).toPromise().catch(() => null) as { draftWorkspace?: { id: string } | null } | null
+      : null;
+    if (result?.draftWorkspace?.id) {
+      if (onSuccess) onSuccess(); // Close dialog before navigating
+      navigate(`/dashboard/data/import/draft/${draftId}`);
+    } else {
+      setSubmittedToDraft(true);
+      setIsCheckingDraft(false);
+    }
+  };
+
+  const handleSubmit = async (values: Record<string, string | string[] | { value: string } | { value: string }[]>, { setSubmitting }: FormikHelpers<Record<string, unknown>>) => {
+    setSubmitError(null);
+    try {
+      const { values: formattedData, files } = prepareFormSubmission(values, schema, pendingStore.getPending);
+      commitFormMutation({
+        variables: {
+          input: {
+            formId: form.id,
+            values: JSON.stringify(formattedData),
+            // Files of the objects created in the intake, referenced by index from the values
+            ...(files.length > 0 ? { files } : {}),
+          },
+          isDraft,
+        },
+        onCompleted: (response: { formSubmit?: { success?: boolean; message?: string; entityId?: string } }) => {
+          if (response?.formSubmit?.success) {
+            setSubmitted(true);
+            setSubmitting(false);
+            if (isDraft) {
+              openDraftOrConfirm(response.formSubmit.entityId);
+            } else if (response.formSubmit.entityId) {
+              setPollingEntityId(response.formSubmit.entityId);
+              setPollingEntityType(schema.mainEntityType || 'StixDomainObject');
+            }
+          } else {
+            setSubmitError(response?.formSubmit?.message || 'Submission failed');
+            setSubmitting(false);
+          }
+        },
+        onError: (error: Error) => {
+          setSubmitError(getSubmitErrorMessage(error));
+          setSubmitting(false);
+        },
+      });
+    } catch (error) {
+      setSubmitError((error as Error).message || 'An error occurred');
+      setSubmitting(false);
+    }
+  };
+
+  if (submittedToDraft) {
+    return (
+      <Container>
+        <Alert severity="success">{t_i18n('Your submission has been sent and is being processed.')}</Alert>
+        <div style={{ display: 'flex', gap: 8, marginTop: 20 }}>
+          <Button onClick={() => setSubmittedToDraft(false)}>{t_i18n('Submit again')}</Button>
+          {embedded && onSuccess && <Button variant="secondary" onClick={onSuccess}>{t_i18n('Close')}</Button>}
+        </div>
+      </Container>
+    );
+  }
+
+  if (submitted && (pollingEntityId || pollingEntityType)) {
+    return (
+      <PollingContainer style={embedded ? { height: '400px' } : undefined}>
+        <CircularProgress size={60} sx={{ marginBottom: '20px' }} />
+        <Typography variant="h6" gutterBottom>
+          {pollingTimeout ? t_i18n('Processing is taking longer than expected...') : t_i18n('Creating entities...')}
+        </Typography>
+        <Typography variant="body2" color="textSecondary">
+          {pollingTimeout
+            ? t_i18n('Redirecting you to the dashboard...')
+            : t_i18n('Please wait while we process your submission.')}
+        </Typography>
+      </PollingContainer>
+    );
+  }
+
+  return (
+    <Container>
+      {!embedded && (
+        <Breadcrumbs
+          elements={[
+            { label: t_i18n('Integrations') },
+            { label: t_i18n('Deployed'), link: isGrantedIngestion ? '/dashboard/integrations/deployed?kind=form' : undefined },
+            { label: form.name, current: true },
+          ]}
+        />
+      )}
+      <Card>
+        <Typography variant="h1" gutterBottom={true}>
+          {form.name}
+        </Typography>
+        {form.description && (
+          <Typography variant="body1" gutterBottom={true} style={{ marginTop: 10 }}>
+            {form.description}
+          </Typography>
+        )}
+
+        {submitError && (
+          <Alert severity="error" style={{ marginTop: 20 }}>
+            {submitError}
+          </Alert>
+        )}
+
+        {/* Deferred mode for everything inside: creation dialogs keep their objects in the pending store. */}
+        <DeferredCreationContext.Provider value={deferredCreation}>
+          <Formik
+            initialValues={initialValues}
+            validationSchema={validationSchema}
+            onSubmit={handleSubmit as (values: FormInitialValues, formikHelpers: FormikHelpers<FormInitialValues>) => void | Promise<unknown>}
+            validateOnChange={true}
+            validateOnBlur={true}
+          >
+            {({ isSubmitting, isValid, values, errors, touched, setFieldValue }) => {
+              const showDraftName = isDraft && draftPolicy.name.visible;
+              const showDraftDescription = isDraft && draftPolicy.description.visible;
+              const showDraftObjectAssignee = isDraft && draftPolicy.objectAssignee.visible;
+              const showDraftObjectParticipant = isDraft && draftPolicy.objectParticipant.visible;
+              const showDraftAuthor = isDraft && draftPolicy.author.visible;
+              const showDraftAuthorizedMembers = isDraft && draftPolicy.authorizedMembers.visible;
+              const showDraftSection = showDraftName
+                || showDraftDescription
+                || showDraftObjectAssignee
+                || showDraftObjectParticipant
+                || showDraftAuthor
+                || showDraftAuthorizedMembers;
+              const draftAuthorInheritanceHelper = t_i18n('Default: Reuse {entityType} author (leave empty to inherit)', {
+                values: { entityType: t_i18n(schema.mainEntityType || 'main entity') },
+              });
+              return (
+                <Form noValidate>
+                  {/* Main Entity Fields */}
+                  <Section>
+                    <SectionTitle variant="h6">
+                      {t_i18n(schema.mainEntityType || 'Main Entity')}
+                    </SectionTitle>
+                    {(() => {
+                      if (schema.mainEntityLookup) {
+                        return (
+                          <StixCoreObjectsField
+                            name="mainEntityLookup"
+                            types={[schema.mainEntityType]}
+                            style={{ width: '100%', marginTop: 20 }}
+                            helpertext={schema.mainEntityMultiple ? t_i18n('Select one or more existing entities') : t_i18n('Select an existing entity')}
+                            multiple={schema.mainEntityMultiple}
+                            disableCreation={schema.mainEntityDisableCreation}
+                            deferCreation
+                          />
+                        );
+                      }
+                      if (schema.mainEntityMultiple && schema.mainEntityFieldMode === 'parsed') {
+                        // Parsed mode - single text field to parse
+                        let helperText;
+                        if (schema.mainEntityType === 'Indicator' && schema.mainEntityAutoConvertToStixPattern) {
+                          helperText = t_i18n('Enter simple observable values (e.g., IP addresses, domains, hashes). They will be automatically converted to STIX patterns.');
+                        } else if (schema.mainEntityType === 'Indicator') {
+                          helperText = t_i18n('Enter valid STIX patterns (e.g., [ipv4-addr:value = \'192.168.1.1\'])');
+                        }
+                        return (
+                          <>
+                            {schema.mainEntityParseField === 'textarea' ? (
+                              <Field
+                                component={ParsedTextareaField}
+                                className="mt-5"
+                                name="mainEntityParsed"
+                                placeholder={t_i18n(schema.mainEntityParseMode === 'line'
+                                  ? 'Enter values separated by new lines'
+                                  : 'Enter values separated by commas')}
+                                rows={10}
+                                helperText={helperText}
+                              />
+                            ) : (
+                              <Field
+                                component={ParsedTextField}
+                                name="mainEntityParsed"
+                                placeholder={t_i18n(schema.mainEntityParseMode === 'line'
+                                  ? 'Enter values separated by new lines'
+                                  : 'Enter values separated by commas')}
+                                variant="outlined"
+                                fullWidth
+                                helperText={helperText}
+                              />
+                            )}
+                            {mainEntityFields.length > 0 && (
+                              <>
+                                <Divider style={{ marginTop: 20, marginBottom: 10 }} />
+                                <Typography variant="subtitle2" style={{ marginTop: 10, marginBottom: 10 }}>
+                                  {t_i18n('Additional fields (will be applied to all created entities)')}
+                                </Typography>
+                                <FormFields
+                                  fields={mainEntityFields}
+                                  values={values}
+                                  errors={errors as Record<string, string>}
+                                  touched={touched as Record<string, boolean>}
+                                  setFieldValue={setFieldValue}
+                                  entitySettings={entitySettings as unknown as FormFieldRendererProps['entitySettings']}
+                                  getFieldKey={(field) => `mainEntityFields.${field.name}`}
+                                  getFieldOverride={(field) => ({ name: `mainEntityFields.${field.name}` })}
+                                />
+                              </>
+                            )}
+                          </>
+                        );
+                      }
+                      if (schema.mainEntityMultiple && schema.mainEntityFieldMode === 'multiple') {
+                        return (
+                          // Multi mode - field groups with add/remove
+                          <FieldArray name="mainEntityGroups">
+                            {({ remove, push }) => (
+                              <>
+                                {(values.mainEntityGroups as unknown as Record<string, unknown>[])?.map((group, index) => (
+                                  <FieldGroup key={index}>
+                                    {index > 0 && (
+                                      <DeleteButton
+                                        aria-label={t_i18n('Delete')}
+                                        onClick={() => remove(index)}
+                                        size="small"
+                                        color="primary"
+                                      >
+                                        <DeleteIcon />
+                                      </DeleteButton>
+                                    )}
+                                    <Typography variant="subtitle2" gutterBottom>
+                                      {`${t_i18n(schema.mainEntityType)} ${index + 1}`}
+                                    </Typography>
+                                    <FormFields
+                                      fields={mainEntityFields}
+                                      values={values}
+                                      errors={errors as Record<string, string>}
+                                      touched={touched as Record<string, boolean>}
+                                      setFieldValue={setFieldValue}
+                                      entitySettings={entitySettings as unknown as FormFieldRendererProps['entitySettings']}
+                                      getFieldKey={(field) => `mainEntityGroups.${index}.${field.name}`}
+                                      getFieldOverride={(field) => ({ name: `mainEntityGroups.${index}.${field.name}` })}
+                                    />
+                                    {index < ((values.mainEntityGroups as unknown as Record<string, unknown>[])?.length || 1) - 1 && (
+                                      <Divider style={{ marginTop: 15 }} />
+                                    )}
+                                  </FieldGroup>
+                                ))}
+                                <AddButton
+                                  onClick={() => {
+                                    const newGroup: Record<string, unknown> = {};
+                                    mainEntityFields.forEach((field) => {
+                                      if (field.type === 'checkbox' || field.type === 'toggle') {
+                                        newGroup[field.name] = false;
+                                      } else if (field.type === 'multiselect' || field.type === 'objectMarking' || field.type === 'objectLabel' || field.type === 'files') {
+                                        newGroup[field.name] = [];
+                                      } else if (field.type === 'datetime') {
+                                        newGroup[field.name] = new Date().toISOString();
+                                      } else {
+                                        newGroup[field.name] = '';
+                                      }
+                                    });
+                                    push(newGroup);
+                                  }}
+                                  startIcon={<AddIcon />}
+                                  variant="secondary"
+                                  size="small"
+                                >
+                                  {t_i18n('Add')} {t_i18n(schema.mainEntityType)}
+                                </AddButton>
+                              </>
+                            )}
+                          </FieldArray>
+                        );
+                      }
+                      // Single entity mode - wrap fields in Grid if any have width defined
+                      return (
+                        <FormFields
+                          fields={mainEntityFields}
+                          values={values}
+                          errors={errors as Record<string, string>}
+                          touched={touched as Record<string, boolean>}
+                          setFieldValue={setFieldValue}
+                          entitySettings={entitySettings as unknown as FormFieldRendererProps['entitySettings']}
+                          getFieldKey={(field) => field.name}
+                        />
+                      );
+                    })()}
+                  </Section>
+
+                  {/* Additional Entities */}
+                  {schema.additionalEntities && schema.additionalEntities.length > 0 && (
+                    <>
+                      {schema.additionalEntities.map((additionalEntity) => {
+                        // Find fields for this additional entity
+                        const entityFields = schema.fields.filter((field) => field.attributeMapping.entity === additionalEntity.id);
+                        return (
+                          <Section key={additionalEntity.id}>
+                            <SectionTitle variant="h6">
+                              {additionalEntity.label || `${t_i18n('Additional Entity')} - ${t_i18n(additionalEntity.entityType)}`}
+                            </SectionTitle>
+                            {(() => {
+                              if (additionalEntity.lookup) {
+                                return (
+                                  <StixCoreObjectsField
+                                    name={`additional_${additionalEntity.id}_lookup`}
+                                    types={[additionalEntity.entityType]}
+                                    style={{ width: '100%', marginTop: 20 }}
+                                    helpertext={additionalEntity.multiple ? t_i18n('Select one or more existing entities') : t_i18n('Select an existing entity')}
+                                    multiple={additionalEntity.multiple}
+                                    disableCreation={additionalEntity.disableCreation}
+                                    deferCreation
+                                  />
+                                );
+                              }
+                              if (additionalEntity.multiple && additionalEntity.fieldMode === 'parsed') {
+                                // Parsed mode - single text field to parse
+                                const fieldName = `additional_${additionalEntity.id}_parsed`;
+                                let helperText;
+                                if (additionalEntity.entityType === 'Indicator' && additionalEntity.autoConvertToStixPattern) {
+                                  helperText = t_i18n('Enter simple observable values (e.g., IP addresses, domains, hashes). They will be automatically converted to STIX patterns.');
+                                } else if (additionalEntity.entityType === 'Indicator') {
+                                  helperText = t_i18n('Enter valid STIX patterns (e.g., [ipv4-addr:value = \'192.168.1.1\'])');
+                                }
+                                return (
+                                  <>
+                                    {additionalEntity.parseField === 'textarea' ? (
+                                      <Field
+                                        component={ParsedTextareaField}
+                                        className="mt-5"
+                                        name={fieldName}
+                                        placeholder={t_i18n(additionalEntity.parseMode === 'line'
+                                          ? 'Enter values separated by new lines'
+                                          : 'Enter values separated by commas')}
+                                        rows={10}
+                                        helperText={helperText}
+                                      />
+                                    ) : (
+                                      <Field
+                                        component={ParsedTextField}
+                                        name={fieldName}
+                                        placeholder={t_i18n(additionalEntity.parseMode === 'line'
+                                          ? 'Enter values separated by new lines'
+                                          : 'Enter values separated by commas')}
+                                        variant="outlined"
+                                        fullWidth
+                                        helperText={helperText}
+                                      />
+                                    )}
+                                    {entityFields.length > 0 && (
+                                      <>
+                                        <Divider style={{ marginTop: 20, marginBottom: 10 }} />
+                                        <Typography variant="subtitle2" style={{ marginTop: 10, marginBottom: 10 }}>
+                                          {t_i18n('Additional fields (will be applied to all created entities)')}
+                                        </Typography>
+                                        <FormFields
+                                          fields={entityFields}
+                                          values={values}
+                                          errors={errors as Record<string, string>}
+                                          touched={touched as Record<string, boolean>}
+                                          setFieldValue={setFieldValue}
+                                          entitySettings={entitySettings as unknown as FormFieldRendererProps['entitySettings']}
+                                          getFieldKey={(field) => `additional_${additionalEntity.id}_fields.${field.name}`}
+                                          getFieldOverride={(field) => ({ name: `additional_${additionalEntity.id}_fields.${field.name}` })}
+                                        />
+                                      </>
+                                    )}
+                                  </>
+                                );
+                              }
+                              if (additionalEntity.multiple && additionalEntity.fieldMode === 'multiple') {
+                                const groupsFieldName = `additional_${additionalEntity.id}_groups`;
+                                const minAmount = additionalEntity.minAmount ?? 0;
+                                return (
+                                  // Multi mode - field groups with add/remove
+                                  <FieldArray name={groupsFieldName}>
+                                    {({ remove, push }) => (
+                                      <>
+                                        {(values[groupsFieldName] as unknown as Record<string, unknown>[])?.map((group, index) => (
+                                          <FieldGroup key={index}>
+                                            {index >= minAmount && (
+                                              <DeleteButton
+                                                aria-label={t_i18n('Delete')}
+                                                onClick={() => remove(index)}
+                                                size="small"
+                                                color="primary"
+                                              >
+                                                <DeleteIcon />
+                                              </DeleteButton>
+                                            )}
+                                            <Typography variant="subtitle2" gutterBottom>
+                                              {additionalEntity.label || additionalEntity.entityType} {index + 1}
+                                            </Typography>
+                                            <FormFields
+                                              fields={entityFields}
+                                              values={values}
+                                              errors={errors as Record<string, string>}
+                                              touched={touched as Record<string, boolean>}
+                                              setFieldValue={setFieldValue}
+                                              entitySettings={entitySettings as unknown as FormFieldRendererProps['entitySettings']}
+                                              getFieldKey={(field) => `${groupsFieldName}.${index}.${field.name}`}
+                                              getFieldOverride={(field) => ({ name: `${groupsFieldName}.${index}.${field.name}` })}
+                                            />
+                                            {index < ((values[groupsFieldName] as unknown as Record<string, unknown>[])?.length || 1) - 1 && (
+                                              <Divider style={{ marginTop: 15 }} />
+                                            )}
+                                          </FieldGroup>
+                                        ))}
+                                        <AddButton
+                                          onClick={() => {
+                                            const newGroup: Record<string, unknown> = {};
+                                            entityFields.forEach((field) => {
+                                              if (field.type === 'checkbox' || field.type === 'toggle') {
+                                                newGroup[field.name] = false;
+                                              } else if (field.type === 'multiselect' || field.type === 'objectMarking' || field.type === 'objectLabel' || field.type === 'files') {
+                                                newGroup[field.name] = [];
+                                              } else if (field.type === 'datetime') {
+                                                newGroup[field.name] = new Date().toISOString();
+                                              } else {
+                                                newGroup[field.name] = '';
+                                              }
+                                            });
+                                            push(newGroup);
+                                          }}
+                                          startIcon={<AddIcon />}
+                                          variant="secondary"
+                                          size="small"
+                                        >
+                                          {t_i18n('Add')} {additionalEntity.label || additionalEntity.entityType}
+                                        </AddButton>
+                                      </>
+                                    )}
+                                  </FieldArray>
+                                );
+                              }
+                              // Single entity mode - wrap fields in Grid if any have width defined
+                              return (
+                                <FormFields
+                                  fields={entityFields}
+                                  values={values[`additional_${additionalEntity.id}`] as Record<string, unknown> || {}}
+                                  errors={(errors as unknown as Record<string, Record<string, string>>)[`additional_${additionalEntity.id}`] || {}}
+                                  touched={(touched as unknown as Record<string, Record<string, boolean>>)[`additional_${additionalEntity.id}`] || {}}
+                                  setFieldValue={(fieldName: string, value: unknown) => setFieldValue(`additional_${additionalEntity.id}.${fieldName}`, value)}
+                                  entitySettings={entitySettings as unknown as FormFieldRendererProps['entitySettings']}
+                                  fieldPrefix={`additional_${additionalEntity.id}`}
+                                  getFieldKey={(field) => `${additionalEntity.id}_${field.name}`}
+                                />
+                              );
+                            })()}
+                          </Section>
+                        );
+                      })}
+                    </>
+                  )}
+
+                  {/* Relationships */}
+                  {(() => {
+                    // Filter to only relationships that have fields
+                    const relationshipsWithFields = (schema.relationships || []).filter(
+                      (rel) => rel.fields && rel.fields.length > 0,
+                    );
+                    if (relationshipsWithFields.length === 0) return null;
+
+                    return (
+                      <>
+                        <SectionTitle variant="h6" style={{ marginTop: 30 }}>
+                          {t_i18n('Relationships')}
+                        </SectionTitle>
+                        {relationshipsWithFields.map((relationship) => {
+                          // Find the entities involved
+                          const fromEntityLabel = relationship.fromEntity === 'main_entity'
+                            ? schema.mainEntityType
+                            : schema.additionalEntities?.find((e) => e.id === relationship.fromEntity)?.label || relationship.fromEntity;
+                          const toEntityLabel = relationship.toEntity === 'main_entity'
+                            ? schema.mainEntityType
+                            : schema.additionalEntities?.find((e) => e.id === relationship.toEntity)?.label || relationship.toEntity;
+                          return (
+                            <Section key={relationship.id}>
+                              <Typography variant="subtitle1" style={{ marginBottom: 10 }}>
+                                {`${fromEntityLabel} → ${t_i18n(`relationship_${relationship.relationshipType}`)} → ${toEntityLabel}`}
+                              </Typography>
+                              <FormFields
+                                fields={relationship.fields ?? []}
+                                values={values[`relationship_${relationship.id}`] as Record<string, unknown> || {}}
+                                errors={(errors as unknown as Record<string, Record<string, string>>)[`relationship_${relationship.id}`] || {}}
+                                touched={(touched as unknown as Record<string, Record<string, boolean>>)[`relationship_${relationship.id}`] || {}}
+                                setFieldValue={(fieldName: string, value: unknown) => setFieldValue(`relationship_${relationship.id}.${fieldName}`, value)}
+                                entitySettings={entitySettings as unknown as FormFieldRendererProps['entitySettings']}
+                                fieldPrefix={`relationship_${relationship.id}`}
+                                getFieldKey={(field) => `relationship_${relationship.id}_${field.name}`}
+                              />
+                            </Section>
+                          );
+                        })}
+                      </>
+                    );
+                  })()}
+                  {isDraft && <Divider style={{ marginTop: 40 }} />}
+                  <FormControlLabel
+                    sx={{ marginTop: '20px', marginLeft: 0 }}
+                    style={{ marginBottom: showDraftSection ? 12 : undefined }}
+                    control={(
+                      <Checkbox
+                        checked={isDraft}
+                        onCheckedChange={(checked) => setIsDraft(checked === true)}
+                        disabled={isSubmitting || isForcedFormSubmissionToDraft || (schema.isDraftByDefault === true && schema.allowDraftOverride === false)}
+                        style={{ marginRight: 10 }}
+                      />
+                    )}
+                    label={t_i18n('Create as draft')}
+                  />
+                  {showDraftSection && (
+                    <>
+                      <SectionTitle variant="h5" style={{ marginTop: 0 }}>
+                        {t_i18n('Draft')}
+                      </SectionTitle>
+                      {showDraftName && (
+                        <div style={{ marginTop: 20 }}>
+                          <Field
+                            component={TextField}
+                            name="draftName"
+                            label={t_i18n('Draft name')}
+                            required={draftPolicy.name.required}
+                            fullWidth
+                          />
+                        </div>
+                      )}
+                      {showDraftDescription && (
+                        <div style={{ marginTop: 20 }}>
+                          <Field
+                            component={MarkdownField}
+                            name="draftDescription"
+                            label={t_i18n('Draft description')}
+                            required={draftPolicy.description.required}
+                            fullWidth={true}
+                            multiline={true}
+                            rows="4"
+                          />
+                        </div>
+                      )}
+                      {showDraftObjectAssignee && (
+                        <div style={{ marginTop: 20 }}>
+                          <ObjectAssigneeField
+                            name="draftObjectAssignee"
+                            required={draftPolicy.objectAssignee.required}
+                            style={{ width: '100%', marginBottom: 20 }}
+                          />
+                        </div>
+                      )}
+                      {showDraftObjectParticipant && (
+                        <div style={{ marginTop: 20 }}>
+                          <ObjectParticipantField
+                            name="draftObjectParticipant"
+                            required={draftPolicy.objectParticipant.required}
+                            style={{ width: '100%', marginBottom: 20 }}
+                          />
+                        </div>
+                      )}
+                      {showDraftAuthor && (
+                        <div style={{ marginTop: 20 }}>
+                          <CreatedByField
+                            name="draftAuthor"
+                            label={t_i18n('Draft author')}
+                            style={{ width: '100%', marginBottom: 20 }}
+                            setFieldValue={setFieldValue}
+                            required={draftPolicy.author.required}
+                            clearable={draftPolicy.author.clearable}
+                          />
+                          {schema.draftDefaults?.author?.type === 'main_entity_author' && (
+                            <FormHelperText style={{ marginTop: -16, marginBottom: 20 }}>
+                              {draftAuthorInheritanceHelper}
+                            </FormHelperText>
+                          )}
+                        </div>
+                      )}
+                      {showDraftAuthorizedMembers && (
+                        <div style={{ marginTop: 20, marginBottom: 20 }}>
+                          <Field
+                            component={AuthorizedMembersField}
+                            name="draftAuthorizedMembers"
+                            label={t_i18n('Authorized Members')}
+                            withDynamicKeys={true}
+                            allowDynamicGroupsRestriction={true}
+                            dynamicContextTypeLabel="Dynamic from draft"
+                            dynamicAuthorOrgLabel="Draft author (org)"
+                            includeBundleOrganizationDynamicOption={false}
+                            dynamicGroupsRestrictionSupportedValues={['AUTHOR']}
+                            disabled={!isBypass && !schema.draftDefaults?.authorizedMembers?.isEditable}
+                          />
+                        </div>
+                      )}
+                    </>
+                  )}
+                  <SubmitButton
+                    type="submit"
+                    disabled={isSubmitting || isSubmitInFlight || isCheckingDraft || !isValid}
+                  >
+                    {isSubmitting || isSubmitInFlight || isCheckingDraft ? t_i18n('Submitting...') : t_i18n('Submit')}
+                  </SubmitButton>
+                  <div style={{ clear: 'both' }} />
+                </Form>
+              );
+            }}
+          </Formik>
+        </DeferredCreationContext.Provider>
+      </Card>
+    </Container>
+  );
+};
+
+interface FormViewProps {
+  formId?: string;
+  embedded?: boolean;
+  onSuccess?: () => void;
+}
+
+const FormView: FunctionComponent<FormViewProps> = ({ formId: propFormId, embedded = false, onSuccess }) => {
+  const { formId: routeFormId } = useParams<{ formId: string }>();
+  const formId = propFormId || routeFormId;
+  const [queryRef, loadQuery] = useQueryLoader<FormViewQuery>(formViewQuery);
+
+  React.useEffect(() => {
+    if (formId) {
+      loadQuery({ id: formId }, { fetchPolicy: 'store-and-network' });
+    }
+  }, [formId]);
+
+  if (!queryRef) {
+    return <Loader variant={LoaderVariant.container} />;
+  }
+
+  return (
+    <React.Suspense fallback={<Loader variant={LoaderVariant.container} />}>
+      <FormViewInner queryRef={queryRef} embedded={embedded} onSuccess={onSuccess} />
+    </React.Suspense>
+  );
+};
+
+export default FormView;

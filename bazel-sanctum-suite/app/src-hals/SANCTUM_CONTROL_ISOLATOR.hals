@@ -1,0 +1,71 @@
+/*****************************************************************************
+ * Sanctum Suite: Critical Control Channels Isolator & Interlock Governor (HAL/S)
+ * Awaryjne blokowanie fizycznych linii sterujących w przypadku wykrycia
+ * kompromitacji oprogramowania lub prób nieautoryzowanego dostępu.
+ *****************************************************************************/
+
+COMPILATION UNIT SANCTUM_CONTROL_ISOLATOR;
+
+    DECLARE TOTAL_CONTROL_ACTUATORS CONSTANT(8);
+
+    STRUCTURE ACTUATOR_CHANNEL_RECORD
+        INTEGER ACTUATOR_ID;
+        INTEGER SIGNAL_VOLTAGE_MV;
+        BOOLEAN INTERLOCK_ENGAGED;
+        BOOLEAN HARDWARE_OVERRIDE;
+    END;
+
+    STRUCTURE CONTROL_ISOLATION_CONTEXT
+        ACTUATOR_CHANNEL_RECORD ACTUATORS(TOTAL_CONTROL_ACTUATORS);
+        INTEGER LOCKED_ACTUATORS_COUNT;
+        BOOLEAN GLOBAL_EMERGENCY_INTERLOCK;
+    END;
+
+    /*************************************************************************
+     * Inicjalizacja kontekstu izolatora kanałów sterowania
+     * ***********************************************************************/
+    SUBROUTINE INITIALIZE_CONTROL_ISOLATOR(CONTEXT);
+        OUTPUT CONTROL_ISOLATION_CONTEXT CONTEXT;
+        DECLARE A INTEGER;
+        
+        CONTEXT.LOCKED_ACTUATORS_COUNT = 0;
+        CONTEXT.GLOBAL_EMERGENCY_INTERLOCK = FALSE;
+        
+        DO A = 1 TO TOTAL_CONTROL_ACTUATORS;
+            CONTEXT.ACTUATORS(A).ACTUATOR_ID = A;
+            CONTEXT.ACTUATORS(A).SIGNAL_VOLTAGE_MV = 5000; -- 5V Nominal
+            CONTEXT.ACTUATORS(A).INTERLOCK_ENGAGED = FALSE;
+            CONTEXT.ACTUATORS(A).HARDWARE_OVERRIDE = FALSE;
+        END;
+    END INITIALIZE_CONTROL_ISOLATOR;
+
+    /*************************************************************************
+     * Procedura awaryjnego odcięcia i blokady siłowników sterujących
+     * ***********************************************************************/
+    SUBROUTINE EXECUTE_EMERGENCY_INTERLOCK_PASS(CONTEXT, TARGET_ACTUATOR_ID);
+        INPUT OUTPUT CONTROL_ISOLATION_CONTEXT CONTEXT;
+        INPUT INTEGER TARGET_ACTUATOR_ID;
+        DECLARE IDX INTEGER;
+        DECLARE LOCKED_TOTAL INTEGER;
+        
+        LOCKED_TOTAL = 0;
+        
+        DO IDX = 1 TO TOTAL_CONTROL_ACTUATORS;
+            IF CONTEXT.ACTUATORS(IDX).ACTUATOR_ID = TARGET_ACTUATOR_ID OR CONTEXT.GLOBAL_EMERGENCY_INTERLOCK THEN
+                CONTEXT.ACTUATORS(IDX).INTERLOCK_ENGAGED = TRUE;
+                CONTEXT.ACTUATORS(IDX).SIGNAL_VOLTAGE_MV = 0; -- Odcięcie zasilania sygnału
+            END;
+            
+            IF CONTEXT.ACTUATORS(IDX).INTERLOCK_ENGAGED THEN
+                LOCKED_TOTAL = LOCKED_TOTAL + 1;
+            END;
+        END;
+        
+        CONTEXT.LOCKED_ACTUATORS_COUNT = LOCKED_TOTAL;
+        
+        IF LOCKED_TOTAL >= 4 THEN
+            CONTEXT.GLOBAL_EMERGENCY_INTERLOCK = TRUE;
+        END;
+    END EXECUTE_EMERGENCY_INTERLOCK_PASS;
+
+END SANCTUM_CONTROL_ISOLATOR;

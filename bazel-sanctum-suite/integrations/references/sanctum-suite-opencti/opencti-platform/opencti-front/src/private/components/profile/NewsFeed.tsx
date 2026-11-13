@@ -1,0 +1,337 @@
+import { NewsFeedLine_node$data } from '@components/profile/__generated__/NewsFeedLine_node.graphql';
+import { NewsFeedLines_data$data } from '@components/profile/__generated__/NewsFeedLines_data.graphql';
+import { NewsFeedLinesPaginationQuery, NewsFeedLinesPaginationQuery$variables } from '@components/profile/__generated__/NewsFeedLinesPaginationQuery.graphql';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@filigran/design-system';
+import { OpenInNewOutlined } from '@mui/icons-material';
+import IconButton from '@common/button/IconButton';
+import React, { FunctionComponent, Suspense, useCallback, useEffect, useMemo } from 'react';
+import { graphql, PreloadedQuery, useMutation, useSubscription } from 'react-relay';
+import DataTable from '../../../components/dataGrid/DataTable';
+import { DataTableProps } from '../../../components/dataGrid/dataTableTypes';
+import { defaultRender } from '../../../components/dataGrid/dataTableUtils';
+import { useFormatter } from '../../../components/i18n';
+import Loader, { LoaderVariant } from '../../../components/Loader';
+import { FilterGroup } from '../../../utils/filters/filtersHelpers-types';
+import { emptyFilterGroup, isFilterGroupNotEmpty, useRemoveIdAndIncorrectKeysFromFilterGroupObject } from '../../../utils/filters/filtersUtils';
+import useAuth from '../../../utils/hooks/useAuth';
+import { UseLocalStorageHelpers, usePaginationLocalStorage } from '../../../utils/hooks/useLocalStorage';
+import { UsePreloadedPaginationFragment } from '../../../utils/hooks/usePreloadedPaginationFragment';
+import { useQueryLoadingWithLoadQuery } from '../../../utils/hooks/useQueryLoading';
+import NewsFeedTags from './NewsFeedTags';
+import { useXTMHubResourceLink } from '../../../utils/hooks/useXTMHubResourceLink';
+import { getNewsFeedIcon, isKnownNewsFeedType, NEWS_FEED_BLOG_POST_TYPE } from '../../../utils/NewsFeed';
+
+const LOCAL_STORAGE_KEY = 'newsFeed';
+
+const newsFeedInitialValues = {
+  searchTerm: '',
+  sortBy: 'creation_date',
+  orderAsc: false,
+  filters: {
+    ...emptyFilterGroup,
+  },
+  numberOfElements: {
+    number: 0,
+    symbol: '',
+  },
+};
+
+const newsFeedLineFragment = graphql`
+  fragment NewsFeedLine_node on NewsFeedItem {
+    id
+    entity_type
+    title
+    news_feed_type
+    tags
+    metadata {
+      key
+      value
+    }
+    creation_date
+  }
+`;
+
+const newsFeedLinesQuery = graphql`
+  query NewsFeedLinesPaginationQuery(
+    $search: String
+    $count: Int!
+    $cursor: ID
+    $orderBy: NewsFeedItemsOrdering
+    $orderMode: OrderingMode
+    $filters: FilterGroup
+  ) {
+    ...NewsFeedLines_data
+    @arguments(
+      search: $search
+      count: $count
+      cursor: $cursor
+      orderBy: $orderBy
+      orderMode: $orderMode
+      filters: $filters
+    )
+  }
+`;
+
+const newsFeedLinesFragment = graphql`
+  fragment NewsFeedLines_data on Query
+  @argumentDefinitions(
+    search: { type: "String" }
+    count: { type: "Int", defaultValue: 25 }
+    cursor: { type: "ID" }
+    orderBy: { type: "NewsFeedItemsOrdering", defaultValue: creation_date }
+    orderMode: { type: "OrderingMode", defaultValue: desc }
+    filters: { type: "FilterGroup" }
+  )
+  @refetchable(queryName: "NewsFeedLinesRefetchQuery") {
+    myNewsFeeds(
+      search: $search
+      first: $count
+      after: $cursor
+      orderBy: $orderBy
+      orderMode: $orderMode
+      filters: $filters
+    ) @connection(key: "Pagination_myNewsFeeds") {
+      edges {
+        node {
+          id
+          ...NewsFeedLine_node
+        }
+      }
+      pageInfo {
+        endCursor
+        hasNextPage
+        globalCount
+      }
+    }
+  }
+`;
+
+const newsFeedItemSubscription = graphql`
+  subscription NewsFeedSubscription {
+    newsFeedItem {
+      id
+    }
+  }
+`;
+
+const newsFeedItemDeletedSubscription = graphql`
+  subscription NewsFeedDeletedSubscription {
+    newsFeedItemDeleted
+  }
+`;
+
+const markAllNewsFeedItemsAsReadMutation = graphql`
+  mutation NewsFeedMarkAllAsReadMutation($category: NewsFeedCategory) {
+    markAllNewsFeedItemsAsRead(category: $category)
+  }
+`;
+
+const NewsFeedLineActions: FunctionComponent<{ data: NewsFeedLine_node$data }> = ({ data }) => {
+  const { t_i18n } = useFormatter();
+
+  const urlPath = data.metadata?.find((m) => m?.key === 'url_path')?.value;
+  const href = useXTMHubResourceLink(urlPath);
+
+  if (!href) return null;
+
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <span style={{ display: 'inline-flex' }}>
+          <IconButton
+            component="a"
+            href={href}
+            target="_blank"
+            rel="noopener noreferrer"
+            size="small"
+            aria-label={t_i18n('Open in XTM Hub')}
+            onClick={(e: React.MouseEvent) => e.stopPropagation()}
+          >
+            <OpenInNewOutlined fontSize="small" color="primary" />
+          </IconButton>
+        </span>
+      </TooltipTrigger>
+      <TooltipContent>{t_i18n('Open in XTM Hub')}</TooltipContent>
+    </Tooltip>
+  );
+};
+
+interface NewsFeedComponentProps {
+  queryRef: PreloadedQuery<NewsFeedLinesPaginationQuery>;
+  helpers: UseLocalStorageHelpers;
+  contextFilters: FilterGroup;
+  onNewItem: () => void;
+  markBlogPostsAsRead: boolean;
+}
+
+const NewsFeedComponent: FunctionComponent<NewsFeedComponentProps> = ({ queryRef, helpers, contextFilters, onNewItem, markBlogPostsAsRead }) => {
+  const { t_i18n } = useFormatter();
+
+  const [commitMarkAllAsRead] = useMutation(markAllNewsFeedItemsAsReadMutation);
+
+  useEffect(() => {
+    // Without the blogpost tab, nothing else can mark the blogposts as read: do it here, so the badge cannot stay on.
+    commitMarkAllAsRead({ variables: { category: markBlogPostsAsRead ? null : 'RESOURCE' } });
+  }, [commitMarkAllAsRead, markBlogPostsAsRead]);
+
+  const subConfig = useMemo(() => ({
+    subscription: newsFeedItemSubscription,
+    variables: {},
+    onNext: () => onNewItem(),
+  }), [onNewItem]);
+  useSubscription(subConfig);
+
+  const deletedSubConfig = useMemo(() => ({
+    subscription: newsFeedItemDeletedSubscription,
+    variables: {},
+    onNext: () => onNewItem(),
+  }), [onNewItem]);
+  useSubscription(deletedSubConfig);
+
+  const dataColumns: DataTableProps['dataColumns'] = {
+    type: {
+      id: 'type',
+      label: 'Type',
+      percentWidth: 20,
+      isSortable: true,
+      render: ({ news_feed_type }: NewsFeedLine_node$data) => defaultRender(isKnownNewsFeedType(news_feed_type) ? t_i18n(news_feed_type) : t_i18n('Unsupported type')),
+    },
+    title: {
+      id: 'title',
+      label: 'Title',
+      percentWidth: 35,
+      isSortable: true,
+      render: ({ title }: NewsFeedLine_node$data) => (
+        <div style={{ height: 20, fontSize: 13, float: 'left', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', paddingRight: 10 }}>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <span>{title ?? ''}</span>
+            </TooltipTrigger>
+            <TooltipContent>{title ?? ''}</TooltipContent>
+          </Tooltip>
+        </div>
+      ),
+    },
+    creation_date: {
+      id: 'creation_date',
+      label: 'Original creation date',
+      percentWidth: 20,
+      isSortable: true,
+      render: ({ creation_date }: NewsFeedLine_node$data, item) => defaultRender(item.ftdt(creation_date, 'long')),
+    },
+    tags: {
+      id: 'tags',
+      label: 'Tags',
+      percentWidth: 25,
+      isSortable: false,
+      render: ({ tags }: NewsFeedLine_node$data) => (
+        <NewsFeedTags tags={tags ?? []} lowercase />
+      ),
+    },
+  };
+
+  const preloadedPaginationProps = {
+    linesQuery: newsFeedLinesQuery,
+    linesFragment: newsFeedLinesFragment,
+    queryRef,
+    nodePath: ['myNewsFeeds', 'pageInfo', 'globalCount'],
+    setNumberOfElements: helpers.handleSetNumberOfElements,
+  } as UsePreloadedPaginationFragment<NewsFeedLinesPaginationQuery>;
+
+  return (
+    <div>
+      <DataTable
+        storageKey={LOCAL_STORAGE_KEY}
+        initialValues={newsFeedInitialValues}
+        preloadedPaginationProps={preloadedPaginationProps}
+        resolvePath={(d: NewsFeedLines_data$data) => d.myNewsFeeds?.edges?.map((n) => n?.node)}
+        dataColumns={dataColumns}
+        icon={(row: NewsFeedLine_node$data) => {
+          const Icon = getNewsFeedIcon(row.news_feed_type);
+          return <Icon fontSize="small" color="primary" />;
+        }}
+        actions={(row: NewsFeedLine_node$data) => <NewsFeedLineActions data={row} />}
+        lineFragment={newsFeedLineFragment}
+        contextFilters={contextFilters}
+        availableEntityTypes={['NewsFeedItem']}
+        disableLineSelection
+        disableNavigation
+      />
+    </div>
+  );
+};
+
+interface NewsFeedProps {
+  // true when the blogpost tab is not available: this tab then marks every unread item as read, not only the resources.
+  markBlogPostsAsRead?: boolean;
+}
+
+const NewsFeed: FunctionComponent<NewsFeedProps> = ({ markBlogPostsAsRead = false }) => {
+  const { me } = useAuth();
+
+  const {
+    viewStorage,
+    helpers,
+    paginationOptions,
+  } = usePaginationLocalStorage<NewsFeedLinesPaginationQuery$variables>(
+    LOCAL_STORAGE_KEY,
+    newsFeedInitialValues,
+  );
+
+  const userFilters = useRemoveIdAndIncorrectKeysFromFilterGroupObject(viewStorage.filters, ['NewsFeedItem']);
+  const contextFilters = {
+    mode: 'and',
+    filters: [
+      {
+        key: 'entity_type',
+        values: ['NewsFeedItem'],
+        operator: 'eq',
+        mode: 'or',
+      },
+      {
+        key: 'user_id',
+        values: [me.id],
+        operator: 'eq',
+        mode: 'or',
+      },
+      // the blogposts have their own tab
+      {
+        key: 'news_feed_type',
+        values: [NEWS_FEED_BLOG_POST_TYPE],
+        operator: 'not_eq',
+        mode: 'and',
+      },
+    ],
+    filterGroups: userFilters && isFilterGroupNotEmpty(userFilters) ? [userFilters] : [],
+  };
+
+  const queryPaginationOptions = {
+    ...paginationOptions,
+    filters: contextFilters,
+  } as unknown as NewsFeedLinesPaginationQuery$variables;
+
+  const [queryRef, loadQuery] = useQueryLoadingWithLoadQuery<NewsFeedLinesPaginationQuery>(
+    newsFeedLinesQuery,
+    queryPaginationOptions,
+  );
+
+  const handleNewItem = useCallback(() => {
+    loadQuery(queryPaginationOptions, { fetchPolicy: 'network-only' });
+  }, [loadQuery, queryPaginationOptions]);
+
+  return queryRef ? (
+    <Suspense fallback={<Loader variant={LoaderVariant.inElement} />}>
+      <NewsFeedComponent
+        queryRef={queryRef}
+        helpers={helpers}
+        contextFilters={contextFilters}
+        onNewItem={handleNewItem}
+        markBlogPostsAsRead={markBlogPostsAsRead}
+      />
+    </Suspense>
+  ) : (
+    <Loader variant={LoaderVariant.inElement} />
+  );
+};
+
+export default NewsFeed;

@@ -1,0 +1,85 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "sanctum-suite"
+version = "6.0.0"
+description = "High-level cyber-resilience platform"
+readme = "README.md"
+requires-python = ">=3.11"
+authors = [{ name = "Karol Mroziński" }]
+keywords = ["security", "cyber-resilience", "ai-safety", "soc", "compliance"]
+license = { text = "LIMITED SOURCE-AVAILABLE & VIEW-ONLY LICENSE" }
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Information Technology",
+    "License :: Other/Proprietary License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Topic :: Security",
+]
+dependencies = [
+    "pydantic>=2.0.0",
+    "networkx>=3.0",
+    "rich>=13.0.0",
+    "typer>=0.9.0",
+    "cryptography>=44.0.0",
+    "sqlalchemy>=2.0.0",
+    "httpx>=0.25.0",
+    "boto3>=1.35.0",
+    "duckdb>=0.9.0",
+    "jinja2>=3.1.0",
+    "reportlab>=4.0.0",
+    "fastapi>=0.100.0",
+    "uvicorn>=0.22.0",
+    "pytest>=7.4.0",
+    "pytest-asyncio>=0.21.0",
+]
+
+[project.optional-dependencies]
+test = [
+    "hypothesis>=6.112.0",
+    "pyarrow>=16.0.0",
+    "wasmtime>=30.0.0",
+    "opentelemetry-api>=1.25.0",
+    "opentelemetry-sdk>=1.25.0",
+    "opentelemetry-exporter-otlp-proto-http>=1.25.0",
+]
+telemetry = [
+    "opentelemetry-api>=1.25.0",
+    "opentelemetry-sdk>=1.25.0",
+    "opentelemetry-exporter-otlp-proto-http>=1.25.0",
+    "pyarrow>=16.0.0",
+    "wasmtime>=30.0.0",
+]
+privacy-graph = [
+    "seal-python>=4.4,<5",
+    "python-pkcs11>=0.10",
+    "psycopg[binary]>=3.2",
+]
+smpc = [
+    "mpyc>=0.10",
+]
+
+[project.scripts]
+sanctum = "sanctum_suite.main:app"
+
+[project.urls]
+Homepage = "https://github.com/KarolMrozinski/sanctum-suite"
+Repository = "https://github.com/KarolMrozinski/sanctum-suite"
+Issues = "https://github.com/KarolMrozinski/sanctum-suite/issues"
+
+[tool.setuptools.packages.find]
+where = ["src", "."]
+include = [
+    "sanctum_suite",
+    "sanctum_suite.*",
+    "src_ada",
+    "src_apl",
+    "src_hals",
+    "src_rust",
+]
+
+[tool.pytest.ini_options]
+pythonpath = ["."]

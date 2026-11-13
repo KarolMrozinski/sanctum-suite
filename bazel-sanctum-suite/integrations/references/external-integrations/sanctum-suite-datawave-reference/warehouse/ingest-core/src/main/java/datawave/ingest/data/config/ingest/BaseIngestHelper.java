@@ -1,0 +1,1362 @@
+package datawave.ingest.data.config.ingest;
+
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.Collections;
+import java.util.Comparator;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.Iterator;
+import java.util.List;
+import java.util.Map;
+import java.util.Map.Entry;
+import java.util.Set;
+import java.util.function.Function;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
+
+import org.apache.hadoop.conf.Configuration;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import com.google.common.base.Splitter;
+import com.google.common.collect.HashMultimap;
+import com.google.common.collect.Lists;
+import com.google.common.collect.Maps;
+import com.google.common.collect.Multimap;
+import com.google.common.collect.Sets;
+import com.google.common.collect.TreeMultimap;
+
+import datawave.data.normalizer.NormalizationException;
+import datawave.data.type.NoOpType;
+import datawave.data.type.OneToManyNormalizerType;
+import datawave.ingest.config.IngestConfiguration;
+import datawave.ingest.config.IngestConfigurationFactory;
+import datawave.ingest.data.Type;
+import datawave.ingest.data.TypeRegistry;
+import datawave.ingest.data.config.DataTypeHelperImpl;
+import datawave.ingest.data.config.FieldConfigHelper;
+import datawave.ingest.data.config.FieldConfigHelperConstants;
+import datawave.ingest.data.config.FieldLookupCache;
+import datawave.ingest.data.config.MarkingsHelper;
+import datawave.ingest.data.config.MaskedFieldHelper;
+import datawave.ingest.data.config.NormalizedContentInterface;
+import datawave.ingest.data.config.NormalizedFieldAndValue;
+
+/**
+ * Specialization of the Helper type that validates the configuration for Ingest purposes. These helper classes also have the logic to parse the field names and
+ * fields values from the datatypes that they represent.
+ */
+public abstract class BaseIngestHelper extends AbstractIngestHelper implements CompositeIngest, VirtualIngest {
+
+    /**
+     * Configuration parameter to specify that data should be marked for delete on ingest.
+     */
+    public static final String INGEST_MODE_DELETE = "ingest.mode.delete";
+
+    /**
+     * Configuration parameter to specify the fields that should be indexed. This parameter supports multiple datatypes, so a valid value would be something
+     * like {@code <type>.data.category.index}.
+     */
+    public static final String INDEX_FIELDS = ".data.category.index";
+
+    /**
+     * Configuration parameter to specify which fields should NOT be indexed, implying that all other event fields should be indexed. This parameter supports
+     * multiple datatypes, so a valid value would be something like {@code <type>.data.category.index.disallowlist}.
+     */
+    public static final String DISALLOWLIST_INDEX_FIELDS = ".data.category.index.disallowlist";
+
+    /**
+     * Configuration parameter to specify the fields that should be indexed in reverse This parameter supports multiple datatypes, so a valid value would be
+     * something like {@code <type>.data.category.index}.
+     */
+    public static final String REVERSE_INDEX_FIELDS = ".data.category.index.reverse";
+
+    /**
+     * Configuration parameter to specify which fields should NOT be reverse indexed, implying that all other event fields should be reverse indexed. This
+     * parameter supports multiple datatypes, so a valid value would be something like {@code <type>.data.category.index.reverse.disallowlist}.
+     */
+    public static final String DISALLOWLIST_REVERSE_INDEX_FIELDS = ".data.category.index.reverse.disallowlist";
+
+    /**
+     * Configuration parameter to specify the name of the normalizer that should be used for this datatype. This parameter supports multiple datatypes, so valid
+     * values would be something like {@code mydatatype.data.default.type.class}
+     */
+    public static final String DEFAULT_TYPE = ".data.default.type.class";
+
+    public static final String NORMALIZED_FIELDS = ".data.category.normalized";
+
+    /**
+     * Configuration parameter to specify the name of the type that should be used for a particular field for this datatype. This parameter supports multiple
+     * datatypes and fields, so a valid value would be something like {@code product.productid.data.field.type.class}
+     */
+    public static final String FIELD_TYPE = ".data.field.type.class";
+
+    /**
+     * Prefix for the settings controlling the cache of resolved field types. Both settings honor an {@code all} datatype fallback -- see
+     * {@link FieldLookupCache}.
+     */
+    public static final String FIELD_TYPE_CACHE = ".data.field.type.cache";
+
+    /**
+     * The maximum number of fields the resolved type cache may hold. When unset, the cache is unbounded -- see {@link FieldLookupCache}.
+     */
+    public static final String FIELD_TYPE_CACHE_MAX_SIZE = FIELD_TYPE_CACHE + FieldLookupCache.MAX_SIZE_SUFFIX;
+
+    /** What a lookup does once the resolved type cache is full, one of {@link FieldLookupCache.OverflowPolicy}. */
+    public static final String FIELD_TYPE_CACHE_OVERFLOW_POLICY = FIELD_TYPE_CACHE + FieldLookupCache.OVERFLOW_POLICY_SUFFIX;
+
+    /**
+     * Configuration parameter to specify whether to use type regex hierarchy. If true, this will use the datatype associated with the "most precise" regex. If
+     * there are multiple matching regular expressions of the same precision, the last one read will be used. If false, all matching datatypes will be used.
+     */
+    public static final String USE_MOST_PRECISE_FIELD_TYPE_REGEX = "use.most.precise.field.type.regex";
+
+    /**
+     * Configuration parameter to specify the precedence of types to be used for this datatype. The last type found to handle a field will be the one used.
+     * Field specific types will override this list. This parameter supports multiple datatypes, so valid values would be something like
+     * {@code mydatatype.data.type.class.list}. The instance for each type configuration is the index into this list starting with "0" which can be used in
+     * property names when multiple of the same type is specified.
+     */
+    public static final String TYPE_LIST = ".data.type.class.list";
+
+    /**
+     * Configuration parameter to specify the names of the fields that should be indexed and NOT persisted with the event fields. This parameter supports
+     * multiple datatypes , valid value would be something like "mydatatype.data.category.index.only";
+     */
+    public static final String INDEX_ONLY_FIELDS = ".data.category.index.only";
+
+    /**
+     * When data is getting stored in CF or CQ as Text objects should malformed UTF8 input be silently replaced (true) OR should it fail (false)?
+     */
+    public static final String REPLACE_MALFORMED_CHAR = ".data.replace.malformed.utf8";
+
+    /**
+     * Allows per datatype defined shard table field exclusions. The value is a comma separated list of field names to exclude from storing in the shard table.
+     */
+    public static final String SHARD_FIELD_EXCLUSIONS = ".data.shard.field.exclusions";
+
+    /**
+     * Configuration to specify field that records names of fields that failed normalization
+     */
+    public static final String FAILED_NORMALIZATION_FIELD = ".data.normalization.failure.field";
+
+    /**
+     * Configuration to catch any exception created by a normalizer and remove the field. Default is to not catch any exceptions.
+     */
+    public static final String DEFAULT_FAILED_NORMALIZATION_POLICY = ".data.default.normalization.failure.policy";
+
+    /**
+     * Configuration to denote what to do when a specified field fails to normalize. This will override the overall "data.normalizer.failed.fields.drop" setting
+     * for the specified field.
+     */
+    public static final String FIELD_FAILED_NORMALIZATION_POLICY = ".data.field.normalization.failure.policy";
+
+    /**
+     * Backwards compatible property. Duplicated from the field config helper constants.
+     */
+    public static final String FIELD_CONFIG_FILE = FieldConfigHelperConstants.FIELD_CONFIG_FILE;
+
+    private static final String PROPERTY_MALFORMED = " property malformed: ";
+    private static final Logger log = LoggerFactory.getLogger(BaseIngestHelper.class);
+
+    private Multimap<String,datawave.data.type.Type<?>> typeFieldMap = null;
+    private Multimap<String,datawave.data.type.Type<?>> typePatternMap = null;
+    private TreeMultimap<Matcher,datawave.data.type.Type<?>> typeCompiledPatternMap = null;
+    /**
+     * Memoizes the fully resolved types per field name, including pattern matches and the default-type fallback. Keyed by the field name exactly as supplied,
+     * so a hit costs one hash probe with no case fold and no pattern walk. The cache's bound and overflow policy are described by the {@link #FIELD_TYPE_CACHE}
+     * settings. Not thread-safe: instances are confined to a single thread, as with {@code XMLFieldConfigHelper#resolvedFields}.
+     */
+    private FieldLookupCache<String,ResolvedTypes> typeResolvedMap = new FieldLookupCache<>();
+
+    /** the mapping function passed to {@code computeIfAbsent} on every lookup, held so the capturing method reference is allocated once */
+    private final Function<String,ResolvedTypes> resolveDataTypesFunction = this::resolveDataTypes;
+
+    /**
+     * The resolution shared by every field that falls back to the default type. The default does not vary by field name, so one instance serves them all rather
+     * than a fresh copy per distinct unmatched name. Discarded alongside {@link #typeResolvedMap}, since {@code updateDatawaveTypes(null, ...)} changes it.
+     */
+    private ResolvedTypes defaultResolvedTypes = null;
+
+    protected Set<String> indexOnlyFields = Sets.newHashSet();
+
+    protected Set<String> indexedFields = Sets.newHashSet();
+    protected Map<String,Pattern> indexedPatterns = Maps.newHashMap();
+    protected Set<String> unindexedFields = Sets.newHashSet();
+
+    protected Set<String> reverseIndexedFields = Sets.newHashSet();
+    protected Map<String,Pattern> reverseIndexedPatterns = Maps.newHashMap();
+    protected Set<String> reverseUnindexedFields = Sets.newHashSet();
+
+    // for all the atoms that are normalized, but not indexed
+    protected Set<String> normalizedFields = Sets.newHashSet();
+    protected Set<String> unNormalizedFields = Sets.newHashSet();
+    protected Map<String,Pattern> normalizedPatterns = Maps.newHashMap();
+
+    protected Set<String> allIndexFields = Sets.newTreeSet(); // the indexed
+    // fields across
+    // all types
+    protected Set<String> allReverseIndexFields = Sets.newTreeSet(); // the
+    // indexed
+    // fields
+    // across
+    // all
+    // types
+
+    private CompositeIngest compositeIngest;
+    private VirtualIngest virtualIngest;
+
+    protected boolean useMostPreciseFieldTypeRegex = false;
+
+    public enum FailurePolicy {
+        DROP, LEAVE, FAIL
+    }
+
+    protected FailurePolicy defaultFailedFieldPolicy = FailurePolicy.FAIL;
+    protected Map<String,FailurePolicy> failedFieldPolicy = null;
+    protected Map<String,FailurePolicy> failedFieldPatternPolicy = null;
+    protected Map<Matcher,FailurePolicy> failedFieldCompiledPatternPolicy = null;
+    protected String failedNormalizationField = "FAILED_NORMALIZATION_FIELD";
+
+    protected MarkingsHelper markingsHelper = null;
+
+    protected FieldConfigHelper fieldConfigHelper = null;
+
+    /**
+     * The resolved types for a single field name, together with whether they came from a configured entry -- an exact field name or a matching field pattern --
+     * as opposed to the default type.
+     */
+    private static final class ResolvedTypes {
+
+        private final List<datawave.data.type.Type<?>> types;
+        private final boolean configured;
+
+        private ResolvedTypes(List<datawave.data.type.Type<?>> types, boolean configured) {
+            this.types = types;
+            this.configured = configured;
+        }
+    }
+
+    /**
+     * This matcher is used to create a deterministic ordering of regular expressions
+     */
+    public static class MatcherComparator implements Comparator<Matcher> {
+
+        @Override
+        public int compare(Matcher o1, Matcher o2) {
+            String o1str = o1.pattern().pattern();
+            int o1len = o1str.length();
+            String o2str = o2.pattern().pattern();
+            int o2len = o2str.length();
+            if (o1len > o2len) {
+                return -1;
+            } else if (o1len == o2len) {
+                return o2str.compareTo(o1str);
+            } else {
+                return 1;
+            }
+        }
+    }
+
+    @Override
+    public void setup(Configuration config) {
+        super.setup(config);
+
+        this.failedFieldPolicy = Maps.newHashMap();
+        this.failedFieldPatternPolicy = Maps.newHashMap();
+
+        this.typeFieldMap = HashMultimap.create();
+        this.typeFieldMap.put(null, new NoOpType());
+        this.typePatternMap = HashMultimap.create();
+        this.typeCompiledPatternMap = null;
+        // rebuilt rather than cleared, so a re-setup picks up a changed cache type or size. must happen before the field
+        // config helper is loaded below, since parsing it calls back into updateDatawaveTypes, which clears this map.
+        this.typeResolvedMap = buildTypeResolvedMap(config);
+        this.defaultResolvedTypes = null;
+
+        this.useMostPreciseFieldTypeRegex = config.getBoolean(USE_MOST_PRECISE_FIELD_TYPE_REGEX, false);
+
+        this.getVirtualIngest().setup(config);
+
+        if (this.compositeIngest == null)
+            this.compositeIngest = new CompositeFieldIngestHelper(this.getType());
+        this.getCompositeIngest().setup(config);
+
+        IngestConfiguration ingestConfiguration = IngestConfigurationFactory.getIngestConfiguration();
+        markingsHelper = ingestConfiguration.getMarkingsHelper(config, getType());
+
+        this.normalizedFields.addAll(config.getTrimmedStringCollection(this.getType().typeName() + NORMALIZED_FIELDS));
+        this.moveToPatternMap(this.normalizedFields, this.normalizedPatterns);
+
+        deleteMode = config.getBoolean(INGEST_MODE_DELETE, false);
+        replaceMalformedUTF8 = config.getBoolean(this.getType().typeName() + REPLACE_MALFORMED_CHAR, false);
+
+        defaultFailedFieldPolicy = FailurePolicy
+                        .valueOf(config.get(this.getType().typeName() + DEFAULT_FAILED_NORMALIZATION_POLICY, defaultFailedFieldPolicy.name()));
+        failedNormalizationField = config.get(this.getType().typeName() + FAILED_NORMALIZATION_FIELD, failedNormalizationField);
+
+        // Ensure that we have only an allowlist or a disallowedlist of fields to
+        // index
+        if (config.get(this.getType().typeName() + DISALLOWLIST_INDEX_FIELDS) != null && config.get(this.getType().typeName() + INDEX_FIELDS) != null) {
+            throw new RuntimeException("Configuration contains Disallowlist and Allowlist for indexed fields, " + "it specifies both.  Type: "
+                            + this.getType().typeName() + ", parameters: " + config.get(this.getType().typeName() + DISALLOWLIST_INDEX_FIELDS) + " and "
+                            + config.get(this.getType().typeName() + INDEX_FIELDS));
+        }
+
+        String configProperty = null;
+
+        // Load the field helper, which takes precedence over the individual field configurations
+        this.fieldConfigHelper = ingestConfiguration.getFieldConfigHelper(config, this.getType(), this);
+        if (this.fieldConfigHelper != null && log.isDebugEnabled()) {
+            log.debug("Field config specified: {}", this.fieldConfigHelper.describeSource());
+        }
+
+        // Process the indexed fields
+        if (config.get(this.getType().typeName() + DISALLOWLIST_INDEX_FIELDS) != null) {
+            if (log.isDebugEnabled()) {
+                log.debug("Disallowlist specified for: {}", this.getType().typeName() + DISALLOWLIST_INDEX_FIELDS);
+            }
+            super.setHasIndexDisallowlist(true);
+            configProperty = DISALLOWLIST_INDEX_FIELDS;
+        } else if (config.get(this.getType().typeName() + INDEX_FIELDS) != null) {
+            log.debug("IndexedFields specified.");
+            super.setHasIndexDisallowlist(false);
+            configProperty = INDEX_FIELDS;
+        }
+
+        // Load the proper list of fields to (not) index
+        if (fieldConfigHelper != null && log.isInfoEnabled()) {
+            log.info("Using field config helper for {}", this.getType().typeName());
+        } else if (configProperty == null && log.isWarnEnabled()) {
+            log.warn("No index fields or disallowlist fields specified, not generating index fields for {}", this.getType().typeName());
+        } else {
+            this.indexedFields = Sets.newHashSet();
+            Collection<String> indexedStrings = config.getStringCollection(this.getType().typeName() + configProperty);
+            if (null != indexedStrings && !indexedStrings.isEmpty()) {
+                for (String indexedString : indexedStrings) {
+                    this.indexedFields.add(indexedString.trim());
+                }
+                this.moveToPatternMap(this.indexedFields, this.indexedPatterns);
+            } else {
+                if (log.isWarnEnabled()) {
+                    log.warn("{} not specified.", this.getType().typeName() + configProperty);
+                }
+            }
+        }
+
+        // Ensure that we have only an allowlist or a disallowlist of fields to
+        // reverse index
+        if (config.get(this.getType().typeName() + DISALLOWLIST_REVERSE_INDEX_FIELDS) != null
+                        && config.get(this.getType().typeName() + REVERSE_INDEX_FIELDS) != null) {
+            throw new RuntimeException("Configuration contains Disallowlist and Allowlist for indexed fields, it specifies both.  Type: "
+                            + this.getType().typeName() + ", parameters: " + config.get(this.getType().typeName() + DISALLOWLIST_REVERSE_INDEX_FIELDS) + "  "
+                            + config.get(this.getType().typeName() + REVERSE_INDEX_FIELDS));
+        }
+
+        configProperty = null;
+
+        // Process the reverse index fields
+        if (config.get(this.getType().typeName() + DISALLOWLIST_REVERSE_INDEX_FIELDS) != null) {
+            if (log.isDebugEnabled()) {
+                log.debug("Disallowlist specified for: {}", this.getType().typeName() + DISALLOWLIST_REVERSE_INDEX_FIELDS);
+            }
+
+            this.setHasReverseIndexDisallowlist(true);
+
+            configProperty = DISALLOWLIST_REVERSE_INDEX_FIELDS;
+        } else if (config.get(this.getType().typeName() + REVERSE_INDEX_FIELDS) != null) {
+            if (log.isDebugEnabled()) {
+                log.debug("Reverse Index specified for: {}", this.getType().typeName() + REVERSE_INDEX_FIELDS);
+            }
+            this.setHasReverseIndexDisallowlist(false);
+            configProperty = REVERSE_INDEX_FIELDS;
+        }
+
+        // Load the proper list of fields to (not) reverse index
+        if (configProperty == null && log.isWarnEnabled()) {
+            log.warn("No reverse index fields or disallowlist reverse index fields specified, not generating reverse index fields for {}",
+                            this.getType().typeName());
+        } else {
+            reverseIndexedFields = Sets.newHashSet();
+            Collection<String> reverseIndexedStrings = config.getStringCollection(this.getType().typeName() + configProperty);
+            if (null != reverseIndexedStrings && !reverseIndexedStrings.isEmpty()) {
+                for (String reverseIndexedString : reverseIndexedStrings) {
+                    reverseIndexedFields.add(reverseIndexedString.trim());
+                }
+                this.moveToPatternMap(this.reverseIndexedFields, this.reverseIndexedPatterns);
+            } else {
+                if (log.isWarnEnabled()) {
+                    log.warn("{} not specified", this.getType().typeName() + configProperty);
+                }
+            }
+
+        }
+
+        // gather the list of all indexed fields across all types
+        // this list is only used for generating warnings if we are not indexing
+        // something that
+        // somebody else is
+        for (Type type : TypeRegistry.getTypes()) {
+            Collection<String> indexedStrings = config.getStringCollection(type.typeName() + INDEX_FIELDS);
+            if (null != indexedStrings && !indexedStrings.isEmpty()) {
+                for (String indexedString : indexedStrings) {
+                    String indexedTrimmedString = indexedString.trim();
+                    allIndexFields.add(indexedTrimmedString);
+                }
+            }
+            Collection<String> reverseIndexedStrings = config.getStringCollection(type.typeName() + REVERSE_INDEX_FIELDS);
+            if (null != reverseIndexedStrings && !reverseIndexedStrings.isEmpty()) {
+                for (String reverseIndexedString : reverseIndexedStrings) {
+                    String reverseIndexedTrimmedString = reverseIndexedString.trim();
+                    allReverseIndexFields.add(reverseIndexedTrimmedString);
+                }
+            }
+        }
+
+        for (Entry<String,String> property : config) {
+
+            // Make sure we are only processing normalizers for this type
+            if (!property.getKey().startsWith(this.getType().typeName() + '.')) {
+                continue;
+            }
+
+            String fieldName = null;
+
+            String key = property.getKey();
+            if (key.endsWith(DEFAULT_TYPE) || key.endsWith(FIELD_TYPE)) {
+                if (key.endsWith(FIELD_TYPE)) {
+                    if ((fieldName = getFieldType(key, FIELD_TYPE)) == null) {
+                        continue;
+                    }
+                }
+
+                String typeClasses = property.getValue();
+
+                updateDatawaveTypes(fieldName, typeClasses);
+
+            } else if (property.getKey().endsWith(FIELD_FAILED_NORMALIZATION_POLICY)) {
+                if ((fieldName = getFieldName(property.getKey(), FIELD_FAILED_NORMALIZATION_POLICY)) == null) {
+                    continue;
+                }
+
+                FailurePolicy policy;
+                try {
+                    policy = FailurePolicy.valueOf(property.getValue());
+                } catch (Exception e) {
+                    log.error("Unable to parse field normalization failure policy: {}", property.getValue(), e);
+                    throw new IllegalArgumentException("Unable to parse field normalization failure policy: " + property.getValue(), e);
+                }
+                if (fieldName.indexOf('*') >= 0) {
+                    failedFieldPatternPolicy.put(fieldName, policy);
+                } else {
+                    failedFieldPolicy.put(fieldName, policy);
+                }
+            }
+        }
+
+        // Support for excluding specific fields from being inserted into the
+        // Shard table
+        // This is useful if virtual fields are used heavily, but you don't want
+        // these fields inserted
+        // into the shard table. For instance, if many virtual fields are used
+        // in the edge table
+        //
+        // Note: this pruning occurs after all the field names are aliased or
+        // normalized
+        shardExclusions.clear();
+        String exclusionsList = config.get(this.getType().typeName() + SHARD_FIELD_EXCLUSIONS);
+        if (exclusionsList != null) {
+            String[] exclusions = exclusionsList.split(",");
+            if (exclusions != null && exclusions.length > 0) {
+                for (String exclusionFieldName : exclusions) {
+
+                    String fieldName = exclusionFieldName.trim();
+
+                    if (!fieldName.isEmpty()) {
+
+                        shardExclusions.add(fieldName);
+                    } else {
+
+                        // TODO: Possibly add warning to indicated a potentially
+                        // questionable configuration file...
+                    }
+                }
+            }
+        }
+
+        String indexOnlyFieldList = config.get(this.getType().typeName() + INDEX_ONLY_FIELDS);
+        if (null != indexOnlyFieldList) {
+            for (String s : indexOnlyFieldList.split(",")) {
+
+                String fieldName = s.trim();
+
+                if (!fieldName.isEmpty()) {
+
+                    this.indexOnlyFields.add(fieldName);
+                } else {
+
+                    // TODO: Possibly add warning to indicated a potentially
+                    // questionable configuration file...
+                }
+            }
+        }
+    }
+
+    /**
+     * Create the cache of resolved field types described by the {@link #FIELD_TYPE_CACHE} settings for this datatype.
+     *
+     * @param config
+     *            the configuration
+     * @return a new, empty cache
+     */
+    private FieldLookupCache<String,ResolvedTypes> buildTypeResolvedMap(Configuration config) {
+        return FieldLookupCache.parse(config, this.getType().typeName(), FIELD_TYPE_CACHE);
+    }
+
+    /**
+     * Expose the resolved type cache for testing.
+     *
+     * @return the cache of resolved field types
+     */
+    FieldLookupCache<String,?> getTypeResolvedCache() {
+        return typeResolvedMap;
+    }
+
+    private void moveToPatternMap(Set<String> in, Map<String,Pattern> out) {
+        for (Iterator<String> itr = in.iterator(); itr.hasNext();) {
+            String str = itr.next();
+            if (str.indexOf('*') != -1) {
+                itr.remove();
+                Pattern pattern = Pattern.compile(str.replace("*", ".*"));
+                out.put(str, pattern);
+            }
+        }
+    }
+
+    /**
+     * lazy instantiation
+     *
+     * @return a {@link CompositeIngest}
+     */
+    public CompositeIngest getCompositeIngest() {
+        return this.compositeIngest;
+    }
+
+    /**
+     * lazy instantiation
+     *
+     * @return a {@link VirtualIngest}
+     */
+    public VirtualIngest getVirtualIngest() {
+        if (this.virtualIngest == null) {
+            this.virtualIngest = new VirtualFieldIngestHelper(this.getType());
+        }
+        return this.virtualIngest;
+    }
+
+    public Set<String> getIndexOnlyFields() {
+        return indexOnlyFields;
+    }
+
+    public Set<String> getIndexedFields() {
+        return indexedFields;
+    }
+
+    public Set<String> getReverseIndexedFields() {
+        return reverseIndexedFields;
+    }
+
+    public Set<String> getNormalizedFields() {
+        return normalizedFields;
+    }
+
+    public boolean isAliasedIndexField(String fieldName) {
+        return (null != aliaser.getIndexAliases(fieldName));
+    }
+
+    public HashSet<String> getAliasesForIndexedField(String fieldName) {
+        return aliaser.getIndexAliases(fieldName);
+    }
+
+    /**
+     * Get a field name from a property name given the pattern, or null if no field name is found
+     *
+     * @param property
+     *            a property that contains a field name
+     * @param propertyPattern
+     *            a pattern used to extract a field name from a property
+     * @return the field name extracted from the property name
+     */
+    protected String getFieldName(String property, String propertyPattern) {
+        return getFieldName(this.getType(), property, propertyPattern);
+    }
+
+    public static String getFieldName(Type dataType, String property, String propertyPattern) {
+        // if this type already has a '.', then we have a malformed property
+        // name
+        if (dataType.typeName().indexOf('.') >= 0) {
+            log.error(propertyPattern + PROPERTY_MALFORMED + property);
+            throw new IllegalArgumentException(propertyPattern + PROPERTY_MALFORMED + property);
+        }
+
+        String fieldName = property.substring(dataType.typeName().length() + 1, property.length() - propertyPattern.length());
+
+        if (fieldName.isEmpty()) {
+            fieldName = null;
+        } else {
+            fieldName = fieldName.toUpperCase();
+        }
+
+        return fieldName;
+    }
+
+    protected String getFieldType(String property, String propertyPattern) {
+        return getFieldType(this.getType(), property, propertyPattern);
+    }
+
+    public static String getFieldType(Type dataType, String property, String propertyPattern) {
+        // if this type already has a '.', then we have a malformed property
+        // name
+        if (dataType.typeName().indexOf('.') >= 0) {
+            log.error(propertyPattern + PROPERTY_MALFORMED + property);
+            throw new IllegalArgumentException(propertyPattern + PROPERTY_MALFORMED + property);
+        }
+
+        String fieldName = property.substring(dataType.typeName().length() + 1, property.length() - propertyPattern.length());
+
+        if (fieldName.isEmpty()) {
+            fieldName = null;
+        } else {
+            fieldName = fieldName.toUpperCase();
+        }
+
+        return fieldName;
+    }
+
+    @Override
+    public void setEmbeddedHelper(DataTypeHelperImpl embeddedHelper) {
+        this.embeddedHelper = embeddedHelper;
+        // When the embedded helper is set, check to see if it is an instance
+        // of MaskedFieldHelper. If so, then normalize the values
+        if (embeddedHelper instanceof MaskedFieldHelper) {
+            mfHelper = (MaskedFieldHelper) embeddedHelper;
+        }
+    }
+
+    public MarkingsHelper getMarkingsHelper() {
+        return markingsHelper;
+    }
+
+    @Override
+    public boolean isIndexOnlyField(String fieldName) {
+        if (fieldConfigHelper != null) {
+            return fieldConfigHelper.isIndexOnlyField(fieldName);
+        }
+        return indexOnlyFields.contains(fieldName);
+    }
+
+    @Override
+    public void addIndexOnlyField(String fieldName) {
+        indexOnlyFields.add(fieldName);
+    }
+
+    @Override
+    public void addShardExclusionField(String fieldName) {
+        shardExclusions.add(fieldName);
+    }
+
+    @Override
+    public boolean isOverloadedCompositeField(String fieldName) {
+        return CompositeIngest.isOverloadedCompositeField(getCompositeFieldDefinitions(), fieldName);
+    }
+
+    @Override
+    public boolean isCompositeField(String fieldName) {
+        return this.compositeIngest.isCompositeField(fieldName);
+    }
+
+    /**
+     * Returns whether this field has a type of its own -- configured by exact name or matched by a field pattern -- as opposed to falling back to the default
+     * type.
+     *
+     * @param fieldName
+     *            the field name
+     * @return true if a type is configured for this field
+     */
+    @Override
+    public boolean isDataTypeField(String fieldName) {
+        return resolve(fieldName).configured;
+    }
+
+    private void compilePatterns() {
+        TreeMultimap<Matcher,datawave.data.type.Type<?>> patterns = TreeMultimap.create(new MatcherComparator(),
+                        (o1, o2) -> o1.toString().compareTo(o2.toString()));
+        if (typePatternMap != null) {
+            for (String pattern : typePatternMap.keySet()) {
+                // field names are upper cased before matching, so compile case insensitively to keep lower cased
+                // patterns from the configuration source reachable
+                patterns.putAll(compileFieldNamePattern(pattern, Pattern.CASE_INSENSITIVE), typePatternMap.get(pattern));
+            }
+        }
+        typeCompiledPatternMap = patterns;
+    }
+
+    public static Matcher compileFieldNamePattern(String fieldNamePattern) {
+        return compileFieldNamePattern(fieldNamePattern, 0);
+    }
+
+    /**
+     * Compile a field name pattern, applying the supplied {@link Pattern} match flags.
+     *
+     * @param fieldNamePattern
+     *            the field name pattern
+     * @param flags
+     *            the {@link Pattern} match flags to compile with
+     * @return a reusable {@link Matcher} for the pattern
+     */
+    public static Matcher compileFieldNamePattern(String fieldNamePattern, int flags) {
+        return Pattern.compile(fieldNamePattern.replace("*", ".*"), flags).matcher("");
+    }
+
+    @Override
+    public List<datawave.data.type.Type<?>> getDataTypes(String fieldName) {
+        return resolve(fieldName).types;
+    }
+
+    public static Matcher getBestMatch(Set<Matcher> patterns, String fieldName) {
+        Matcher bestMatch = null;
+        for (Matcher patternMatcher : patterns) {
+            if (bestMatch != null && patternMatcher.pattern().pattern().length() < bestMatch.pattern().pattern().length()) {
+                break;
+            }
+            if (patternMatcher.reset(fieldName).matches()) {
+                if (bestMatch != null) {
+                    log.warn("Multiple regular expression patterns with the same length exist for matching field {}. "
+                                    + "The pattern that sorts lexicographically last will be used. Please verify your configurations.", fieldName);
+                    break;
+                } else {
+                    bestMatch = patternMatcher;
+                }
+            }
+        }
+        return bestMatch;
+    }
+
+    /**
+     * This is a helper routine that will return a normalized field value using the configured normalizer
+     *
+     * @param fieldValue
+     *            the field value
+     * @return the normalized field values
+     */
+    @Override
+    protected Set<String> normalizeFieldValue(String fieldName, String fieldValue) throws NormalizationException {
+        Collection<datawave.data.type.Type<?>> dataTypes = getDataTypes(fieldName);
+        HashSet<String> values = new HashSet<>(dataTypes.size());
+        for (datawave.data.type.Type<?> dataType : dataTypes) {
+            values.add(dataType.normalize(fieldValue));
+        }
+        return values;
+    }
+
+    /**
+     * This is a helper routine that will create a normalized field out of a name and value pair
+     *
+     * @param field
+     *            the field
+     * @param value
+     *            the value
+     * @return The normalized field and value
+     */
+    protected Set<NormalizedContentInterface> normalize(String field, String value) {
+        return normalize(new NormalizedFieldAndValue(field, value));
+    }
+
+    protected NormalizedContentInterface normalize(NormalizedContentInterface normalizedContent, datawave.data.type.Type<?> datawaveType) {
+        // copy it
+        NormalizedContentInterface copy = new NormalizedFieldAndValue(normalizedContent);
+        try {
+            copy.setIndexedFieldValue(datawaveType.normalize(copy.getIndexedFieldValue()));
+        } catch (Exception ex) {
+            copy.setError(ex);
+        }
+        return copy;
+    }
+
+    protected List<NormalizedContentInterface> normalize(NormalizedContentInterface normalizedContent,
+                    datawave.data.type.OneToManyNormalizerType<?> datawaveType) {
+        List<NormalizedContentInterface> list = Lists.newArrayList();
+        // copy it
+        NormalizedContentInterface copy = new NormalizedFieldAndValue(normalizedContent);
+        for (String one : datawaveType.normalizeToMany(copy.getIndexedFieldValue())) {
+            try {
+                copy.setIndexedFieldValue(one);
+                list.add(copy);
+                copy = new NormalizedFieldAndValue(normalizedContent);
+            } catch (Exception ex) {
+                copy.setError(ex);
+            }
+        }
+        return list;
+    }
+
+    public HashSet<NormalizedContentInterface> normalizeFieldValue(String fieldName, NormalizedContentInterface normalizedContent, boolean indexOnly) {
+        Collection<datawave.data.type.Type<?>> dataTypes = getDataTypes(fieldName);
+        HashSet<NormalizedContentInterface> values = new HashSet<>(dataTypes.size());
+        for (datawave.data.type.Type<?> dataType : dataTypes) {
+            NormalizedContentInterface value = normalizeFieldValue(normalizedContent, dataType);
+            if (indexOnly) {
+                value.setEventFieldValue(null);
+            }
+            values.add(value);
+            logNormalizedField(normalizedContent, values);
+        }
+        return values;
+    }
+
+    protected NormalizedContentInterface normalizeFieldValue(NormalizedContentInterface normalizedContent, datawave.data.type.Type<?> datawaveType) {
+        // copy it
+        NormalizedContentInterface copy = new NormalizedFieldAndValue(normalizedContent);
+        try {
+            String normalized = datawaveType.normalize(copy.getIndexedFieldValue());
+            copy.setEventFieldValue(normalized);
+            copy.setIndexedFieldValue(normalized);
+        } catch (Exception ex) {
+            copy.setError(ex);
+        }
+        return copy;
+    }
+
+    /**
+     * This is a helper routine that will create and normalize a field out of a base normalized field.
+     *
+     * @param normalizedContent
+     *            a {@link NormalizedContentInterface}
+     * @return the normalized field
+     */
+    protected Set<NormalizedContentInterface> normalize(NormalizedContentInterface normalizedContent) {
+        String eventFieldName = normalizedContent.getEventFieldName();
+        log.debug("event field name is {} in {}", eventFieldName, normalizedContent);
+        String indexedFieldName = normalizedContent.getIndexedFieldName();
+        log.debug("indexed field name is {} in {}", indexedFieldName, normalizedContent);
+
+        // if it is indexed, set the index part,
+        if (this.isIndexedField(eventFieldName) || this.isIndexedField(indexedFieldName)) {
+            log.debug("eventFieldName={}, indexedFieldName={} we have an indexed field here {}", eventFieldName, indexedFieldName, normalizedContent);
+            Collection<datawave.data.type.Type<?>> dataTypes = getDataTypes(normalizedContent.getIndexedFieldName());
+            HashSet<NormalizedContentInterface> values = new HashSet<>(dataTypes.size());
+            for (datawave.data.type.Type<?> dataType : dataTypes) {
+                if (dataType instanceof OneToManyNormalizerType) {
+                    values.addAll(normalize(normalizedContent, (OneToManyNormalizerType) dataType));
+                } else {
+                    values.add(normalize(normalizedContent, dataType));
+                }
+                logNormalizedField(normalizedContent, values);
+            }
+            return values;
+        }
+        // if it is normalized, set the field value part and the (unused)
+        // indexed field value part
+        if (this.isNormalizedField(eventFieldName) || this.isNormalizedField(indexedFieldName)) {
+            log.debug("eventFieldName={}, indexedFieldName={} we have a normalized field here {}", eventFieldName, indexedFieldName, normalizedContent);
+            Collection<datawave.data.type.Type<?>> dataTypes = getDataTypes(normalizedContent.getIndexedFieldName());
+            HashSet<NormalizedContentInterface> values = new HashSet<>(dataTypes.size());
+            for (datawave.data.type.Type<?> dataType : dataTypes) {
+                values.add(normalizeFieldValue(normalizedContent, dataType));
+                logNormalizedField(normalizedContent, values);
+            }
+            return values;
+        } else {
+            // gets the default normalizer, if present
+            log.debug("not a normalized field: {} nor {}", indexedFieldName, eventFieldName);
+            Collection<datawave.data.type.Type<?>> dataTypes = getDataTypes(normalizedContent.getIndexedFieldName());
+            HashSet<NormalizedContentInterface> values = new HashSet<>(dataTypes.size());
+            for (datawave.data.type.Type<?> dataType : dataTypes) {
+                values.add(normalize(normalizedContent, dataType));
+                logNormalizedField(normalizedContent, values);
+            }
+            return values;
+        }
+    }
+
+    private void logNormalizedField(NormalizedContentInterface normalizedContent, HashSet<NormalizedContentInterface> values) {
+        if (log.isDebugEnabled()) {
+            log.debug("added normalized field " + normalizedContent + " to values " + values);
+        }
+    }
+
+    @Override
+    public boolean isNormalizedField(String fieldName) {
+        if (this.normalizedFields.contains(fieldName)) {
+            return true;
+        } else if (this.unNormalizedFields.contains(fieldName)) {
+            return false;
+        } else if (this.normalizedPatterns.isEmpty()) { // avoids filling unNormalizedFields if not necessary
+            return false;
+        } else {
+            for (Pattern pattern : this.normalizedPatterns.values()) {
+                if (pattern.matcher(fieldName).matches()) {
+                    this.normalizedFields.add(fieldName);
+                    return true;
+                }
+            }
+            this.unNormalizedFields.add(fieldName);
+            return false;
+        }
+    }
+
+    @Override
+    public boolean isShardExcluded(String fieldname) {
+        if (fieldConfigHelper != null) {
+            return !fieldConfigHelper.isStoredField(fieldname);
+        }
+        return super.isShardExcluded(fieldname);
+    }
+
+    @Override
+    public boolean isIndexedField(String fieldName) {
+        if (fieldConfigHelper != null) {
+            return fieldConfigHelper.isIndexedField(fieldName);
+        }
+        return this.hasIndexDisallowlist() ? !isIndexed(fieldName) : isIndexed(fieldName);
+    }
+
+    private boolean isIndexed(String fieldName) {
+        if (fieldConfigHelper != null && fieldConfigHelper.isIndexedField(fieldName)) {
+            return true;
+        } else if (this.indexedFields.contains(fieldName)) {
+            return true;
+        } else if (this.unindexedFields.contains(fieldName)) {
+            return false;
+        } else if (this.indexedPatterns.isEmpty()) { // avoids filling unindexedFields if not necessary
+            return false;
+        } else {
+            for (Pattern pattern : this.indexedPatterns.values()) {
+                if (pattern.matcher(fieldName).matches()) {
+                    this.indexedFields.add(fieldName); // update so we don't need to match the next time we see it
+                    return true;
+                }
+            }
+            this.unindexedFields.add(fieldName);
+            return false;
+        }
+    }
+
+    @Override
+    public boolean isReverseIndexedField(String fieldName) {
+        if (fieldConfigHelper != null) {
+            return fieldConfigHelper.isReverseIndexedField(fieldName);
+        }
+
+        return super.hasReverseIndexDisallowlist() ? !this.isReverseIndexed(fieldName) : this.isReverseIndexed(fieldName);
+    }
+
+    private boolean isReverseIndexed(String fieldName) {
+        if (fieldConfigHelper != null && fieldConfigHelper.isReverseIndexedField(fieldName)) {
+            return true;
+        } else if (this.reverseIndexedFields.contains(fieldName)) {
+            return true;
+        } else if (this.reverseUnindexedFields.contains(fieldName)) {
+            return false;
+        } else if (this.reverseIndexedPatterns.isEmpty()) { // avoids filling reverseUnindexedFields if not necessary
+            return false;
+        } else {
+            for (Pattern pattern : this.reverseIndexedPatterns.values()) {
+                if (pattern.matcher(fieldName).matches()) {
+                    this.reverseIndexedFields.add(fieldName); // update so we don't need to match the next time we see it
+                    return true;
+                }
+            }
+            this.reverseUnindexedFields.add(fieldName);
+            return false;
+        }
+    }
+
+    /**
+     * This is a helper routine that will create the normalized forms of a value given a set of fields
+     *
+     * @param fields
+     *            A map of the original field name to the original value
+     */
+    public Multimap<String,NormalizedContentInterface> normalize(Multimap<String,String> fields) {
+        Multimap<String,NormalizedContentInterface> results = HashMultimap.create();
+
+        for (Entry<String,String> e : fields.entries()) {
+            if (e.getValue() != null) {
+                applyNormalizationAndAddToResults(results, new NormalizedFieldAndValue(e.getKey(), e.getValue()));
+            } else if (log.isWarnEnabled()) {
+                log.warn("{} has key {} with a null value.", this.getType().typeName(), e.getKey());
+            }
+        }
+        return results;
+    }
+
+    /**
+     * This is a helper routine that will create the normalized forms of a value given a set of fields
+     *
+     * @param fields
+     *            A map of the original field name to a field
+     */
+    public Multimap<String,NormalizedContentInterface> normalizeMap(Multimap<String,NormalizedContentInterface> fields) {
+        Multimap<String,NormalizedContentInterface> results = HashMultimap.create();
+
+        for (Entry<String,NormalizedContentInterface> e : fields.entries()) {
+            if (e.getValue() != null) {
+                applyNormalizationAndAddToResults(results, e.getValue());
+            } else if (log.isWarnEnabled()) {
+                log.warn("{} has key {} with a null value.", this.getType().typeName(), e.getKey());
+            }
+        }
+        return results;
+    }
+
+    /**
+     * Apply the normalization and add the results to the map. Failure policy handling: LEAVE: The non-normalized form is put in the map with a cleared out
+     * error, and a failedNormalizationField is added to the map with the field name as the value DROP: Only a failedNormalizationField is added to the map with
+     * the field name as the value FAIL: The non-normalized form is put in the map with the error set allowing the caller to fail out the event with appropriate
+     * error handling
+     *
+     * @param results
+     *            a MultiMap of {@link NormalizedContentInterface}
+     * @param nArg
+     *            current data to be normalized
+     */
+    protected void applyNormalizationAndAddToResults(Multimap<String,NormalizedContentInterface> results, NormalizedContentInterface nArg) {
+        // If an alias exists, then we want to use the alias as the key in the
+        // map.
+        // We don't want to use the normalized form of the alias.
+        Set<NormalizedContentInterface> ns = normalizeAndAlias(nArg);
+        for (NormalizedContentInterface n : ns) {
+            if (n != null) {
+                if (n.getError() != null) {
+                    switch (getFailurePolicy(n.getIndexedFieldName())) {
+                        case LEAVE:
+                            // for the leave policy, clear out the exception but add
+                            // a failed normalization field
+                            n.setError(null);
+                            results.put(n.getIndexedFieldName(), n);
+                            results.put(failedNormalizationField, new NormalizedFieldAndValue(failedNormalizationField, n.getIndexedFieldName()));
+                            break;
+                        case DROP:
+                            // for the drop policy, clear out the exception,
+                            // clear out the indexed field value and add
+                            // a failed normalization field
+                            n.setError(null);
+                            n.setIndexedFieldValue(null);
+                            results.put(n.getIndexedFieldName(), n);
+                            results.put(failedNormalizationField, new NormalizedFieldAndValue(failedNormalizationField, n.getIndexedFieldName()));
+                            break;
+                        case FAIL:
+                            // for the fail policy, leave the exception and let the
+                            // caller (EventMapper) fail the event
+                            results.put(n.getIndexedFieldName(), n);
+                    }
+                } else {
+                    results.put(n.getIndexedFieldName(), n);
+                }
+            }
+        }
+
+    }
+
+    /**
+     * Normalize and alias a field
+     *
+     * @param nArg
+     *            a field value pair encapsulated within a {@link NormalizedContentInterface}
+     * @return the normalized field, or the non-normalized field with an appropriate error set
+     */
+    protected Set<NormalizedContentInterface> normalizeAndAlias(NormalizedContentInterface nArg) {
+        Set<NormalizedContentInterface> ns;
+        try {
+            ns = normalize(aliaser.normalizeAndAlias(nArg));
+        } catch (Exception e) {
+            if (log.isTraceEnabled()) {
+                log.trace("{}: Field failed normalization: {}", this.getType().typeName(), nArg, e);
+            }
+            nArg.setError(e);
+            return Collections.singleton(nArg);
+        }
+
+        for (NormalizedContentInterface n : ns) {
+            if (n != null) {
+                markingsHelper.markField(n);
+            }
+        }
+        return ns;
+    }
+
+    private void compilePolicyPatterns() {
+        Map<Matcher,FailurePolicy> patterns = new HashMap<>();
+        if (failedFieldPatternPolicy != null) {
+            for (String pattern : failedFieldPatternPolicy.keySet()) {
+                patterns.put(Pattern.compile(pattern.replace("*", ".*")).matcher(""), failedFieldPatternPolicy.get(pattern));
+            }
+        }
+        failedFieldCompiledPatternPolicy = patterns;
+    }
+
+    protected FailurePolicy getFailurePolicy(String fieldName) {
+        FailurePolicy policy = failedFieldPolicy.get(fieldName);
+        if (policy == null) {
+            if (failedFieldCompiledPatternPolicy == null)
+                compilePolicyPatterns();
+            if (!failedFieldCompiledPatternPolicy.isEmpty()) {
+                for (Matcher patternMatcher : failedFieldCompiledPatternPolicy.keySet()) {
+
+                    if (patternMatcher.reset(fieldName).matches()) {
+                        policy = failedFieldCompiledPatternPolicy.get(patternMatcher);
+                        break;
+                    }
+                }
+            }
+            if (policy == null) {
+                policy = defaultFailedFieldPolicy;
+            }
+        }
+        return policy;
+    }
+
+    /*
+     * (non-Javadoc)
+     *
+     * @see datawave.ingest.data.config.ingest.IngestHelperInterface#addIndexedField (java.lang.String)
+     */
+    @Override
+    public void addIndexedField(String fieldName) {
+        this.indexedFields.add(fieldName);
+    }
+
+    /*
+     * (non-Javadoc)
+     *
+     * @see datawave.ingest.data.config.ingest.IngestHelperInterface# addReverseIndexedField(java.lang.String)
+     */
+    @Override
+    public void addReverseIndexedField(String fieldName) {
+        this.reverseIndexedFields.add(fieldName);
+    }
+
+    /*
+     * (non-Javadoc)
+     *
+     * @see datawave.ingest.data.config.ingest.IngestHelperInterface# addNormalizedField(java.lang.String)
+     */
+    @Override
+    public void addNormalizedField(String fieldName) {
+        this.normalizedFields.add(fieldName);
+    }
+
+    /*
+     * (non-Javadoc)
+     *
+     * @see datawave.ingest.data.config.ingest.IngestHelperInterface# shouldHaveBeenIndexed(java.lang.String)
+     */
+    @Override
+    public boolean shouldHaveBeenIndexed(String fieldName) {
+        return this.allIndexFields.contains(fieldName);
+    }
+
+    /*
+     * (non-Javadoc)
+     *
+     * @see datawave.ingest.data.config.ingest.IngestHelperInterface# shouldHaveBeenReverseIndexed(java.lang.String)
+     */
+    @Override
+    public boolean shouldHaveBeenReverseIndexed(String fieldName) {
+        return this.allReverseIndexFields.contains(fieldName);
+    }
+
+    public boolean verify() {
+        boolean retVal = true;
+        // first verify the index fields
+        if (this.indexedFields == null) {
+            retVal = false;
+            if (log.isErrorEnabled()) {
+                log.error("{}: index set has been set to null.", this.getType().typeName());
+            }
+        } else if (this.indexedFields.isEmpty()) {
+            if (log.isDebugEnabled()) {
+                log.debug("{}: no fields have been set to index.", this.getType().typeName());
+            }
+        } else {
+            upperCaseSetEntries(this.indexedFields, this.getType().typeName() + ": index fields");
+        }
+        // next verify the index fields
+        if (this.reverseIndexedFields == null) {
+            retVal = false;
+            if (log.isErrorEnabled()) {
+                log.error("{}: reverse index set has been set to null.", this.getType().typeName());
+            }
+        } else if (this.reverseIndexedFields.isEmpty()) {
+            if (log.isDebugEnabled()) {
+                log.debug("{}: no fields have been set to reverse index.", this.getType().typeName());
+            }
+        } else {
+            upperCaseSetEntries(this.reverseIndexedFields, this.getType().typeName() + ": reverse index fields");
+        }
+        return retVal;
+    }
+
+    @Override
+    public Multimap<String,String> getCompositeFieldDefinitions() {
+        return getCompositeIngest().getCompositeFieldDefinitions();
+    }
+
+    @Override
+    public Map<String,String> getCompositeFieldSeparators() {
+        return getCompositeIngest().getCompositeFieldSeparators();
+    }
+
+    @Override
+    public void setCompositeFieldDefinitions(Multimap<String,String> compositeFieldDefinitions) {
+        getCompositeIngest().setCompositeFieldDefinitions(compositeFieldDefinitions);
+    }
+
+    @Override
+    public String getDefaultVirtualFieldSeparator() {
+        return getVirtualIngest().getDefaultVirtualFieldSeparator();
+    }
+
+    @Override
+    public void setDefaultVirtualFieldSeparator(String sep) {
+        getVirtualIngest().setDefaultVirtualFieldSeparator(sep);
+    }
+
+    @Override
+    public Multimap<String,NormalizedContentInterface> getCompositeFields(Multimap<String,NormalizedContentInterface> fields) {
+        return getCompositeIngest().getCompositeFields(fields);
+    }
+
+    @Override
+    public boolean isVirtualIndexedField(String fieldName) {
+        return getVirtualIngest().isVirtualIndexedField(fieldName);
+    }
+
+    @Override
+    public Map<String,String[]> getVirtualNameAndIndex(String virtualFieldName) {
+        return getVirtualIngest().getVirtualNameAndIndex(virtualFieldName);
+    }
+
+    @Override
+    public Map<String,String[]> getVirtualFieldDefinitions() {
+        return getVirtualIngest().getVirtualFieldDefinitions();
+    }
+
+    @Override
+    public void setVirtualFieldDefinitions(Map<String,String[]> virtualFieldDefinitions) {
+        getVirtualIngest().setVirtualFieldDefinitions(virtualFieldDefinitions);
+    }
+
+    @Override
+    public Multimap<String,NormalizedContentInterface> getVirtualFields(Multimap<String,NormalizedContentInterface> values) {
+        return normalizeMap(getVirtualIngest().getVirtualFields(values));
+    }
+
+    /**
+     * This method allows updating the typeFieldMap from a derived helper.
+     *
+     * @param fieldName
+     *            the field name, or null to set the default type
+     * @param typeClasses
+     *            a comma-delimited string of {@link Type} classes
+     */
+    public void updateDatawaveTypes(String fieldName, String typeClasses) {
+
+        // updates multimap typeFieldMap
+        log.debug("[{}] Type classes: {}", fieldName, typeClasses);
+
+        for (String typeClass : Splitter.on(',').split(typeClasses)) {
+
+            datawave.data.type.Type<?> datawaveType = datawave.data.type.Type.Factory.createType(typeClass);
+            // Add the type to the map, the null key is the default key
+            if (fieldName == null) {
+                typeFieldMap.removeAll(null);
+                log.debug("Setting {} as default type.", datawaveType);
+                typeFieldMap.put(null, datawaveType);
+            } else if (fieldName.indexOf('*') >= 0 || fieldName.indexOf('+') >= 0) { // We need a more conclusive test for regex
+                // store the pattern verbatim. upper casing it would corrupt the regex itself (e.g. \d becomes \D, and
+                // inline flags such as (?i) become invalid), so patterns are instead compiled case insensitively.
+                typePatternMap.put(fieldName, datawaveType);
+            } else {
+                // types are looked up by upper cased field name, so store exact names that way regardless of the case
+                // supplied by the configuration source.
+                typeFieldMap.put(fieldName.toUpperCase(), datawaveType);
+            }
+            if (log.isDebugEnabled()) {
+                log.debug("Registered a {} for type[{}], field[{}]", typeClass, this.getType().typeName(), fieldName);
+            }
+        }
+
+        // registering a type invalidates anything derived from the previous registrations
+        this.typeCompiledPatternMap = null;
+        this.typeResolvedMap.clear();
+        this.defaultResolvedTypes = null;
+    }
+
+    /**
+     * Return the memoized resolution for this field name, resolving it first if it has not been seen yet.
+     *
+     * @param fieldName
+     *            the field name
+     * @return the resolved types for the field
+     */
+    private ResolvedTypes resolve(String fieldName) {
+        return typeResolvedMap.computeIfAbsent(fieldName, resolveDataTypesFunction);
+    }
+
+    /**
+     * Resolve the types for a field name: an exact match on the configured field types first, then the configured field type patterns, and finally the default
+     * type. The result is memoized by {@link #resolve(String)}, so this runs at most once per distinct field name.
+     *
+     * @param fieldName
+     *            the field name
+     * @return the resolved types for the field
+     */
+    private ResolvedTypes resolveDataTypes(String fieldName) {
+
+        // types are registered under upper cased field names and patterns, so fold before matching against either
+        final String typeFieldName = fieldName.toUpperCase();
+
+        List<datawave.data.type.Type<?>> types = new ArrayList<>(typeFieldMap.get(typeFieldName));
+
+        if (types.isEmpty()) {
+            if (typeCompiledPatternMap == null) {
+                compilePatterns();
+            }
+
+            if (useMostPreciseFieldTypeRegex) {
+                Matcher bestMatch = getBestMatch(typeCompiledPatternMap.keySet(), typeFieldName);
+                if (null != bestMatch) {
+                    types.addAll(typeCompiledPatternMap.get(bestMatch));
+                }
+            } else {
+                for (Matcher patternMatcher : typeCompiledPatternMap.keySet()) {
+                    if (patternMatcher.reset(typeFieldName).matches()) {
+                        types.addAll(typeCompiledPatternMap.get(patternMatcher));
+                    }
+                }
+            }
+        }
+
+        // if no types were defined or matched via regex, use the default
+        if (types.isEmpty()) {
+            return defaultResolvedTypes();
+        }
+
+        return new ResolvedTypes(List.copyOf(types), true);
+    }
+
+    /**
+     * Return the resolution shared by every field that falls back to the default type, building it on first use.
+     *
+     * @return the default resolution
+     */
+    private ResolvedTypes defaultResolvedTypes() {
+        if (defaultResolvedTypes == null) {
+            defaultResolvedTypes = new ResolvedTypes(List.copyOf(typeFieldMap.get(null)), false);
+        }
+        return defaultResolvedTypes;
+    }
+}

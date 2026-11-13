@@ -1,0 +1,155 @@
+import { IngestionConnector } from '@components/integrations/catalog/types';
+import IngestionCatalogConnectorCreation from '@components/integrations/catalog/IngestionCatalogConnectorCreation';
+import IngestionCatalogConnectorHeader from '@components/integrations/catalog/IngestionCatalogConnectorHeader';
+import IngestionCatalogConnectorOverview from '@components/integrations/catalog/IngestionCatalogConnectorOverview';
+import { IngestionCatalogConnectorQuery } from '@components/integrations/catalog/__generated__/IngestionCatalogConnectorQuery.graphql';
+import useConnectorDeployDialog from '@components/integrations/catalog/hooks/useConnectorDeployDialog';
+import { canDeployConnector } from '@components/integrations/catalog/utils/isDeployableConnector';
+import createDeploymentCountMap from '@components/integrations/catalog/utils/createDeploymentCountMap';
+import parseIngestionConnector from '@components/integrations/catalog/utils/parseIngestionConnector';
+import ConnectorDeploymentBanner from '@components/data/connectors/ConnectorDeploymentBanner';
+import { ConnectorManagerStatusProvider, useConnectorManagerStatus } from '@components/data/connectors/ConnectorManagerStatusContext';
+import { Stack } from '@mui/material';
+import React, { Suspense, useEffect } from 'react';
+import { graphql, PreloadedQuery, usePreloadedQuery } from 'react-relay';
+import { useParams, useSearchParams } from 'react-router';
+import Breadcrumbs from '../../../../components/Breadcrumbs';
+import ErrorNotFound from '../../../../components/ErrorNotFound';
+import Loader, { LoaderVariant } from '../../../../components/Loader';
+import { useFormatter } from '../../../../components/i18n';
+import useConnectedDocumentModifier from '../../../../utils/hooks/useConnectedDocumentModifier';
+import useEnterpriseEdition from '../../../../utils/hooks/useEnterpriseEdition';
+import useQueryLoading from '../../../../utils/hooks/useQueryLoading';
+
+const SEARCH_PARAMS = {
+  OPEN_CONFIG: 'openConfig',
+} as const;
+
+const ingestionCatalogConnectorQuery = graphql`
+  query IngestionCatalogConnectorQuery($slug: String!) {
+    contract(slug: $slug) {
+      catalog_id
+      contract
+    }
+    connectors {
+      manager_contract_image
+    }
+  }
+`;
+
+interface IngestionCatalogConnectorComponentProps {
+  queryRef: PreloadedQuery<IngestionCatalogConnectorQuery>;
+  onClickDeploy: (connector: IngestionConnector, catalogId: string, hasActiveManagers: boolean, deploymentCount: number) => void;
+  openConfig?: boolean;
+}
+
+const IngestionCatalogConnectorComponent = ({
+  queryRef,
+  onClickDeploy,
+  openConfig,
+}: IngestionCatalogConnectorComponentProps) => {
+  const isEnterpriseEdition = useEnterpriseEdition();
+  const { t_i18n } = useFormatter();
+  const { setTitle } = useConnectedDocumentModifier();
+
+  const { hasActiveManagers } = useConnectorManagerStatus();
+
+  const { contract, connectors } = usePreloadedQuery(
+    ingestionCatalogConnectorQuery,
+    queryRef,
+  );
+
+  setTitle(t_i18n('Available | Integrations'));
+  const connector = contract ? parseIngestionConnector(contract.contract) : null;
+  const deploymentCounts = createDeploymentCountMap(connectors);
+  const deploymentCount = connector
+    ? (deploymentCounts.get(connector.container_image) ?? 0)
+    : 0;
+  const canDeploy = connector ? canDeployConnector(connector) : false;
+
+  // connector and onClickDeploy are new on every render: depending on them would open the dialog in a loop
+  useEffect(() => {
+    if (openConfig && contract && connector && canDeploy) {
+      onClickDeploy(connector, contract.catalog_id, hasActiveManagers, deploymentCount);
+    }
+  }, [openConfig, contract, canDeploy]);
+
+  if (!contract || !connector) return <ErrorNotFound />;
+
+  return (
+    <>
+      <Breadcrumbs
+        elements={[
+          { label: t_i18n('Integrations') },
+          { label: t_i18n('Available'), link: '/dashboard/integrations/available' },
+          { label: connector.title, current: true },
+        ]}
+      />
+
+      <Stack sx={{
+        gap: 2,
+      }}
+      >
+        <ConnectorDeploymentBanner hasActiveManagers={hasActiveManagers} />
+
+        <Stack sx={{
+          gap: 4,
+        }}
+        >
+          <IngestionCatalogConnectorHeader
+            connector={connector}
+            isEnterpriseEdition={isEnterpriseEdition}
+            onClickDeploy={() => onClickDeploy(connector, contract?.catalog_id, hasActiveManagers, deploymentCount)}
+          />
+          <IngestionCatalogConnectorOverview connector={connector} />
+        </Stack>
+      </Stack>
+    </>
+  );
+};
+
+const IngestionCatalogConnector = () => {
+  const { connectorSlug } = useParams();
+  const isEnterpriseEdition = useEnterpriseEdition();
+
+  const [searchParams] = useSearchParams();
+  const shouldAutoOpen = searchParams.get(SEARCH_PARAMS.OPEN_CONFIG) === 'true';
+
+  const queryRef = useQueryLoading<IngestionCatalogConnectorQuery>(
+    ingestionCatalogConnectorQuery,
+    { slug: connectorSlug ?? '' },
+  );
+
+  const { catalogState, handleOpenDeployDialog, handleCloseDeployDialog, handleCreate } = useConnectorDeployDialog();
+
+  return (
+    <Suspense fallback={<Loader variant={LoaderVariant.container} />}>
+      {queryRef && (
+        <ConnectorManagerStatusProvider>
+          <IngestionCatalogConnectorComponent
+            queryRef={queryRef}
+            onClickDeploy={handleOpenDeployDialog}
+            openConfig={shouldAutoOpen}
+          />
+        </ConnectorManagerStatusProvider>
+      )}
+
+      {
+        catalogState.selectedConnector && (
+          <IngestionCatalogConnectorCreation
+            open={!!catalogState.selectedConnector}
+            connector={catalogState.selectedConnector}
+            onClose={handleCloseDeployDialog}
+            catalogId={catalogState.selectedCatalogId}
+            isEnterpriseEdition={isEnterpriseEdition}
+            hasActiveManagers={catalogState.hasActiveManagers}
+            onCreate={handleCreate}
+            deploymentCount={catalogState.deploymentCount}
+          />
+        )
+      }
+    </Suspense>
+  );
+};
+
+export default IngestionCatalogConnector;

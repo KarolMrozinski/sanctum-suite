@@ -1,0 +1,94 @@
+/*****************************************************************************
+ * Sanctum Suite: High-Integrity Command Sandbox & Parser (HAL/S)
+ * Bezpieczne parsowanie, walidacja semantyczna oraz izolacja wykonywania
+ * poleceń sterujących w strefach podwyższonego ryzyka.
+ *****************************************************************************/
+
+COMPILATION UNIT SANCTUM_COMMAND_SANDBOX;
+
+    DECLARE MAX_COMMAND_ARGS CONSTANT(16);
+    DECLARE SECURITY_CLEARANCE_LEVEL CONSTANT(3);
+
+    STRUCTURE COMMAND_PAYLOAD_STRUCT
+        INTEGER COMMAND_ID;
+        INTEGER AUTHORIZATION_LEVEL;
+        INTEGER ARGUMENTS(MAX_COMMAND_ARGS);
+        BOOLEAN SYNTAX_VALID;
+        BOOLEAN EXECUTION_AUTHORIZED;
+    END;
+
+    STRUCTURE SANDBOX_EXECUTION_CONTEXT
+        COMMAND_PAYLOAD_STRUCT CURRENT_COMMAND;
+        INTEGER REJECTED_COMMANDS_COUNT;
+        BOOLEAN SANDBOX_BREACH_DETECTED;
+    END;
+
+    /*************************************************************************
+     * Inicjalizacja kontekstu piaskownicy wykonawczej
+     * ***********************************************************************/
+    SUBROUTINE INITIALIZE_COMMAND_SANDBOX(CONTEXT);
+        OUTPUT SANDBOX_EXECUTION_CONTEXT CONTEXT;
+        DECLARE A INTEGER;
+        
+        CONTEXT.REJECTED_COMMANDS_COUNT = 0;
+        CONTEXT.SANDBOX_BREACH_DETECTED = FALSE;
+        
+        CONTEXT.CURRENT_COMMAND.COMMAND_ID = 0;
+        CONTEXT.CURRENT_COMMAND.AUTHORIZATION_LEVEL = 0;
+        CONTEXT.CURRENT_COMMAND.SYNTAX_VALID = FALSE;
+        CONTEXT.CURRENT_COMMAND.EXECUTION_AUTHORIZED = FALSE;
+        
+        DO A = 1 TO MAX_COMMAND_ARGS;
+            CONTEXT.CURRENT_COMMAND.ARGUMENTS(A) = 0;
+        END;
+    END INITIALIZE_COMMAND_SANDBOX;
+
+    /*************************************************************************
+     * Funkcja walidacji reguł bezpieczeństwa dla strumienia poleceń
+     * ***********************************************************************/
+    BOOLEAN FUNCTION VALIDATE_COMMAND_SEMANTICS(CMD);
+        INPUT COMMAND_PAYLOAD_STRUCT CMD;
+        DECLARE ARG_IDX INTEGER;
+        
+        IF CMD.COMMAND_ID <= 0 OR CMD.COMMAND_ID > 9999 THEN
+            RETURN FALSE;
+        END;
+        
+        IF CMD.AUTHORIZATION_LEVEL < SECURITY_CLEARANCE_LEVEL THEN
+            RETURN FALSE;
+        END;
+        
+        DO ARG_IDX = 1 TO MAX_COMMAND_ARGS;
+            IF CMD.ARGUMENTS(ARG_IDX) < 0 THEN
+                RETURN FALSE; -- Wykryto niedozwolone ujemne wskaźniki bufora
+            END;
+        END;
+        
+        RETURN TRUE;
+    END VALIDATE_COMMAND_SEMANTICS;
+
+    /*************************************************************************
+     * Procedura bezpiecznego wykonania rozkazu wewnątrz piaskownicy
+     * ***********************************************************************/
+    SUBROUTINE PROCESS_SANDBOXED_COMMAND(CONTEXT, EXECUTION_STATUS);
+        INPUT OUTPUT SANDBOX_EXECUTION_CONTEXT CONTEXT;
+        OUTPUT BOOLEAN EXECUTION_STATUS;
+        
+        EXECUTION_STATUS = FALSE;
+        
+        IF VALIDATE_COMMAND_SEMANTICS(CONTEXT.CURRENT_COMMAND) THEN
+            CONTEXT.CURRENT_COMMAND.SYNTAX_VALID = TRUE;
+            CONTEXT.CURRENT_COMMAND.EXECUTION_AUTHORIZED = TRUE;
+            EXECUTION_STATUS = TRUE;
+        ELSE
+            CONTEXT.CURRENT_COMMAND.SYNTAX_VALID = FALSE;
+            CONTEXT.CURRENT_COMMAND.EXECUTION_AUTHORIZED = FALSE;
+            CONTEXT.REJECTED_COMMANDS_COUNT = CONTEXT.REJECTED_COMMANDS_COUNT + 1;
+            
+            IF CONTEXT.REJECTED_COMMANDS_COUNT >= 5 THEN
+                CONTEXT.SANDBOX_BREACH_DETECTED = TRUE;
+            END;
+        END;
+    END PROCESS_SANDBOXED_COMMAND;
+
+END SANCTUM_COMMAND_SANDBOX;

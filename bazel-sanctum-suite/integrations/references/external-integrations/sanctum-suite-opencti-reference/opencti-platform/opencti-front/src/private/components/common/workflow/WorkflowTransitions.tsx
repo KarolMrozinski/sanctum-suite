@@ -1,0 +1,462 @@
+import React, { FunctionComponent, useEffect, useRef, useState } from 'react';
+import { fetchQuery, useFragment, useRelayEnvironment } from 'react-relay';
+import type { Subscription } from 'relay-runtime';
+import {
+  Dialog,
+  DialogBody,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogTitle,
+  IconButton,
+  Menu,
+  MenuContent,
+  MenuItem,
+  MenuTrigger,
+  Text,
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from '@filigran/design-system';
+import { Alert, AlertTitle, Box, CircularProgress } from '@mui/material';
+import { ArrowDropDownOutlined, ArrowDropUpOutlined, ErrorOutlined, LockOpenOutlined } from '@mui/icons-material';
+import { Form, Formik } from 'formik';
+import { WorkflowStatus_data$data, WorkflowStatus_data$key } from './__generated__/WorkflowStatus_data.graphql';
+import { useFormatter } from '../../../../components/i18n';
+import { CommentMode } from '../../settings/sub_types/workflow/utils';
+import { workflowStatusFragment, workflowStatusStixDomainObjectFragment, workflowStatusEntityQuery, COMMENT_MAX_LENGTH } from './WorkflowStatus.graphql';
+import { TransitionFormValues, useTransitionWizard } from './useTransitionWizard';
+import { isBypassUser } from '../../../../utils/hooks/useGranted';
+import useAuth from '../../../../utils/hooks/useAuth';
+import { Close } from 'mdi-material-ui';
+import useHelper from '../../../../utils/hooks/useHelper';
+import { isWorkflowUiEnabledForType } from './workflowFeatureFlag';
+import type { WorkflowStatusStixDomainObject_data$key } from './__generated__/WorkflowStatusStixDomainObject_data.graphql';
+import type { WorkflowStatusEntityQuery } from './__generated__/WorkflowStatusEntityQuery.graphql';
+import useInterval from '../../../../utils/hooks/useInterval';
+import { FIVE_SECONDS } from '../../../../utils/Time';
+import { useGetCurrentUserAccessRight } from '../../../../utils/authorizedMembers';
+import { relayErrorHandling } from '../../../../relay/environment';
+import WorkflowBypassStatus, { ItemStatusWorkflow } from './WorkflowBypassStatus';
+import Button from '@common/button/Button';
+import WorkflowTransitionInputs, {
+  buildTransitionInputsSchema,
+  EMPTY_TRANSITION_INPUT_VALUES,
+  hasTransitionComment,
+  WORKFLOW_TRANSITION_COMMENT_FIELD_ID,
+} from './WorkflowTransitionInputs';
+
+// The reason only lives in a tooltip, so the trigger is a button: keyboard and screen-reader users reach it too.
+const WorkflowErrorHint = ({ message, severity }: { message: string; severity: 'error' | 'warning' }) => (
+  <Tooltip>
+    <TooltipTrigger asChild>
+      <IconButton
+        size="sm"
+        priority="tertiary"
+        variant={severity === 'error' ? 'destructive' : 'default'}
+        aria-label={message}
+        icon={<ErrorOutlined color={severity} fontSize="small" />}
+      />
+    </TooltipTrigger>
+    <TooltipContent>{message}</TooltipContent>
+  </Tooltip>
+);
+
+interface WorkflowTransitionsProps {
+  data: WorkflowStatus_data$key;
+  entityType?: string;
+}
+
+interface WorkflowTransitionsViewProps {
+  entityId: string;
+  entityNavigationId?: string | null;
+  draftId?: string;
+  processingCount?: number;
+  workflowInstance: WorkflowStatus_data$data['workflowInstance'];
+  entityType: string;
+  refreshing?: boolean;
+  onCompleted?: () => void;
+}
+
+const WorkflowTransitionsView: FunctionComponent<WorkflowTransitionsViewProps> = ({
+  entityId,
+  entityNavigationId,
+  draftId,
+  processingCount = 0,
+  workflowInstance,
+  entityType,
+  refreshing = false,
+  onCompleted,
+}) => {
+  const { t_i18n } = useFormatter();
+  const { isFeatureEnable } = useHelper();
+  const [menuOpen, setMenuOpen] = useState(false);
+  const { me } = useAuth();
+  const isBypass = isBypassUser(me);
+
+  const isPending = workflowInstance?.pendingStatus === 'pending';
+  const isError = workflowInstance?.pendingStatus === 'error';
+  const {
+    wizard,
+    setWizard,
+    canBypassMandatoryFields,
+    approving: submitting,
+    clearing,
+    handleTransition,
+    handleApplyWizard,
+    handleClear,
+    notifyBackgroundTransitionComplete,
+  } = useTransitionWizard({ entityId, entityNavigationId, draftId, isPending, onCompleted });
+  const approving = submitting || refreshing;
+
+  const pendingTransition = workflowInstance?.pendingTransition ?? null;
+
+  const prevIsPendingRef = useRef<boolean>(isPending);
+  const prevPendingTransitionRef = useRef(pendingTransition);
+  useEffect(() => {
+    const wasJustPending = prevIsPendingRef.current && !isPending;
+    if (draftId && wasJustPending && !isError && workflowInstance?.currentState === prevPendingTransitionRef.current?.toState) {
+      const hadValidateDraft = prevPendingTransitionRef.current?.syncActions?.some((action) => action.type === 'validateDraft');
+      if (hadValidateDraft) {
+        notifyBackgroundTransitionComplete();
+      }
+    }
+    prevIsPendingRef.current = isPending;
+    prevPendingTransitionRef.current = pendingTransition;
+  });
+
+  if (!workflowInstance || !isWorkflowUiEnabledForType(entityType, isFeatureEnable)) {
+    return null;
+  }
+
+  if (isPending) {
+    const totalExpected = pendingTransition?.asyncActions.reduce((sum, action) => sum + (action.expectedCount ?? 0), 0) ?? 0;
+    const totalProcessed = pendingTransition?.asyncActions.reduce((sum, action) => sum + (action.processedCount ?? 0), 0) ?? 0;
+    return (
+      <>
+        <Box data-testid="workflow-transitions-pending" sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+          <Text as="span" variant="content-compact" className="whitespace-nowrap">
+            {pendingTransition?.event}
+          </Text>
+          {totalExpected > 0 && (
+            <Text as="span" variant="content-compact" className="whitespace-nowrap text-default-secondary">
+              {totalProcessed} / {totalExpected}
+            </Text>
+          )}
+          <CircularProgress size={14} thickness={5} />
+          {isBypass && (
+            <Button
+              variant="secondary"
+              size="small"
+              onClick={handleClear}
+              disabled={clearing || approving}
+              startIcon={<Close fontSize="small" />}
+            >
+              {t_i18n('Clear')}
+            </Button>
+          )}
+        </Box>
+      </>
+    );
+  }
+
+  if (isError) {
+    return (
+      <>
+        <Box data-testid="workflow-transitions-error" sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+          <WorkflowErrorHint
+            severity="error"
+            message={workflowInstance.pendingError ?? t_i18n('One or more async workflow actions failed')}
+          />
+          <Text as="span" variant="content-compact" style={{ color: 'var(--text-input-error)' }}>
+            {t_i18n('Transition failed')}
+          </Text>
+          {isBypass && (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <span>
+                  <Button
+                    variant="secondary"
+                    size="small"
+                    onClick={handleClear}
+                    disabled={clearing || approving}
+                    startIcon={<LockOpenOutlined fontSize="small" />}
+                  >
+                    {t_i18n('Clear')}
+                  </Button>
+                </span>
+              </TooltipTrigger>
+              <TooltipContent>{t_i18n('Force-unlock this transition (admin only). The background task will be orphaned.')}</TooltipContent>
+            </Tooltip>
+          )}
+        </Box>
+      </>
+    );
+  }
+
+  // An external write kept the entity Status off the workflow without any transition running.
+  const divergence = workflowInstance.pendingError ? (
+    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+      <WorkflowErrorHint severity="warning" message={workflowInstance.pendingError} />
+      <Text as="span" variant="content-compact" className="whitespace-nowrap">
+        {t_i18n('Status out of sync with the workflow')}
+      </Text>
+      {isBypass && (
+        <Button
+          variant="secondary"
+          size="small"
+          onClick={handleClear}
+          disabled={clearing || approving}
+          startIcon={<Close fontSize="small" />}
+        >
+          {t_i18n('Clear')}
+        </Button>
+      )}
+    </Box>
+  ) : null;
+
+  if (workflowInstance.allowedTransitions.length === 0) {
+    return divergence;
+  }
+
+  return (
+    <>
+      <Box data-testid="workflow-transitions-actions" sx={{ display: 'contents' }}>
+        {divergence}
+        {workflowInstance.allowedTransitions.length > 1 ? (
+          <Menu open={menuOpen} onOpenChange={setMenuOpen}>
+            <MenuTrigger asChild>
+              <Button
+                disabled={approving || clearing || !!wizard}
+                endIcon={!menuOpen ? (<ArrowDropDownOutlined />) : (<ArrowDropUpOutlined />)}
+              >
+                {t_i18n('Next status')}
+              </Button>
+            </MenuTrigger>
+            <MenuContent
+              align="start"
+              sideOffset={6}
+              style={{ minWidth: 'var(--radix-dropdown-menu-trigger-width)', maxWidth: 'calc(100vw - 32px)' }}
+            >
+              {workflowInstance.allowedTransitions.map((transition) => {
+                const actionCount = transition.actions?.length ?? 0;
+                return (
+                  <MenuItem
+                    key={transition.event}
+                    disabled={approving || clearing || !!wizard}
+                    onSelect={() => handleTransition(
+                      transition.event,
+                      transition.actions ?? [],
+                      transition.comment,
+                      transition.requiresShareOrganizationInput,
+                      transition.requiresUnshareOrganizationInput,
+                      transition.closingReason,
+                    )}
+                    style={{ display: 'flex', justifyContent: 'space-between', gap: 16, height: 'auto', minHeight: 36, whiteSpace: 'normal' }}
+                    endIcon={actionCount > 0 ? (
+                      <span style={{ fontSize: 12, color: 'var(--text-default-secondary)', whiteSpace: 'nowrap' }}>
+                        (+{actionCount} {t_i18n(actionCount === 1 ? 'action required' : 'actions required')})
+                      </span>
+                    ) : undefined}
+                  >
+                    <span style={{ overflowWrap: 'anywhere' }}>{transition.event}</span>
+                  </MenuItem>
+                );
+              })}
+            </MenuContent>
+          </Menu>
+        ) : (
+          <>
+            {workflowInstance.allowedTransitions.map((transition) => (
+              <Button
+                key={transition.event}
+                variant="primary"
+                onClick={() => handleTransition(
+                  transition.event,
+                  transition.actions ?? [],
+                  transition.comment,
+                  transition.requiresShareOrganizationInput,
+                  transition.requiresUnshareOrganizationInput,
+                  transition.closingReason,
+                )}
+                disabled={approving || clearing || !!wizard}
+              >
+                {transition.event}
+              </Button>
+            ))}
+          </>
+        )}
+      </Box>
+      {wizard && (
+        <Formik<TransitionFormValues>
+          initialValues={EMPTY_TRANSITION_INPUT_VALUES}
+          validationSchema={buildTransitionInputsSchema(wizard, canBypassMandatoryFields, t_i18n)}
+          onSubmit={handleApplyWizard}
+          validateOnMount
+        >
+          {({ values, isSubmitting, isValid }) => {
+            const disabled = isSubmitting || approving || clearing;
+            const missingComment = wizard.commentMode === CommentMode.required && !canBypassMandatoryFields && !values.comment.trim();
+            // Radix gives every DialogDescription the same id, so the closing reason and validation prompts use it only when no comment prompt precedes them.
+            const showComment = hasTransitionComment(wizard.commentMode);
+            const targetStatus = workflowInstance.allowedTransitions.find((transition) => transition.event === wizard.event)?.toStatus;
+            return (
+              <Dialog
+                open
+                onOpenChange={(open) => {
+                  if (!open && !disabled) setWizard(null);
+                }}
+              >
+                <DialogContent
+                  // Radix focuses the first focusable element on open, which is the
+                  // close button: when there is a comment to write (sometimes
+                  // mandatory, the only action of this step), it gets the focus.
+                  // TextareaField does not forward a ref, so it is found by id.
+                  onOpenAutoFocus={(event) => {
+                    const commentField = document.getElementById(WORKFLOW_TRANSITION_COMMENT_FIELD_ID);
+                    if (commentField) {
+                      event.preventDefault();
+                      commentField.focus();
+                    }
+                  }}
+                >
+                  <DialogTitle className="flex flex-col gap-6">
+                    <Text variant="title-md">{wizard.event}</Text>
+
+                    {targetStatus && (
+                      <div className="flex items-center gap-1">
+                        <Text as="span" variant="content-compact-medium">{t_i18n('Transitioning to')}</Text>
+                        <ItemStatusWorkflow status={targetStatus} />
+                      </div>
+                    )}
+                  </DialogTitle>
+                  <Form noValidate className="flex flex-col gap-6 min-h-0">
+                    <DialogBody style={{ margin: 'calc(var(--spacing) * -1)', padding: 'var(--spacing)' }}>
+                      <Box className="flex flex-col gap-6">
+                        <WorkflowTransitionInputs
+                          requirements={wizard}
+                          canBypassMandatoryFields={canBypassMandatoryFields}
+                          commentLength={values.comment.length}
+                          disabled={disabled}
+                          renderCommentPrompt={(prompt) => <DialogDescription className="flex flex-col gap-2">{prompt}</DialogDescription>}
+                        />
+                        {wizard.requiresValidation && (
+                          <>
+                            {showComment ? (
+                              <Text variant="content-base">{t_i18n('Do you want to approve this draft and send it to ingestion?')}</Text>
+                            ) : (
+                              <DialogDescription>{t_i18n('Do you want to approve this draft and send it to ingestion?')}</DialogDescription>
+                            )}
+                            {processingCount > 0 && (
+                              <Alert severity="warning">
+                                <AlertTitle>{t_i18n('Ongoing processes')}</AlertTitle>
+                                {t_i18n('There are processes still running that could impact the data of the draft. '
+                                  + 'By approving the draft now, the remaining changes that would have been applied by those processes will be ignored.')}
+                              </Alert>
+                            )}
+                          </>
+                        )}
+                      </Box>
+                    </DialogBody>
+                    <DialogFooter>
+                      <Button variant="secondary" onClick={() => setWizard(null)} disabled={disabled}>
+                        {t_i18n('Cancel')}
+                      </Button>
+                      <Button type="submit" disabled={disabled || !isValid || !!missingComment || values.comment.length > COMMENT_MAX_LENGTH}>
+                        {wizard.requiresValidation ? t_i18n('Approve') : t_i18n('Confirm')}
+                      </Button>
+                    </DialogFooter>
+                  </Form>
+                </DialogContent>
+              </Dialog>
+            );
+          }}
+        </Formik>
+      )}
+    </>
+  );
+};
+
+export const WorkflowTransitions: FunctionComponent<WorkflowTransitionsProps> = ({ data, entityType = 'DraftWorkspace' }) => {
+  const draft = useFragment<WorkflowStatus_data$key>(workflowStatusFragment, data);
+  return (
+    <WorkflowTransitionsView
+      key={draft.id}
+      entityId={draft.id}
+      entityNavigationId={draft.entity_id}
+      draftId={draft.id}
+      processingCount={draft.processingCount}
+      workflowInstance={draft.workflowInstance}
+      entityType={entityType}
+    />
+  );
+};
+
+const WorkflowPendingPoll = ({ refresh }: { refresh: () => void }) => {
+  useInterval(refresh, FIVE_SECONDS, false);
+  return null;
+};
+
+export const WorkflowTransitionsForEntity: FunctionComponent<{
+  data: WorkflowStatusStixDomainObject_data$key;
+  entityType: string;
+}> = ({ data, entityType }) => {
+  const entity = useFragment<WorkflowStatusStixDomainObject_data$key>(workflowStatusStixDomainObjectFragment, data);
+  const environment = useRelayEnvironment();
+  const { t_i18n } = useFormatter();
+  const { isFeatureEnable } = useHelper();
+  const { canEdit } = useGetCurrentUserAccessRight(entity.currentUserAccessRight);
+  const enabled = canEdit && isWorkflowUiEnabledForType(entityType, isFeatureEnable) && !!entity.workflowInstance;
+  const request = useRef<Subscription | null>(null);
+  const [refreshing, setRefreshing] = useState(false);
+  const [refreshFailed, setRefreshFailed] = useState(false);
+
+  useEffect(() => {
+    setRefreshing(false);
+    setRefreshFailed(false);
+    return () => {
+      request.current?.unsubscribe();
+      request.current = null;
+    };
+  }, [environment, entity.id, enabled]);
+
+  const refresh = () => {
+    if (!enabled || request.current) return;
+    setRefreshing(true);
+    setRefreshFailed(false);
+    fetchQuery<WorkflowStatusEntityQuery>(environment, workflowStatusEntityQuery, { id: entity.id }, { fetchPolicy: 'network-only' }).subscribe({
+      start: (subscription) => {
+        request.current = subscription;
+      },
+      complete: () => {
+        request.current = null;
+        setRefreshing(false);
+      },
+      error: (error: Error) => {
+        request.current = null;
+        setRefreshing(false);
+        setRefreshFailed(true);
+        relayErrorHandling(error);
+      },
+    });
+  };
+
+  if (!enabled) return null;
+  return (
+    <>
+      {entity.workflowInstance?.pendingStatus === 'pending' && !refreshFailed && <WorkflowPendingPoll refresh={refresh} />}
+      {refreshFailed && <Button variant="secondary" onClick={refresh}>{t_i18n('Retry')}</Button>}
+      <WorkflowBypassStatus key={`bypass-${entity.id}`} data={data} entityType={entityType} refreshing={refreshing} onCompleted={refresh} />
+      <WorkflowTransitionsView
+        key={entity.id}
+        entityId={entity.id}
+        workflowInstance={entity.workflowInstance}
+        entityType={entityType}
+        refreshing={refreshing}
+        onCompleted={refresh}
+      />
+    </>
+  );
+};
+
+export default WorkflowTransitions;

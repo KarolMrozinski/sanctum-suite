@@ -1,0 +1,81 @@
+import React, { FunctionComponent } from 'react';
+import { graphql, useFragment } from 'react-relay';
+import Grid from '@mui/material/Grid';
+import CustomFieldValuesDisplay from '@components/common/custom_fields/CustomFieldValuesDisplay';
+import ExpandableMarkdown from '../../../../components/ExpandableMarkdown';
+import { useFormatter } from '../../../../components/i18n';
+import { DataSourceDetails_dataSource$data, DataSourceDetails_dataSource$key } from './__generated__/DataSourceDetails_dataSource.graphql';
+import DataSourceDataComponents from './DataSourceDataComponents';
+import FieldOrEmpty from '../../../../components/FieldOrEmpty';
+import Card from '../../../../components/common/card/Card';
+import Label from '../../../../components/common/label/Label';
+import TextList from '@common/text/TextList';
+
+const DataSourceDetailsFragment = graphql`
+  fragment DataSourceDetails_dataSource on DataSource {
+    id
+    entity_type
+    customFieldValues {
+      ...CustomFieldValuesDisplay_values @relay(mask: false)
+    }
+    name
+    description
+    x_mitre_platforms
+    collection_layers
+    objectLabel {
+      id
+      value
+      color
+    }
+    ...DataSourceDataComponents_dataSource
+  }
+`;
+
+interface DataSourceDetailsProps {
+  dataSource: DataSourceDetails_dataSource$key;
+}
+
+const DataSourceDetailsComponent: FunctionComponent<DataSourceDetailsProps> = ({
+  dataSource,
+}) => {
+  const { t_i18n } = useFormatter();
+
+  const data: DataSourceDetails_dataSource$data = useFragment(
+    DataSourceDetailsFragment,
+    dataSource,
+  );
+
+  return (
+    <div style={{ height: '100%' }}>
+      <Card title={t_i18n('Details')}>
+        <Grid container={true} spacing={2}>
+          <Grid size={12}>
+            <Label>
+              {t_i18n('Description')}
+            </Label>
+            <FieldOrEmpty source={data.description}>
+              <ExpandableMarkdown source={data.description} limit={300} />
+            </FieldOrEmpty>
+          </Grid>
+          <Grid size={6}>
+            <Label>
+              {t_i18n('Platforms')}
+            </Label>
+            <TextList list={data.x_mitre_platforms} />
+            <Label
+              sx={{ marginTop: 2 }}
+            >
+              {t_i18n('Layers')}
+            </Label>
+            <TextList list={data.collection_layers} />
+          </Grid>
+          <CustomFieldValuesDisplay entityType={data.entity_type} values={data.customFieldValues ?? []} />
+          <Grid size={12}>
+            <DataSourceDataComponents dataSource={data} />
+          </Grid>
+        </Grid>
+      </Card>
+    </div>
+  );
+};
+export default DataSourceDetailsComponent;

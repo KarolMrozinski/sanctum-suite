@@ -1,15 +1,14 @@
-package(default_visibility = ["//visibility:public"])
-
-exports_files([
-    "idl/runtime-trust.capnp",
-    "streams/vsock-runtime.cue",
-], visibility = ["//visibility:public"])
-
 filegroup(
-    name = "live_runtime_contracts",
-    srcs = glob([
-        "**/*.capnp",
-        "**/*.cue",
-        "**/*.json",
-    ]),
+    name = "live_runtime",
+    srcs = glob(
+        ["**/*"],
+        exclude = [
+            "**/.git/**",
+            "**/bazel-*/**",
+            "**/target/**",
+            "**/node_modules/**",
+        ],
+        allow_empty = True,
+    ),
+    visibility = ["//visibility:public"],
 )
