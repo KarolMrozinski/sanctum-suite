@@ -4,7 +4,8 @@ export type DashboardSectionKey =
   | "entities"
   | "investigations"
   | "alerts"
-  | "incidents";
+  | "incidents"
+  | "integrations";
 
 export type Severity = "Critical" | "High" | "Medium" | "Low";
 
@@ -106,6 +107,18 @@ export type DashboardNavigationItem = {
   count: string;
 };
 
+export type IntegrationConnection = {
+  id: string;
+  name: string;
+  type: "SIEM" | "SOAR" | "Threat Intel" | "Identity" | "Cloud" | "Ticketing";
+  status: "Connected" | "Healthy" | "Pending" | "Offline";
+  latency: string;
+  owner: string;
+  endpoint: string;
+  lastSync: string;
+  metadata: string[];
+};
+
 export type OverviewStat = {
   label: string;
   value: string;
@@ -133,6 +146,7 @@ export type DashboardSnapshot = {
   investigations: Investigation[];
   alerts: Alert[];
   incidents: Incident[];
+  integrations: IntegrationConnection[];
 };
 
 export const dashboardNavigation: DashboardNavigationItem[] = [
@@ -142,6 +156,7 @@ export const dashboardNavigation: DashboardNavigationItem[] = [
   { id: "investigations", label: "Investigations", href: "/investigations", count: "08" },
   { id: "incidents", label: "Incidents", href: "/incidents", count: "04" },
   { id: "alerts", label: "Alerts", href: "/alerts", count: "19" },
+  { id: "integrations", label: "Integrations", href: "/integrations", count: "06" },
 ];
 
 export const overviewStats: OverviewStat[] = [
@@ -381,6 +396,75 @@ export const incidentData: Incident[] = [
   },
 ];
 
+export const integrationConnections: IntegrationConnection[] = [
+  {
+    id: "INT-01",
+    name: "Splunk Enterprise",
+    type: "SIEM",
+    status: "Connected",
+    latency: "132ms",
+    owner: "SOC Operations",
+    endpoint: "https://siem.internal.example",
+    lastSync: "02:41 UTC",
+    metadata: ["Correlation rules", "Risk score feed", "Indexed telemetry"],
+  },
+  {
+    id: "INT-02",
+    name: "Microsoft Entra ID",
+    type: "Identity",
+    status: "Healthy",
+    latency: "94ms",
+    owner: "IAM",
+    endpoint: "https://login.microsoftonline.com",
+    lastSync: "02:38 UTC",
+    metadata: ["Identity graph", "Conditional access", "Risk detections"],
+  },
+  {
+    id: "INT-03",
+    name: "MISP Community",
+    type: "Threat Intel",
+    status: "Connected",
+    latency: "210ms",
+    owner: "Threat Intel",
+    endpoint: "https://misp.internal.example",
+    lastSync: "02:19 UTC",
+    metadata: ["IOC sync", "TLP amber", "Campaign enrichment"],
+  },
+  {
+    id: "INT-04",
+    name: "ServiceNow",
+    type: "Ticketing",
+    status: "Pending",
+    latency: "—",
+    owner: "ITSM",
+    endpoint: "https://servicenow.internal.example",
+    lastSync: "Awaiting approval",
+    metadata: ["Incident tickets", "Change approvals", "Escalation orchestration"],
+  },
+  {
+    id: "INT-05",
+    name: "AWS Security Hub",
+    type: "Cloud",
+    status: "Healthy",
+    latency: "156ms",
+    owner: "Cloud Security",
+    endpoint: "https://securityhub.us-east-1.amazonaws.com",
+    lastSync: "02:36 UTC",
+    metadata: ["GuardDuty sync", "Config events", "Cloud posture"],
+  },
+  {
+    id: "INT-06",
+    name: "TheHive / Cortex",
+    type: "SOAR",
+    status: "Offline",
+    latency: "—",
+    owner: "IR Engineering",
+    endpoint: "https://thehive.internal.example",
+    lastSync: "17 mins ago",
+    metadata: ["Case automation", "Playbook execution", "Triage routing"],
+  },
+];
+
 export function getGraphQLDashboardPayload(section: string = "overview", id?: string | null) {
   const snapshot = getDashboardSnapshot(section);
   const selectedThreat = id ? snapshot.threats.find((item) => item.id === id) ?? null : null;
@@ -407,6 +491,7 @@ export function getGraphQLDashboardPayload(section: string = "overview", id?: st
       investigations: snapshot.investigations,
       alerts: snapshot.alerts,
       incidents: snapshot.incidents,
+      integrations: snapshot.integrations,
       selected: selectedThreat ?? selectedEntity ?? selectedAlert ?? selectedIncident,
       selectedId: id ?? null,
       graph: {
@@ -463,5 +548,81 @@ export function getDashboardSnapshot(section: string = "overview"): DashboardSna
     investigations: investigationData,
     alerts: alertData,
     incidents: incidentData,
+    integrations: integrationConnections,
   };
+}
+
+function normalizeDashboardPayload(payload: Partial<DashboardSnapshot> | null | undefined, fallbackSection: string): DashboardSnapshot {
+  const fallback = getDashboardSnapshot(fallbackSection);
+
+  return {
+    ...fallback,
+    ...(payload ?? {}),
+    section: (payload?.section ?? fallbackSection ?? "overview") as DashboardSectionKey,
+    stats: payload?.stats ?? fallback.stats,
+    detection: payload?.detection ?? fallback.detection,
+    events: payload?.events ?? fallback.events,
+    threats: payload?.threats ?? fallback.threats,
+    entities: payload?.entities ?? fallback.entities,
+    investigations: payload?.investigations ?? fallback.investigations,
+    alerts: payload?.alerts ?? fallback.alerts,
+    incidents: payload?.incidents ?? fallback.incidents,
+    integrations: payload?.integrations ?? fallback.integrations,
+  };
+}
+
+export async function fetchDashboardSnapshot(section: string = "overview", id?: string | null): Promise<DashboardSnapshot> {
+  const normalizedSection = section || "overview";
+  const apiBaseUrl = (process.env.SANCTUM_API_BASE_URL ?? process.env.NEXT_PUBLIC_SANCTUM_API_URL ?? "").replace(/\/$/, "");
+  const useRealData = process.env.NEXT_PUBLIC_SANCTUM_USE_REAL_DATA !== "false" && Boolean(apiBaseUrl);
+
+  if (!useRealData) {
+    return getDashboardSnapshot(normalizedSection);
+  }
+
+  const authToken = process.env.SANCTUM_API_TOKEN ?? process.env.SANCTUM_API_KEY ?? "";
+  const credentials = process.env.SANCTUM_API_KEY && !process.env.SANCTUM_API_TOKEN ? "X-API-Key" : "Authorization";
+
+  const endpoints = [
+    `${apiBaseUrl}/api/v1/dashboard`,
+    `${apiBaseUrl}/api/dashboard`,
+    `${apiBaseUrl}/api/v1/cti/dashboard`,
+  ];
+
+  for (const endpoint of endpoints) {
+    try {
+      const url = new URL(endpoint);
+      url.searchParams.set("section", normalizedSection);
+      if (id) {
+        url.searchParams.set("id", id);
+      }
+
+      const response = await fetch(url.toString(), {
+        cache: "no-store",
+        headers: {
+          Accept: "application/json",
+          ...(authToken
+            ? credentials === "Authorization"
+              ? { Authorization: `Bearer ${authToken}` }
+              : { "X-API-Key": authToken }
+            : {}),
+        },
+      });
+
+      if (!response.ok) {
+        continue;
+      }
+
+      const payload = await response.json();
+      const dashboardData = payload?.data?.dashboard ?? payload?.dashboard ?? payload;
+
+      if (dashboardData && Array.isArray(dashboardData.threats)) {
+        return normalizeDashboardPayload(dashboardData, normalizedSection);
+      }
+    } catch {
+      continue;
+    }
+  }
+
+  return getDashboardSnapshot(normalizedSection);
 }

@@ -17,6 +17,7 @@ const sectionTitleMap: Record<DashboardSectionKey, string> = {
   investigations: "Investigations",
   incidents: "Incidents",
   alerts: "Alerts",
+  integrations: "Integrations",
 };
 
 export function DashboardShell({
