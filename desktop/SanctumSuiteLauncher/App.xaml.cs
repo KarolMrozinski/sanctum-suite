@@ -47,6 +47,55 @@ public partial class App : Wpf.Application
     private WinForms.NotifyIcon? _trayIcon;
     private bool _isWindowVisible = true;
 
+    private static ControlTemplate CreateFlatButtonTemplate(System.Windows.Media.Color baseColor)
+    {
+        var normalBrush = new SolidColorBrush(baseColor);
+        var overBrush = new SolidColorBrush(System.Windows.Media.Color.FromArgb(255, (byte)Math.Min(baseColor.R + 18, 255), (byte)Math.Min(baseColor.G + 18, 255), (byte)Math.Min(baseColor.B + 18, 255)));
+        var pressedBrush = new SolidColorBrush(System.Windows.Media.Color.FromArgb(255, (byte)Math.Max(baseColor.R - 20, 0), (byte)Math.Max(baseColor.G - 20, 0), (byte)Math.Max(baseColor.B - 20, 0)));
+
+        var border = new FrameworkElementFactory(typeof(Border));
+        border.SetValue(Border.CornerRadiusProperty, new CornerRadius(12));
+        border.SetValue(Border.BackgroundProperty, normalBrush);
+        border.SetValue(Border.BorderBrushProperty, System.Windows.Media.Brushes.Transparent);
+        border.SetValue(Border.BorderThicknessProperty, new Thickness(0));
+        border.SetValue(Border.SnapsToDevicePixelsProperty, true);
+
+        var text = new FrameworkElementFactory(typeof(TextBlock));
+        text.SetValue(TextBlock.TextProperty, new TemplateBindingExtension(ContentControl.ContentProperty));
+        text.SetValue(TextBlock.HorizontalAlignmentProperty, Wpf.HorizontalAlignment.Center);
+        text.SetValue(TextBlock.VerticalAlignmentProperty, VerticalAlignment.Center);
+        text.SetValue(TextBlock.ForegroundProperty, new TemplateBindingExtension(Wpf.Controls.Control.ForegroundProperty));
+        text.SetValue(TextBlock.FontWeightProperty, new TemplateBindingExtension(Wpf.Controls.Control.FontWeightProperty));
+        text.SetValue(TextBlock.TextTrimmingProperty, TextTrimming.CharacterEllipsis);
+
+        var panel = new FrameworkElementFactory(typeof(Grid));
+        panel.AppendChild(text);
+
+        border.AppendChild(panel);
+
+        var template = new ControlTemplate(typeof(Wpf.Controls.Button));
+        template.VisualTree = border;
+
+        var triggerNormal = new Trigger
+        {
+            Property = UIElement.IsMouseOverProperty,
+            Value = true
+        };
+        triggerNormal.Setters.Add(new Setter(Border.BackgroundProperty, overBrush, string.Empty));
+
+        var triggerPressed = new Trigger
+        {
+            Property = Wpf.Controls.Primitives.ButtonBase.IsPressedProperty,
+            Value = true
+        };
+        triggerPressed.Setters.Add(new Setter(Border.BackgroundProperty, pressedBrush, string.Empty));
+
+        template.Triggers.Add(triggerNormal);
+        template.Triggers.Add(triggerPressed);
+
+        return template;
+    }
+
     private static string ResolveRepoRoot()
     {
         var baseDir = AppDomain.CurrentDomain.BaseDirectory;
@@ -284,11 +333,16 @@ public partial class App : Wpf.Application
             Margin = new Thickness(0, 0, 10, 0),
             Background = new SolidColorBrush(System.Windows.Media.Color.FromRgb(14, 116, 144)),
             Foreground = System.Windows.Media.Brushes.White,
+            BorderBrush = System.Windows.Media.Brushes.Transparent,
             BorderThickness = new Thickness(0),
             FontWeight = FontWeights.SemiBold,
             Cursor = System.Windows.Input.Cursors.Hand,
             Padding = new Thickness(0),
-            HorizontalAlignment = Wpf.HorizontalAlignment.Stretch
+            HorizontalAlignment = Wpf.HorizontalAlignment.Stretch,
+            FocusVisualStyle = null,
+            SnapsToDevicePixels = true,
+            UseLayoutRounding = true,
+            Template = CreateFlatButtonTemplate(System.Windows.Media.Color.FromRgb(14, 116, 144))
         };
 
         _stopBtn = new Wpf.Controls.Button
@@ -298,11 +352,16 @@ public partial class App : Wpf.Application
             Margin = new Thickness(10, 0, 10, 0),
             Background = new SolidColorBrush(System.Windows.Media.Color.FromRgb(51, 65, 85)),
             Foreground = System.Windows.Media.Brushes.White,
+            BorderBrush = System.Windows.Media.Brushes.Transparent,
             BorderThickness = new Thickness(0),
             FontWeight = FontWeights.SemiBold,
             Cursor = System.Windows.Input.Cursors.Hand,
             Padding = new Thickness(0),
-            HorizontalAlignment = Wpf.HorizontalAlignment.Stretch
+            HorizontalAlignment = Wpf.HorizontalAlignment.Stretch,
+            FocusVisualStyle = null,
+            SnapsToDevicePixels = true,
+            UseLayoutRounding = true,
+            Template = CreateFlatButtonTemplate(System.Windows.Media.Color.FromRgb(51, 65, 85))
         };
 
         _openBtn = new Wpf.Controls.Button
@@ -312,11 +371,16 @@ public partial class App : Wpf.Application
             Margin = new Thickness(10, 0, 0, 0),
             Background = new SolidColorBrush(System.Windows.Media.Color.FromRgb(24, 24, 27)),
             Foreground = System.Windows.Media.Brushes.White,
+            BorderBrush = System.Windows.Media.Brushes.Transparent,
             BorderThickness = new Thickness(0),
             FontWeight = FontWeights.SemiBold,
             Cursor = System.Windows.Input.Cursors.Hand,
             Padding = new Thickness(0),
-            HorizontalAlignment = Wpf.HorizontalAlignment.Stretch
+            HorizontalAlignment = Wpf.HorizontalAlignment.Stretch,
+            FocusVisualStyle = null,
+            SnapsToDevicePixels = true,
+            UseLayoutRounding = true,
+            Template = CreateFlatButtonTemplate(System.Windows.Media.Color.FromRgb(24, 24, 27))
         };
 
         Grid.SetColumn(_startBtn, 0);

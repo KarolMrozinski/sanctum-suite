@@ -15,7 +15,7 @@ using System.Reflection;
 [assembly: System.Reflection.AssemblyCopyrightAttribute("Copyright © KarolMrozinski")]
 [assembly: System.Reflection.AssemblyDescriptionAttribute("Sanctum Suite desktop launcher and runtime shell for the CTI dashboard.")]
 [assembly: System.Reflection.AssemblyFileVersionAttribute("1.0.0.0")]
-[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+ad6ddec659fb42b573ff183aecf39c61c081df6d")]
+[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+3feeaf1fe083074e093c67df09b20b7017b2a7d7")]
 [assembly: System.Reflection.AssemblyProductAttribute("Sanctum Suite")]
 [assembly: System.Reflection.AssemblyTitleAttribute("SanctumSuiteLauncher")]
 [assembly: System.Reflection.AssemblyVersionAttribute("1.0.0.0")]
