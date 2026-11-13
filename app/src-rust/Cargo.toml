@@ -7,5 +7,10 @@ edition = "2021"
 name = "sanctum_rust_modules"
 path = "src/lib.rs"
 
+[features]
+default = ["windows-native"]
+windows-native = []
+linux-kernel-hooks = []
+
 [dependencies]
 log = "0.4"

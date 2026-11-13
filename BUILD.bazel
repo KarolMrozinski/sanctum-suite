@@ -1,0 +1,61 @@
+package(default_visibility = ["//visibility:public"])
+
+filegroup(
+    name = "runtime_schema_sources",
+    srcs = glob([
+        "security/architecture/live-runtime/**/*.capnp",
+        "security/architecture/live-runtime/**/*.cue",
+        "security/architecture/live-runtime/**/*.json",
+    ]),
+)
+
+filegroup(
+    name = "build_inputs",
+    srcs = [
+        "flake.nix",
+        "BUILD.bazel",
+        "security/architecture/live-runtime/BUILD.bazel",
+    ],
+)
+
+filegroup(
+    name = "ada_sources",
+    srcs = glob([
+        "src_ada/**/*.adb",
+        "src_ada/**/*.ads",
+        "app/**/*.adb",
+        "app/**/*.ads",
+    ]),
+)
+
+filegroup(
+    name = "rust_sources",
+    srcs = glob([
+        "src_rust/**/*.rs",
+        "app/**/*.rs",
+    ]),
+)
+
+filegroup(
+    name = "c_sources",
+    srcs = glob([
+        "**/*.c",
+        "**/*.h",
+    ]),
+)
+
+filegroup(
+    name = "rego_policies",
+    srcs = glob([
+        "security/policies/**/*.rego",
+    ]),
+)
+
+filegroup(
+    name = "wasm_modules",
+    srcs = glob([
+        "**/*.wasm",
+        "**/*.wat",
+        "**/*.wit",
+    ]),
+)
