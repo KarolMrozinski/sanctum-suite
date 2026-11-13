@@ -16,17 +16,26 @@ export async function GET(request: Request) {
       ].find((entry) => ("id" in entry ? entry.id === id : false)) ?? null
     : null;
 
+  const useRealData = (process.env.SANCTUM_USE_REAL_DATA ?? process.env.NEXT_PUBLIC_SANCTUM_USE_REAL_DATA ?? "true") !== "false";
+  const dashboard = {
+    ...snapshot,
+    section,
+    selectedId: id,
+    selected,
+    mode: useRealData ? "live" : "live-like",
+    generatedAt: new Date().toISOString(),
+  };
+
   return Response.json(
     {
+      ...dashboard,
       data: {
-        dashboard: {
-          ...snapshot,
-          section,
-          selectedId: id,
-          selected,
-          mode: process.env.NEXT_PUBLIC_SANCTUM_USE_REAL_DATA === "false" ? "live-like" : "live",
-          generatedAt: new Date().toISOString(),
-        },
+        dashboard,
+      },
+      meta: {
+        source: useRealData ? "live-api" : "mock-data",
+        section,
+        generatedAt: dashboard.generatedAt,
       },
     },
     {

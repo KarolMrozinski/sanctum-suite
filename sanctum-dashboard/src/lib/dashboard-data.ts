@@ -136,6 +136,28 @@ export type RecentEvent = {
   detail: string;
 };
 
+export type ThreatFeed = {
+  id: string;
+  name: string;
+  type: "OpenCTI" | "MISP" | "VirusTotal" | "AbuseIPDB" | "Microsoft Defender" | "Shodan";
+  status: "Healthy" | "Syncing" | "Delayed" | "Offline";
+  confidence: number;
+  lastSync: string;
+};
+
+export type RelationshipGraphNode = {
+  id: string;
+  label: string;
+  kind: "threat" | "entity" | "incident";
+  severity: Severity | "Info";
+};
+
+export type RelationshipGraphEdge = {
+  source: string;
+  target: string;
+  kind: "related-to" | "hosts" | "associated-with" | "linked-to";
+};
+
 export type DashboardSnapshot = {
   section: DashboardSectionKey;
   stats: OverviewStat[];
@@ -147,6 +169,11 @@ export type DashboardSnapshot = {
   alerts: Alert[];
   incidents: Incident[];
   integrations: IntegrationConnection[];
+  feeds?: ThreatFeed[];
+  relationshipGraph?: {
+    nodes: RelationshipGraphNode[];
+    edges: RelationshipGraphEdge[];
+  };
 };
 
 export const dashboardNavigation: DashboardNavigationItem[] = [
@@ -554,42 +581,86 @@ export function getDashboardSnapshot(section: string = "overview"): DashboardSna
 
 function normalizeDashboardPayload(payload: Partial<DashboardSnapshot> | null | undefined, fallbackSection: string): DashboardSnapshot {
   const fallback = getDashboardSnapshot(fallbackSection);
+  const section = (payload?.section ?? (fallbackSection as DashboardSectionKey) ?? "overview") as DashboardSectionKey;
 
   return {
     ...fallback,
     ...(payload ?? {}),
-    section: (payload?.section ?? fallbackSection ?? "overview") as DashboardSectionKey,
-    stats: payload?.stats ?? fallback.stats,
-    detection: payload?.detection ?? fallback.detection,
-    events: payload?.events ?? fallback.events,
-    threats: payload?.threats ?? fallback.threats,
-    entities: payload?.entities ?? fallback.entities,
-    investigations: payload?.investigations ?? fallback.investigations,
-    alerts: payload?.alerts ?? fallback.alerts,
-    incidents: payload?.incidents ?? fallback.incidents,
-    integrations: payload?.integrations ?? fallback.integrations,
+    section,
+    stats: Array.isArray(payload?.stats) && payload.stats.length > 0 ? payload.stats : fallback.stats,
+    detection: Array.isArray(payload?.detection) && payload.detection.length > 0 ? payload.detection : fallback.detection,
+    events: Array.isArray(payload?.events) && payload.events.length > 0 ? payload.events : fallback.events,
+    threats: Array.isArray(payload?.threats) && payload.threats.length > 0 ? payload.threats : fallback.threats,
+    entities: Array.isArray(payload?.entities) && payload.entities.length > 0 ? payload.entities : fallback.entities,
+    investigations: Array.isArray(payload?.investigations) && payload.investigations.length > 0 ? payload.investigations : fallback.investigations,
+    alerts: Array.isArray(payload?.alerts) && payload.alerts.length > 0 ? payload.alerts : fallback.alerts,
+    incidents: Array.isArray(payload?.incidents) && payload.incidents.length > 0 ? payload.incidents : fallback.incidents,
+    integrations: Array.isArray(payload?.integrations) && payload.integrations.length > 0 ? payload.integrations : fallback.integrations,
   };
+}
+
+type DashboardApiEnvelope = {
+  data?: { dashboard?: Partial<DashboardSnapshot> };
+  dashboard?: Partial<DashboardSnapshot>;
+  section?: string;
+  stats?: OverviewStat[];
+  detection?: DetectionBar[];
+  events?: RecentEvent[];
+  threats?: Threat[];
+  entities?: Entity[];
+  investigations?: Investigation[];
+  alerts?: Alert[];
+  incidents?: Incident[];
+  integrations?: IntegrationConnection[];
+};
+
+function normalizeRealApiPayload(payload: DashboardApiEnvelope | null | undefined, fallbackSection: string): DashboardSnapshot {
+  const dashboardData = payload?.data?.dashboard ?? payload?.dashboard ?? payload ?? {};
+
+  return normalizeDashboardPayload(
+    {
+      section: (dashboardData.section ?? fallbackSection ?? "overview") as DashboardSectionKey,
+      stats: dashboardData.stats ?? [],
+      detection: dashboardData.detection ?? [],
+      events: dashboardData.events ?? [],
+      threats: dashboardData.threats ?? [],
+      entities: dashboardData.entities ?? [],
+      investigations: dashboardData.investigations ?? [],
+      alerts: dashboardData.alerts ?? [],
+      incidents: dashboardData.incidents ?? [],
+      integrations: dashboardData.integrations ?? [],
+    },
+    fallbackSection,
+  );
 }
 
 export async function fetchDashboardSnapshot(section: string = "overview", id?: string | null): Promise<DashboardSnapshot> {
   const normalizedSection = section || "overview";
-  const apiBaseUrl = (process.env.SANCTUM_API_BASE_URL ?? process.env.NEXT_PUBLIC_SANCTUM_API_URL ?? "").replace(/\/$/, "");
-  const useRealData = process.env.NEXT_PUBLIC_SANCTUM_USE_REAL_DATA !== "false" && Boolean(apiBaseUrl);
+  const apiConfig = {
+    baseUrl: (process.env.SANCTUM_API_BASE_URL ?? process.env.NEXT_PUBLIC_SANCTUM_API_URL ?? "").replace(/\/$/, ""),
+    token: process.env.SANCTUM_API_TOKEN ?? process.env.NEXT_PUBLIC_SANCTUM_API_TOKEN ?? "",
+    apiKey: process.env.SANCTUM_API_KEY ?? process.env.NEXT_PUBLIC_SANCTUM_API_KEY ?? "",
+    useRealData: (process.env.SANCTUM_USE_REAL_DATA ?? process.env.NEXT_PUBLIC_SANCTUM_USE_REAL_DATA ?? "true") !== "false",
+  };
 
-  if (!useRealData) {
+  if (!apiConfig.useRealData || !apiConfig.baseUrl) {
     return getDashboardSnapshot(normalizedSection);
   }
 
-  const authToken = process.env.SANCTUM_API_TOKEN ?? process.env.SANCTUM_API_KEY ?? "";
-  const credentials = process.env.SANCTUM_API_KEY && !process.env.SANCTUM_API_TOKEN ? "X-API-Key" : "Authorization";
+  const headers = {
+    Accept: "application/json",
+    ...(apiConfig.token
+      ? { Authorization: `Bearer ${apiConfig.token}` }
+      : apiConfig.apiKey
+        ? { "X-API-Key": apiConfig.apiKey }
+        : {}),
+  };
 
-  const endpoints = [
-    `${apiBaseUrl}/api/v1/dashboard`,
-    `${apiBaseUrl}/api/dashboard`,
-    `${apiBaseUrl}/api/v1/cti/dashboard`,
-  ];
-
-  for (const endpoint of endpoints) {
+  for (const endpoint of [
+    `${apiConfig.baseUrl}/api/v1/dashboard`,
+    `${apiConfig.baseUrl}/api/dashboard`,
+    `${apiConfig.baseUrl}/api/v1/cti/dashboard`,
+  ]) {
     try {
       const url = new URL(endpoint);
       url.searchParams.set("section", normalizedSection);
@@ -599,25 +670,24 @@ export async function fetchDashboardSnapshot(section: string = "overview", id?: 
 
       const response = await fetch(url.toString(), {
         cache: "no-store",
-        headers: {
-          Accept: "application/json",
-          ...(authToken
-            ? credentials === "Authorization"
-              ? { Authorization: `Bearer ${authToken}` }
-              : { "X-API-Key": authToken }
-            : {}),
-        },
+        headers,
       });
 
       if (!response.ok) {
         continue;
       }
 
-      const payload = await response.json();
+      const payload = (await response.json()) as DashboardApiEnvelope | null;
       const dashboardData = payload?.data?.dashboard ?? payload?.dashboard ?? payload;
+      const hasDataset = !!dashboardData && (
+        Array.isArray(dashboardData.threats) ||
+        Array.isArray(dashboardData.entities) ||
+        Array.isArray(dashboardData.incidents) ||
+        Array.isArray(dashboardData.alerts)
+      );
 
-      if (dashboardData && Array.isArray(dashboardData.threats)) {
-        return normalizeDashboardPayload(dashboardData, normalizedSection);
+      if (hasDataset) {
+        return normalizeRealApiPayload(payload, normalizedSection);
       }
     } catch {
       continue;
