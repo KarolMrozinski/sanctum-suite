@@ -12,9 +12,12 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
+using System.Windows.Media.Animation;
 using System.Windows.Media.Effects;
 using System.Windows.Media.Imaging;
+using System.Windows.Shapes;
 using System.Windows.Threading;
+using IO = System.IO;
 using WinForms = System.Windows.Forms;
 using Wpf = System.Windows;
 
@@ -25,10 +28,10 @@ public partial class App : Wpf.Application
     private const string AppMutexName = "Global\\SanctumSuiteLauncher";
     private static readonly Mutex SingleInstanceMutex = new(false, AppMutexName);
     private readonly string _root = ResolveRepoRoot();
-    private readonly string _appDir = Path.Combine(ResolveRepoRoot(), "sanctum-dashboard");
-    private readonly string _pidFile = Path.Combine(ResolveRepoRoot(), ".sanctum-suite.pid");
-    private readonly string _browserFlag = Path.Combine(ResolveRepoRoot(), ".sanctum-suite.browser-opened");
-    private readonly string _runtimeLogFile = Path.Combine(ResolveRepoRoot(), ".sanctum-suite.runtime.log");
+    private readonly string _appDir = IO.Path.Combine(ResolveRepoRoot(), "sanctum-dashboard");
+    private readonly string _pidFile = IO.Path.Combine(ResolveRepoRoot(), ".sanctum-suite.pid");
+    private readonly string _browserFlag = IO.Path.Combine(ResolveRepoRoot(), ".sanctum-suite.browser-opened");
+    private readonly string _runtimeLogFile = IO.Path.Combine(ResolveRepoRoot(), ".sanctum-suite.runtime.log");
     private readonly HttpClient _client = new();
     private readonly object _startupLock = new();
     private bool _startupInProgress;
@@ -44,6 +47,9 @@ public partial class App : Wpf.Application
     private Wpf.Controls.TextBox _logViewer = null!;
     private Wpf.Controls.TextBlock _envSummary = null!;
     private Border _statusDot = null!;
+    private Border _loadingRing = null!;
+    private Wpf.Controls.TextBlock _loadingLabel = null!;
+    private Wpf.Controls.TextBlock _runtimeSummary = null!;
     private WinForms.NotifyIcon? _trayIcon;
     private bool _isWindowVisible = true;
 
@@ -103,7 +109,7 @@ public partial class App : Wpf.Application
 
         for (var i = 0; i < 18; i++)
         {
-            if (Directory.Exists(current) && File.Exists(Path.Combine(current, "sanctum-dashboard", "package.json")))
+            if (Directory.Exists(current) && File.Exists(IO.Path.Combine(current, "sanctum-dashboard", "package.json")))
             {
                 return current;
             }
@@ -118,7 +124,7 @@ public partial class App : Wpf.Application
         }
 
         var currentDirectory = Directory.GetCurrentDirectory();
-        if (Directory.Exists(currentDirectory) && File.Exists(Path.Combine(currentDirectory, "sanctum-dashboard", "package.json")))
+        if (Directory.Exists(currentDirectory) && File.Exists(IO.Path.Combine(currentDirectory, "sanctum-dashboard", "package.json")))
         {
             return currentDirectory;
         }
@@ -141,7 +147,7 @@ public partial class App : Wpf.Application
 
     protected override void OnStartup(StartupEventArgs e)
     {
-        if (!Directory.Exists(_appDir) || !File.Exists(Path.Combine(_appDir, "package.json")))
+        if (!Directory.Exists(_appDir) || !File.Exists(IO.Path.Combine(_appDir, "package.json")))
         {
             _status = new TextBlock { Text = "Status: repo missing", Foreground = new SolidColorBrush(System.Windows.Media.Color.FromRgb(248, 113, 113)) };
             var message = $"Sanctum Dashboard was not found under the expected repo path. Expected: {_appDir}\n\nPlease run the launcher from the Sanctum Suite repo root or make sure the app folder is present.";
@@ -169,7 +175,7 @@ public partial class App : Wpf.Application
             AllowsTransparency = true,
             Background = Wpf.Media.Brushes.Transparent,
             Foreground = new SolidColorBrush(System.Windows.Media.Color.FromRgb(226, 232, 240)),
-            Icon = new BitmapImage(new Uri(Path.Combine(_root, "resources", "sanctum-suite-icon.ico"), UriKind.Absolute)),
+            Icon = new BitmapImage(new Uri(IO.Path.Combine(_root, "resources", "sanctum-suite-icon.ico"), UriKind.Absolute)),
             ShowInTaskbar = true,
             Topmost = false
         };
@@ -212,14 +218,16 @@ public partial class App : Wpf.Application
 
         var iconBorder = new Border
         {
-            Width = 32,
-            Height = 32,
-            CornerRadius = new CornerRadius(10),
+            Width = 34,
+            Height = 34,
+            CornerRadius = new CornerRadius(11),
             Background = new LinearGradientBrush(
                 System.Windows.Media.Color.FromRgb(45, 212, 191),
                 System.Windows.Media.Color.FromRgb(14, 116, 144),
                 90),
             Margin = new Thickness(0, 0, 12, 0),
+            BorderBrush = new SolidColorBrush(System.Windows.Media.Color.FromArgb(90, 148, 163, 184)),
+            BorderThickness = new Thickness(1),
             Child = new TextBlock
             {
                 Text = "S",
@@ -288,12 +296,73 @@ public partial class App : Wpf.Application
             Margin = new Thickness(0, 0, 0, 12)
         };
 
+        var topSummary = new Grid { Margin = new Thickness(0, 0, 0, 12) };
+        topSummary.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        topSummary.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+
+        var loadingDot = new Ellipse
+        {
+            Width = 8,
+            Height = 8,
+            Fill = new SolidColorBrush(System.Windows.Media.Color.FromRgb(45, 212, 191)),
+            HorizontalAlignment = Wpf.HorizontalAlignment.Center,
+            VerticalAlignment = VerticalAlignment.Center,
+            RenderTransformOrigin = new Wpf.Point(0.5, 0.5)
+        };
+
+        var loadingSpin = new RotateTransform();
+        loadingDot.RenderTransform = loadingSpin;
+
+        var spinAnimation = new DoubleAnimation
+        {
+            From = 0,
+            To = 360,
+            Duration = TimeSpan.FromSeconds(1.6),
+            RepeatBehavior = RepeatBehavior.Forever,
+            AutoReverse = false
+        };
+        loadingSpin.BeginAnimation(RotateTransform.AngleProperty, spinAnimation);
+
+        _loadingRing = new Border
+        {
+            Width = 28,
+            Height = 28,
+            CornerRadius = new CornerRadius(14),
+            BorderBrush = new SolidColorBrush(System.Windows.Media.Color.FromArgb(140, 45, 212, 191)),
+            BorderThickness = new Thickness(2.1),
+            Margin = new Thickness(0, 0, 10, 0),
+            Background = new SolidColorBrush(System.Windows.Media.Color.FromArgb(26, 45, 212, 191)),
+            Child = loadingDot,
+            SnapsToDevicePixels = true,
+            UseLayoutRounding = true
+        };
+
+        _loadingLabel = new Wpf.Controls.TextBlock
+        {
+            Text = "System ready",
+            FontSize = 11,
+            Foreground = new SolidColorBrush(System.Windows.Media.Color.FromRgb(191, 219, 254)),
+            FontWeight = FontWeights.SemiBold,
+            VerticalAlignment = VerticalAlignment.Center,
+            Visibility = Visibility.Visible
+        };
+
+        Grid.SetColumn(_loadingRing, 0);
+        Grid.SetColumn(_loadingLabel, 1);
+        topSummary.Children.Add(_loadingRing);
+        topSummary.Children.Add(_loadingLabel);
+
         var envPanel = new Border
         {
-            Background = new SolidColorBrush(System.Windows.Media.Color.FromArgb(25, 15, 118, 110)),
-            Padding = new Thickness(14, 10, 14, 10),
+            Background = new LinearGradientBrush(
+                System.Windows.Media.Color.FromArgb(80, 34, 197, 94),
+                System.Windows.Media.Color.FromArgb(65, 12, 74, 110),
+                90),
+            Padding = new Thickness(16, 11, 16, 11),
             CornerRadius = new CornerRadius(12),
-            Margin = new Thickness(0, 0, 0, 12)
+            Margin = new Thickness(0, 0, 0, 12),
+            BorderBrush = new SolidColorBrush(System.Windows.Media.Color.FromArgb(80, 94, 234, 212)),
+            BorderThickness = new Thickness(1)
         };
         _envSummary = new TextBlock
         {
@@ -304,21 +373,30 @@ public partial class App : Wpf.Application
         };
         envPanel.Child = _envSummary;
 
+        _runtimeSummary = new Wpf.Controls.TextBlock
+        {
+            Text = "Runtime: waiting for process health",
+            Foreground = new SolidColorBrush(System.Windows.Media.Color.FromRgb(148, 163, 184)),
+            FontSize = 11,
+            Margin = new Thickness(0, 0, 0, 8)
+        };
+
         _logViewer = new Wpf.Controls.TextBox
         {
-            Height = 120,
+            Height = 122,
             IsReadOnly = true,
             TextWrapping = TextWrapping.Wrap,
             VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
             Background = new SolidColorBrush(System.Windows.Media.Color.FromArgb(255, 8, 15, 24)),
-            BorderBrush = new SolidColorBrush(System.Windows.Media.Color.FromArgb(90, 148, 163, 184)),
+            BorderBrush = new SolidColorBrush(System.Windows.Media.Color.FromArgb(120, 94, 234, 212)),
             BorderThickness = new Thickness(1),
-            Padding = new Thickness(8),
+            Padding = new Thickness(10, 8, 10, 8),
             Foreground = new SolidColorBrush(System.Windows.Media.Color.FromRgb(191, 219, 254)),
             FontFamily = new System.Windows.Media.FontFamily("Consolas"),
             FontSize = 11,
             Margin = new Thickness(0, 0, 0, 12),
-            Text = "[launcher] Preparing startup diagnostics..."
+            Text = "[launcher] Preparing startup diagnostics...",
+            CaretBrush = System.Windows.Media.Brushes.White
         };
 
         var buttons = new Grid();
@@ -339,6 +417,8 @@ public partial class App : Wpf.Application
             Cursor = System.Windows.Input.Cursors.Hand,
             Padding = new Thickness(0),
             HorizontalAlignment = Wpf.HorizontalAlignment.Stretch,
+            VerticalContentAlignment = VerticalAlignment.Center,
+            HorizontalContentAlignment = Wpf.HorizontalAlignment.Center,
             FocusVisualStyle = null,
             SnapsToDevicePixels = true,
             UseLayoutRounding = true,
@@ -358,6 +438,8 @@ public partial class App : Wpf.Application
             Cursor = System.Windows.Input.Cursors.Hand,
             Padding = new Thickness(0),
             HorizontalAlignment = Wpf.HorizontalAlignment.Stretch,
+            VerticalContentAlignment = VerticalAlignment.Center,
+            HorizontalContentAlignment = Wpf.HorizontalAlignment.Center,
             FocusVisualStyle = null,
             SnapsToDevicePixels = true,
             UseLayoutRounding = true,
@@ -377,6 +459,8 @@ public partial class App : Wpf.Application
             Cursor = System.Windows.Input.Cursors.Hand,
             Padding = new Thickness(0),
             HorizontalAlignment = Wpf.HorizontalAlignment.Stretch,
+            VerticalContentAlignment = VerticalAlignment.Center,
+            HorizontalContentAlignment = Wpf.HorizontalAlignment.Center,
             FocusVisualStyle = null,
             SnapsToDevicePixels = true,
             UseLayoutRounding = true,
@@ -419,7 +503,7 @@ public partial class App : Wpf.Application
         _trayIcon = new WinForms.NotifyIcon
         {
             Visible = true,
-            Icon = new Icon(Path.Combine(_root, "resources", "sanctum-suite-icon.ico")),
+            Icon = new Icon(IO.Path.Combine(_root, "resources", "sanctum-suite-icon.ico")),
             Text = "Sanctum Suite"
         };
         _trayIcon.Click += (_, _) =>
@@ -511,7 +595,7 @@ public partial class App : Wpf.Application
                 return;
             }
 
-            if (!Directory.Exists(appProjectDir) || !File.Exists(Path.Combine(appProjectDir, "package.json")))
+            if (!Directory.Exists(appProjectDir) || !File.Exists(IO.Path.Combine(appProjectDir, "package.json")))
             {
                 SetStatus("Project missing", false, "Unable to locate sanctum-dashboard folder");
                 AppendLog($"[launcher] Missing project folder: {appProjectDir}");
@@ -527,7 +611,7 @@ public partial class App : Wpf.Application
                 return;
             }
 
-            if (!File.Exists(Path.Combine(appProjectDir, "node_modules", "next", "package.json")))
+            if (!File.Exists(IO.Path.Combine(appProjectDir, "node_modules", "next", "package.json")))
             {
                 SetStatus("Installing dependencies", false, "npm install is running for the dashboard");
                 AppendLog("[launcher] Dependencies missing; installing npm packages...");
@@ -788,14 +872,14 @@ public partial class App : Wpf.Application
         var pathVariable = Environment.GetEnvironmentVariable("PATH") ?? string.Empty;
         foreach (var entry in pathVariable.Split(';', StringSplitOptions.RemoveEmptyEntries))
         {
-            var fullPath = Path.Combine(entry, fileName);
+            var fullPath = IO.Path.Combine(entry, fileName);
             if (File.Exists(fullPath))
             {
                 path = fullPath;
                 return true;
             }
 
-            var cmdPath = Path.Combine(entry, fileName + ".cmd");
+            var cmdPath = IO.Path.Combine(entry, fileName + ".cmd");
             if (File.Exists(cmdPath))
             {
                 path = cmdPath;
