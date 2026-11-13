@@ -1,4 +1,5 @@
 import { fetchDashboardSnapshot } from "@/lib/dashboard-data";
+import { getSanctumApiRuntimeMeta } from "@/lib/api-client";
 
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
@@ -16,13 +17,13 @@ export async function GET(request: Request) {
       ].find((entry) => ("id" in entry ? entry.id === id : false)) ?? null
     : null;
 
-  const useRealData = (process.env.SANCTUM_USE_REAL_DATA ?? process.env.NEXT_PUBLIC_SANCTUM_USE_REAL_DATA ?? "true") !== "false";
+  const runtimeMeta = getSanctumApiRuntimeMeta();
   const dashboard = {
     ...snapshot,
     section,
     selectedId: id,
     selected,
-    mode: useRealData ? "live" : "live-like",
+    mode: runtimeMeta.mode,
     generatedAt: new Date().toISOString(),
   };
 
@@ -33,7 +34,10 @@ export async function GET(request: Request) {
         dashboard,
       },
       meta: {
-        source: useRealData ? "live-api" : "mock-data",
+        source: runtimeMeta.source,
+        mode: runtimeMeta.mode,
+        ready: runtimeMeta.ready,
+        baseUrl: runtimeMeta.baseUrl,
         section,
         generatedAt: dashboard.generatedAt,
       },

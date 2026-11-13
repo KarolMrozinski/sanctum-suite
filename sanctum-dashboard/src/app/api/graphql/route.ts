@@ -1,16 +1,20 @@
 import { getGraphQLDashboardPayload } from "@/lib/dashboard-data";
+import { getSanctumApiRuntimeMeta } from "@/lib/api-client";
 
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
   const section = searchParams.get("section") ?? "overview";
   const id = searchParams.get("id");
   const payload = getGraphQLDashboardPayload(section, id);
+  const runtimeMeta = getSanctumApiRuntimeMeta();
 
   return Response.json(
     {
       data: payload,
       meta: {
-        source: "mock-graphql",
+        source: runtimeMeta.source,
+        mode: runtimeMeta.mode,
+        ready: runtimeMeta.ready,
         version: "1.5.0",
         generatedAt: new Date().toISOString(),
       },
@@ -33,12 +37,15 @@ export async function POST(request: Request) {
   const section = body?.variables?.section ?? "overview";
   const id = body?.variables?.id ?? null;
   const payload = getGraphQLDashboardPayload(section, id);
+  const runtimeMeta = getSanctumApiRuntimeMeta();
 
   return Response.json(
     {
       data: payload,
       meta: {
-        source: "mock-graphql",
+        source: runtimeMeta.source,
+        mode: runtimeMeta.mode,
+        ready: runtimeMeta.ready,
         operation: body?.query?.includes("query") ? "query" : "mutation",
         status: "ok",
       },

@@ -1,0 +1,344 @@
+openapi: 3.0.3
+info:
+  title: Sanctum Suite CTI API
+  version: 1.5.0
+  description: |
+    Formal contract for the Sanctum Suite cyber threat intelligence backend.
+    The API is designed for live production workloads while remaining compatible
+    with the local dashboard mock model and runtime fallback behavior.
+  contact:
+    name: Karol Mrozinski
+    url: https://github.com/KarolMrozinski
+servers:
+  - url: http://localhost:3000
+    description: Local dashboard runtime
+  - url: https://api.sanctum-suite.local
+    description: Production API endpoint
+security:
+  - bearerAuth: []
+  - apiKeyAuth: []
+paths:
+  /api/v1/dashboard:
+    get:
+      summary: Fetch CTI dashboard snapshot
+      operationId: getDashboardSnapshot
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Dashboard snapshot payload
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DashboardSnapshot'
+  /api/v1/threats:
+    get:
+      summary: List threats
+      operationId: listThreats
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: List of threats
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Threat'
+  /api/v1/entities:
+    get:
+      summary: List entities
+      operationId: listEntities
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: List of entities
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Entity'
+  /api/v1/alerts:
+    get:
+      summary: List alerts
+      operationId: listAlerts
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: List of alerts
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Alert'
+  /api/v1/incidents:
+    get:
+      summary: List incidents
+      operationId: listIncidents
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: List of incidents
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Incident'
+  /api/v1/investigations:
+    get:
+      summary: List investigations
+      operationId: listInvestigations
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: List of investigations
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Investigation'
+  /api/graphql:
+    post:
+      summary: Execute GraphQL-like CTI query
+      operationId: queryGraphQL
+      security:
+        - apiKeyAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GraphQLRequest'
+      responses:
+        '200':
+          description: Query result
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DashboardSnapshot'
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+    apiKeyAuth:
+      type: apiKey
+      in: header
+      name: X-API-Key
+  schemas:
+    DashboardSnapshot:
+      type: object
+      required:
+        - section
+        - stats
+        - threats
+        - entities
+        - alerts
+        - incidents
+        - investigations
+      properties:
+        section:
+          type: string
+          enum: [overview, threats, entities, investigations, alerts, incidents, integrations]
+        stats:
+          type: array
+          items:
+            $ref: '#/components/schemas/StatCard'
+        threats:
+          type: array
+          items:
+            $ref: '#/components/schemas/Threat'
+        entities:
+          type: array
+          items:
+            $ref: '#/components/schemas/Entity'
+        alerts:
+          type: array
+          items:
+            $ref: '#/components/schemas/Alert'
+        incidents:
+          type: array
+          items:
+            $ref: '#/components/schemas/Incident'
+        investigations:
+          type: array
+          items:
+            $ref: '#/components/schemas/Investigation'
+        integrations:
+          type: array
+          items:
+            $ref: '#/components/schemas/Integration'
+        runtime:
+          $ref: '#/components/schemas/RuntimeMetadata'
+    RuntimeMetadata:
+      type: object
+      properties:
+        mode:
+          type: string
+          enum: [mock, live, hybrid]
+        source:
+          type: string
+          description: Source of the current data set.
+        syncedAt:
+          type: string
+          format: date-time
+    StatCard:
+      type: object
+      required: [label, value, delta]
+      properties:
+        label:
+          type: string
+        value:
+          type: string
+        delta:
+          type: string
+        trend:
+          type: string
+          enum: [up, down, neutral]
+    Threat:
+      type: object
+      required: [id, title, severity, status, actor]
+      properties:
+        id:
+          type: string
+        title:
+          type: string
+        actor:
+          type: string
+        severity:
+          type: string
+          enum: [Critical, High, Medium, Low]
+        confidence:
+          type: number
+          format: float
+        status:
+          type: string
+          enum: [Active, Monitoring, Contained]
+        source:
+          type: string
+        description:
+          type: string
+        indicators:
+          type: array
+          items:
+            type: string
+    Incident:
+      type: object
+      required: [id, title, severity, status, owner]
+      properties:
+        id:
+          type: string
+        title:
+          type: string
+        severity:
+          type: string
+          enum: [Critical, High, Medium, Low]
+        status:
+          type: string
+          enum: [Open, Investigating, Contained, Resolved]
+        owner:
+          type: string
+        confidence:
+          type: number
+        summary:
+          type: string
+        impactedSystems:
+          type: array
+          items:
+            type: string
+    Investigation:
+      type: object
+      required: [id, name, status, owner]
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        owner:
+          type: string
+        priority:
+          type: string
+          enum: [P1, P2, P3]
+        progress:
+          type: number
+        status:
+          type: string
+          enum: [In progress, Monitoring, Closed]
+        linkedThreats:
+          type: array
+          items:
+            type: string
+    Alert:
+      type: object
+      required: [id, title, severity, source, status]
+      properties:
+        id:
+          type: string
+        title:
+          type: string
+        severity:
+          type: string
+          enum: [Critical, High, Medium, Low]
+        source:
+          type: string
+        status:
+          type: string
+          enum: [Open, Dismissed, Investigating]
+        category:
+          type: string
+        relatedEntity:
+          type: string
+    Entity:
+      type: object
+      required: [id, type, value, risk]
+      properties:
+        id:
+          type: string
+        type:
+          type: string
+        value:
+          type: string
+        risk:
+          type: string
+          enum: [Critical, High, Medium, Low]
+        status:
+          type: string
+          enum: [Observed, Monitored, Contained]
+        tags:
+          type: array
+          items:
+            type: string
+        description:
+          type: string
+    Integration:
+      type: object
+      required: [id, name, status]
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        status:
+          type: string
+          enum: [Connected, Syncing, Warning, Disconnected]
+        source:
+          type: string
+    GraphQLRequest:
+      type: object
+      required: [query]
+      properties:
+        query:
+          type: string
+        variables:
+          type: object
+          additionalProperties: true

@@ -1,0 +1,105 @@
+name: Build and sign Windows MSI installer
+
+on:
+  workflow_dispatch:
+  release:
+    types: [published]
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: read
+
+jobs:
+  build-msi:
+    name: Build MSI package for Sanctum Suite
+    runs-on: windows-latest
+    environment: installer
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: sanctum-dashboard/package-lock.json
+
+      - name: Set up .NET SDK
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Install WiX Toolset
+        shell: powershell
+        run: |
+          choco install wixtoolset -y --no-progress
+          $wixRoot = Get-ChildItem "${env:ProgramFiles(x86)}\WiX Toolset*" | Sort-Object FullName -Descending | Select-Object -First 1
+          if (-not $wixRoot) { throw "WiX Toolset was not found after installation." }
+          "WIX_ROOT=$($wixRoot.FullName)" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+
+      - name: Install dashboard dependencies
+        working-directory: sanctum-dashboard
+        run: npm ci
+
+      - name: Build dashboard
+        working-directory: sanctum-dashboard
+        run: npm run build
+
+      - name: Publish desktop launcher
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          dotnet publish desktop\SanctumSuiteLauncher\SanctumSuiteLauncher.csproj -c Release -r win-x64 --self-contained false -p:PublishSingleFile=true -p:UseAppHost=true -nologo
+
+      - name: Build MSI installer
+        shell: powershell
+        env:
+          WINDOWS_CERT_PFX_BASE64: ${{ secrets.WINDOWS_CERT_PFX_BASE64 }}
+          WINDOWS_CERT_PASSWORD: ${{ secrets.WINDOWS_CERT_PASSWORD }}
+          WINDOWS_CERT_THUMBPRINT: ${{ secrets.WINDOWS_CERT_THUMBPRINT }}
+          ROOT_CA_CERT_PATH: ${{ secrets.ROOT_CA_CERT_PATH }}
+          ROOT_CA_CHAIN_PATH: ${{ secrets.ROOT_CA_CHAIN_PATH }}
+          MTLS_CLIENT_CERT_PATH: ${{ secrets.MTLS_CLIENT_CERT_PATH }}
+          MTLS_CLIENT_CERT_PASSWORD: ${{ secrets.MTLS_CLIENT_CERT_PASSWORD }}
+          MTLS_CA_BUNDLE_PATH: ${{ secrets.MTLS_CA_BUNDLE_PATH }}
+          BYO_PKI_CONFIG_PATH: ${{ secrets.BYO_PKI_CONFIG_PATH }}
+          FIPS1403_HSM_MODULE_PATH: ${{ secrets.FIPS1403_HSM_MODULE_PATH }}
+          FIPS1403_KEY_LABEL: ${{ secrets.FIPS1403_KEY_LABEL }}
+          NIAPC_NATO_PKI_PROFILE: ${{ secrets.NIAPC_NATO_PKI_PROFILE }}
+          HSM_TOKEN: ${{ secrets.HSM_TOKEN }}
+          HSM_KEY_ID: ${{ secrets.HSM_KEY_ID }}
+          AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+          AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+          AZURE_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
+          AZURE_TRUSTED_SIGNING_ENDPOINT: ${{ secrets.AZURE_TRUSTED_SIGNING_ENDPOINT }}
+          AZURE_TRUSTED_SIGNING_ACCOUNT_NAME: ${{ secrets.AZURE_TRUSTED_SIGNING_ACCOUNT_NAME }}
+          AZURE_TRUSTED_SIGNING_CERT_PROFILE_NAME: ${{ secrets.AZURE_TRUSTED_SIGNING_CERT_PROFILE_NAME }}
+          AZURE_TRUSTED_SIGNING_POLICY: ${{ secrets.AZURE_TRUSTED_SIGNING_POLICY }}
+          SIGNING_MODE: ${{ vars.SIGNING_MODE || 'auto' }}
+          REQUIRE_SIGNED_BUILD: ${{ vars.REQUIRE_SIGNED_BUILD || 'false' }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          ./desktop/installer/build-msi.ps1 -Configuration Release -Version "1.0.0.0" -OutputPath "release\installer" -Publisher "CN=Karol Mrozinski" -SigningMode $env:SIGNING_MODE -RequireSignedBuild:$($env:REQUIRE_SIGNED_BUILD -eq 'true')
+
+      - name: Upload installer artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: sanctum-suite-msi
+          path: release/installer/*.msi
+          if-no-files-found: error
+          retention-days: 90
+
+      - name: Publish release asset
+        if: github.event_name == 'release'
+        shell: powershell
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $tag = "${{ github.event.release.tag_name }}"
+          $files = Get-ChildItem release/installer -Filter *.msi | Select-Object -ExpandProperty FullName
+          if (-not $files) { throw "No MSI installer was generated for release upload." }
+          gh release upload $tag $files --repo $env:GITHUB_REPOSITORY

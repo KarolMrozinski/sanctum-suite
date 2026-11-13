@@ -5,6 +5,16 @@ export type ApiClientConfig = {
   useRealData?: boolean;
 };
 
+export type SanctumRuntimeMode = "live" | "live-like" | "mock";
+
+export type SanctumApiRuntimeMeta = {
+  mode: SanctumRuntimeMode;
+  source: "live-api" | "mock-data" | "hybrid";
+  baseUrl: string | null;
+  ready: boolean;
+  reason: string;
+};
+
 export type SanctumApiEndpoint = {
   url: string;
   method?: "GET" | "POST" | "PUT" | "DELETE";
@@ -14,21 +24,22 @@ export type SanctumApiEndpoint = {
 export function buildSanctumHeaders(config: ApiClientConfig = {}): HeadersInit {
   const hasToken = Boolean(config.token || config.apiKey);
 
+  const headers = new Headers({
+    Accept: "application/json",
+    "Content-Type": "application/json",
+  });
+
   if (!hasToken) {
-    return { Accept: "application/json" };
+    return headers;
   }
 
   if (config.token) {
-    return {
-      Accept: "application/json",
-      Authorization: `Bearer ${config.token}`,
-    };
+    headers.set("Authorization", `Bearer ${config.token}`);
+    return headers;
   }
 
-  return {
-    Accept: "application/json",
-    "X-API-Key": config.apiKey ?? "",
-  };
+  headers.set("X-API-Key", config.apiKey ?? "");
+  return headers;
 }
 
 export function getSanctumApiBaseUrl() {
@@ -50,6 +61,29 @@ export function getSanctumApiConfig() {
 export function shouldUseRealApiData() {
   const { baseUrl, useRealData } = getSanctumApiConfig();
   return useRealData && Boolean(baseUrl);
+}
+
+export function getSanctumApiRuntimeMeta(): SanctumApiRuntimeMeta {
+  const { baseUrl, useRealData } = getSanctumApiConfig();
+  const ready = useRealData && Boolean(baseUrl);
+
+  if (ready) {
+    return {
+      mode: "live",
+      source: "live-api",
+      baseUrl,
+      ready: true,
+      reason: "Live backend configured and enabled",
+    };
+  }
+
+  return {
+    mode: "mock",
+    source: "mock-data",
+    baseUrl: baseUrl || null,
+    ready: false,
+    reason: "No live backend configured; using local CTI dataset",
+  };
 }
 
 export function getSanctumApiEndpoints(baseUrl: string, section?: string, id?: string | null): SanctumApiEndpoint[] {

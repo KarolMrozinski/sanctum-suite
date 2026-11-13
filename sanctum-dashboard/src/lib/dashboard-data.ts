@@ -1,3 +1,11 @@
+import {
+  buildSanctumHeaders,
+  fetchSanctumApi,
+  getSanctumApiConfig,
+  getSanctumApiEndpoints,
+  shouldUseRealApiData,
+} from "./api-client";
+
 export type DashboardSectionKey =
   | "overview"
   | "threats"
@@ -175,6 +183,247 @@ export type DashboardSnapshot = {
     edges: RelationshipGraphEdge[];
   };
 };
+
+export type SanctumCtiApiRecord = {
+  id?: string;
+  title?: string;
+  name?: string;
+  actor?: string;
+  severity?: string;
+  status?: string;
+  category?: string;
+  source?: string;
+  type?: string;
+  value?: string;
+  owner?: string;
+  stage?: string;
+  summary?: string;
+  description?: string;
+  confidence?: number | string;
+  timestamp?: string;
+  observed?: string;
+  updatedAt?: string;
+  createdAt?: string;
+  firstSeen?: string;
+  risk?: string;
+  relatedEntity?: string;
+  tags?: string[];
+  workflow?: IncidentWorkflowStep[];
+  actions?: { id?: string; actor?: string; time?: string; type?: string; summary?: string }[];
+  timeline?: InvestigationTimelineEvent[] | { id?: string; time?: string; title?: string; detail?: string; type?: string; description?: string }[];
+  indicators?: string[];
+  relations?: string[];
+  relatedEntities?: string[];
+  relatedThreats?: string[];
+  linkedThreats?: string[];
+  impactedSystems?: string[];
+  evidence?: string[];
+  progress?: number | string;
+  priority?: string;
+  updated?: string;
+  relationships?: { type?: string; value?: string }[];
+};
+
+export type SanctumCtiApiEnvelope = {
+  data?: { dashboard?: Partial<DashboardSnapshot> & Record<string, unknown> };
+  dashboard?: Partial<DashboardSnapshot> & Record<string, unknown>;
+  section?: string;
+  stats?: OverviewStat[];
+  detection?: DetectionBar[];
+  events?: RecentEvent[];
+  threats?: SanctumCtiApiRecord[];
+  entities?: SanctumCtiApiRecord[];
+  investigations?: SanctumCtiApiRecord[];
+  alerts?: SanctumCtiApiRecord[];
+  incidents?: SanctumCtiApiRecord[];
+  integrations?: IntegrationConnection[];
+  meta?: {
+    source?: string;
+    mode?: string;
+    ready?: boolean;
+  };
+};
+
+function ensureString(value: unknown, fallback: string): string {
+  if (typeof value === "string" && value.trim().length > 0) return value.trim();
+  if (typeof value === "number") return String(value);
+  return fallback;
+}
+
+function ensureArray<T>(value: unknown): T[] {
+  return Array.isArray(value) ? (value.filter(Boolean) as T[]) : [];
+}
+
+function ensureSeverity(value: unknown, fallback: Severity): Severity {
+  const normalized = ensureString(value, fallback).toLowerCase();
+  if (normalized.includes("critical")) return "Critical";
+  if (normalized.includes("high")) return "High";
+  if (normalized.includes("medium")) return "Medium";
+  if (normalized.includes("low")) return "Low";
+  return fallback;
+}
+
+function ensureStatus(value: unknown, fallback: string): string {
+  const normalized = ensureString(value, fallback);
+  return normalized || fallback;
+}
+
+function mapApiThreat(item: SanctumCtiApiRecord | null | undefined, index: number): Threat {
+  const source = item ?? {};
+  return {
+    id: ensureString(source.id, `THR-${index + 1}`),
+    title: ensureString(source.title ?? source.name, "Threat object"),
+    actor: ensureString(source.actor, "Unknown actor"),
+    severity: ensureSeverity(source.severity ?? source.risk, "Medium"),
+    source: ensureString(source.source, "External telemetry"),
+    status: (ensureString(source.status, "Monitoring") as Threat["status"]) || "Monitoring",
+    confidence: typeof source.confidence === "number" ? source.confidence : Number(source.confidence ?? 70),
+    description: ensureString(source.description ?? source.summary, "No description available."),
+    relations: ensureArray<string>(source.relations ?? []),
+    indicators: ensureArray<string>(source.indicators ?? []),
+    timeline: ensureArray<{ id: string; time: string; title: string; detail: string }>((source.timeline ?? []).map((entry) => ({
+      id: ensureString((entry as { id?: string })?.id, `tl-${index}-${Math.random().toString(16).slice(2, 6)}`),
+      time: ensureString((entry as { time?: string })?.time, "--:--"),
+      title: ensureString((entry as { title?: string })?.title ?? (entry as { detail?: string })?.detail ?? "Timeline event", "Timeline event"),
+      detail: ensureString((entry as { detail?: string })?.detail ?? "No detail available.", "No detail available."),
+    }))),
+    relatedEntities: ensureArray<string>(source.relatedEntities ?? []),
+  };
+}
+
+function mapApiEntity(item: SanctumCtiApiRecord | null | undefined, index: number): Entity {
+  const source = item ?? {};
+  return {
+    id: ensureString(source.id, `ENT-${index + 1}`),
+    type: ensureString(source.type, "Entity"),
+    value: ensureString(source.value ?? source.name, "unknown"),
+    risk: ensureSeverity(source.risk ?? source.severity, "Medium"),
+    firstSeen: ensureString(source.firstSeen ?? source.createdAt ?? source.timestamp, "2026-01-01"),
+    tags: ensureArray<string>(source.tags ?? []),
+    status: (ensureString(source.status, "Observed") as Entity["status"]) || "Observed",
+    description: ensureString(source.description ?? source.summary, "No description available."),
+    confidence: typeof source.confidence === "number" ? source.confidence : Number(source.confidence ?? 70),
+    relationships: ensureArray<{ type: string; value: string }>((source.relationships ?? []).map((relationship) => ({
+      type: ensureString((relationship as { type?: string })?.type, "related-to"),
+      value: ensureString((relationship as { value?: string })?.value, "unknown"),
+    }))),
+  };
+}
+
+function mapApiInvestigation(item: SanctumCtiApiRecord | null | undefined, index: number): Investigation {
+  const source = item ?? {};
+  return {
+    id: ensureString(source.id, `INV-${index + 1}`),
+    name: ensureString(source.name ?? source.title, "Investigation"),
+    owner: ensureString(source.owner, "Unassigned"),
+    progress: Number((source as { progress?: number | string })?.progress ?? 0),
+    priority: (ensureString((source as { priority?: string })?.priority, "P3") as Investigation["priority"]) || "P3",
+    stage: ensureString((source as { stage?: string })?.stage, "Triage"),
+    updated: ensureString((source as { updated?: string })?.updated, "just now"),
+    status: (ensureString((source as { status?: string })?.status, "Monitoring") as Investigation["status"]) || "Monitoring",
+    description: ensureString(source.description ?? source.summary, "No description available."),
+    timeline: ensureArray<InvestigationTimelineEvent>((source.timeline ?? []).map((entry) => ({
+      id: ensureString((entry as { id?: string })?.id, `iv-${index}-${Math.random().toString(16).slice(2, 6)}`),
+      type: ensureString((entry as { type?: string })?.type, "Observation"),
+      time: ensureString((entry as { time?: string })?.time, "--:--"),
+      description: ensureString((entry as { description?: string })?.description ?? (entry as { detail?: string })?.detail ?? "No details available.", "No details available."),
+    }))),
+    linkedThreats: ensureArray<string>(source.linkedThreats ?? source.relatedThreats ?? []),
+  };
+}
+
+function mapApiAlert(item: SanctumCtiApiRecord | null | undefined, index: number): Alert {
+  const source = item ?? {};
+  return {
+    id: ensureString(source.id, `ALT-${index + 1}`),
+    title: ensureString(source.title ?? source.name, "Alert"),
+    severity: ensureSeverity(source.severity ?? source.risk, "Medium"),
+    source: ensureString(source.source, "Telemetry"),
+    observed: ensureString(source.observed ?? source.timestamp, "--:-- UTC"),
+    status: (ensureString(source.status, "Open") as Alert["status"]) || "Open",
+    category: ensureString(source.category, "General"),
+    description: ensureString(source.description ?? source.summary, "No description available."),
+    timestamp: ensureString(source.timestamp ?? source.observed, "--:-- UTC"),
+    relatedEntity: ensureString(source.relatedEntity ?? source.id ?? "UNKNOWN", "UNKNOWN"),
+  };
+}
+
+function mapApiIncident(item: SanctumCtiApiRecord | null | undefined, index: number): Incident {
+  const source = item ?? {};
+  return {
+    id: ensureString(source.id, `INC-${index + 1}`),
+    title: ensureString(source.title ?? source.name, "Incident"),
+    severity: ensureSeverity(source.severity ?? source.risk, "High"),
+    status: (ensureString(source.status, "Open") as Incident["status"]) || "Open",
+    category: ensureString(source.category, "Security incident"),
+    summary: ensureString(source.summary ?? source.description, "No summary available."),
+    createdAt: ensureString(source.createdAt, new Date().toISOString()),
+    updatedAt: ensureString(source.updatedAt ?? source.createdAt, new Date().toISOString()),
+    owner: ensureString(source.owner, "Unassigned"),
+    confidence: typeof source.confidence === "number" ? source.confidence : Number(source.confidence ?? 70),
+    impactedSystems: ensureArray<string>(source.impactedSystems ?? []),
+    relatedThreats: ensureArray<string>(source.relatedThreats ?? []),
+    relatedEntities: ensureArray<string>(source.relatedEntities ?? []),
+    evidence: ensureArray<string>(source.evidence ?? []),
+    workflow: ensureArray<IncidentWorkflowStep>((source.workflow ?? []).map((entry, workflowIndex) => ({
+      id: ensureString((entry as { id?: string })?.id, `wf-${index}-${workflowIndex + 1}`),
+      label: ensureString((entry as { label?: string })?.label ?? (entry as { title?: string })?.title ?? `Workflow ${workflowIndex + 1}`, `Workflow ${workflowIndex + 1}`),
+      owner: ensureString((entry as { owner?: string })?.owner, "Unassigned"),
+      status: (ensureString((entry as { status?: string })?.status, "Queued") as IncidentWorkflowStep["status"]) || "Queued",
+      eta: ensureString((entry as { eta?: string })?.eta, "TBD"),
+      progress: Number((entry as { progress?: number | string })?.progress ?? 0),
+      notes: ensureString((entry as { notes?: string })?.notes ?? (entry as { detail?: string })?.detail ?? "No notes available.", "No notes available."),
+    }))),
+    actions: ensureArray<{ id: string; actor: string; time: string; type: string; summary: string }>((source.actions ?? []).map((entry, actionIndex) => ({
+      id: ensureString((entry as { id?: string })?.id, `act-${index}-${actionIndex + 1}`),
+      actor: ensureString((entry as { actor?: string })?.actor, "Unknown actor"),
+      time: ensureString((entry as { time?: string })?.time, "--:--Z"),
+      type: ensureString((entry as { type?: string })?.type, "Action"),
+      summary: ensureString((entry as { summary?: string })?.summary ?? (entry as { description?: string })?.description ?? "Action recorded.", "Action recorded."),
+    }))),
+  };
+}
+
+function normalizeLiveDashboardPayload(payload: SanctumCtiApiEnvelope | Partial<DashboardSnapshot> | null | undefined, fallbackSection: string): DashboardSnapshot {
+  const fallback = getDashboardSnapshot(fallbackSection);
+  const source = payload && "data" in payload && payload.data && typeof payload.data === "object" && "dashboard" in payload.data ? payload.data.dashboard : payload;
+  const section = (source && typeof source === "object" && "section" in source && typeof source.section === "string" ? source.section : fallbackSection) as DashboardSectionKey;
+
+  const mappedThreats = ensureArray<SanctumCtiApiRecord>((source as { threats?: SanctumCtiApiRecord[] } | undefined)?.threats ?? []).length > 0
+    ? ensureArray<SanctumCtiApiRecord>((source as { threats?: SanctumCtiApiRecord[] } | undefined)?.threats ?? []).map((threat, index) => mapApiThreat(threat, index))
+    : fallback.threats;
+
+  const mappedEntities = ensureArray<SanctumCtiApiRecord>((source as { entities?: SanctumCtiApiRecord[] } | undefined)?.entities ?? []).length > 0
+    ? ensureArray<SanctumCtiApiRecord>((source as { entities?: SanctumCtiApiRecord[] } | undefined)?.entities ?? []).map((entity, index) => mapApiEntity(entity, index))
+    : fallback.entities;
+
+  const mappedInvestigations = ensureArray<SanctumCtiApiRecord>((source as { investigations?: SanctumCtiApiRecord[] } | undefined)?.investigations ?? []).length > 0
+    ? ensureArray<SanctumCtiApiRecord>((source as { investigations?: SanctumCtiApiRecord[] } | undefined)?.investigations ?? []).map((investigation, index) => mapApiInvestigation(investigation, index))
+    : fallback.investigations;
+
+  const mappedAlerts = ensureArray<SanctumCtiApiRecord>((source as { alerts?: SanctumCtiApiRecord[] } | undefined)?.alerts ?? []).length > 0
+    ? ensureArray<SanctumCtiApiRecord>((source as { alerts?: SanctumCtiApiRecord[] } | undefined)?.alerts ?? []).map((alert, index) => mapApiAlert(alert, index))
+    : fallback.alerts;
+
+  const mappedIncidents = ensureArray<SanctumCtiApiRecord>((source as { incidents?: SanctumCtiApiRecord[] } | undefined)?.incidents ?? []).length > 0
+    ? ensureArray<SanctumCtiApiRecord>((source as { incidents?: SanctumCtiApiRecord[] } | undefined)?.incidents ?? []).map((incident, index) => mapApiIncident(incident, index))
+    : fallback.incidents;
+
+  return {
+    ...fallback,
+    ...(source ?? {}),
+    section,
+    stats: Array.isArray((source as { stats?: OverviewStat[] } | undefined)?.stats) && (source as { stats?: OverviewStat[] }).stats!.length > 0 ? (source as { stats?: OverviewStat[] }).stats! : fallback.stats,
+    detection: Array.isArray((source as { detection?: DetectionBar[] } | undefined)?.detection) && (source as { detection?: DetectionBar[] }).detection!.length > 0 ? (source as { detection?: DetectionBar[] }).detection! : fallback.detection,
+    events: Array.isArray((source as { events?: RecentEvent[] } | undefined)?.events) && (source as { events?: RecentEvent[] }).events!.length > 0 ? (source as { events?: RecentEvent[] }).events! : fallback.events,
+    threats: mappedThreats,
+    entities: mappedEntities,
+    investigations: mappedInvestigations,
+    alerts: mappedAlerts,
+    incidents: mappedIncidents,
+    integrations: Array.isArray((source as { integrations?: IntegrationConnection[] } | undefined)?.integrations) && (source as { integrations?: IntegrationConnection[] }).integrations!.length > 0 ? (source as { integrations?: IntegrationConnection[] }).integrations! : fallback.integrations,
+  };
+}
 
 export const dashboardNavigation: DashboardNavigationItem[] = [
   { id: "overview", label: "Overview", href: "/", count: "12" },
@@ -620,15 +869,15 @@ function normalizeRealApiPayload(payload: DashboardApiEnvelope | null | undefine
   return normalizeDashboardPayload(
     {
       section: (dashboardData.section ?? fallbackSection ?? "overview") as DashboardSectionKey,
-      stats: dashboardData.stats ?? [],
-      detection: dashboardData.detection ?? [],
-      events: dashboardData.events ?? [],
-      threats: dashboardData.threats ?? [],
-      entities: dashboardData.entities ?? [],
-      investigations: dashboardData.investigations ?? [],
-      alerts: dashboardData.alerts ?? [],
-      incidents: dashboardData.incidents ?? [],
-      integrations: dashboardData.integrations ?? [],
+      stats: Array.isArray(dashboardData.stats) ? dashboardData.stats : [],
+      detection: Array.isArray(dashboardData.detection) ? dashboardData.detection : [],
+      events: Array.isArray(dashboardData.events) ? dashboardData.events : [],
+      threats: Array.isArray(dashboardData.threats) ? dashboardData.threats : [],
+      entities: Array.isArray(dashboardData.entities) ? dashboardData.entities : [],
+      investigations: Array.isArray(dashboardData.investigations) ? dashboardData.investigations : [],
+      alerts: Array.isArray(dashboardData.alerts) ? dashboardData.alerts : [],
+      incidents: Array.isArray(dashboardData.incidents) ? dashboardData.incidents : [],
+      integrations: Array.isArray(dashboardData.integrations) ? dashboardData.integrations : [],
     },
     fallbackSection,
   );
@@ -636,61 +885,40 @@ function normalizeRealApiPayload(payload: DashboardApiEnvelope | null | undefine
 
 export async function fetchDashboardSnapshot(section: string = "overview", id?: string | null): Promise<DashboardSnapshot> {
   const normalizedSection = section || "overview";
-  const apiConfig = {
-    baseUrl: (process.env.SANCTUM_API_BASE_URL ?? process.env.NEXT_PUBLIC_SANCTUM_API_URL ?? "").replace(/\/$/, ""),
-    token: process.env.SANCTUM_API_TOKEN ?? process.env.NEXT_PUBLIC_SANCTUM_API_TOKEN ?? "",
-    apiKey: process.env.SANCTUM_API_KEY ?? process.env.NEXT_PUBLIC_SANCTUM_API_KEY ?? "",
-    useRealData: (process.env.SANCTUM_USE_REAL_DATA ?? process.env.NEXT_PUBLIC_SANCTUM_USE_REAL_DATA ?? "true") !== "false",
-  };
+  const apiConfig = getSanctumApiConfig();
 
-  if (!apiConfig.useRealData || !apiConfig.baseUrl) {
+  if (!shouldUseRealApiData() || !apiConfig.baseUrl) {
     return getDashboardSnapshot(normalizedSection);
   }
 
-  const headers = {
-    Accept: "application/json",
-    ...(apiConfig.token
-      ? { Authorization: `Bearer ${apiConfig.token}` }
-      : apiConfig.apiKey
-        ? { "X-API-Key": apiConfig.apiKey }
-        : {}),
-  };
+  const endpoints = getSanctumApiEndpoints(apiConfig.baseUrl, normalizedSection, id);
 
-  for (const endpoint of [
-    `${apiConfig.baseUrl}/api/v1/dashboard`,
-    `${apiConfig.baseUrl}/api/dashboard`,
-    `${apiConfig.baseUrl}/api/v1/cti/dashboard`,
-  ]) {
-    try {
-      const url = new URL(endpoint);
-      url.searchParams.set("section", normalizedSection);
-      if (id) {
-        url.searchParams.set("id", id);
-      }
+  for (const endpoint of endpoints) {
+    const payload = await fetchSanctumApi<SanctumCtiApiEnvelope>(
+      endpoint,
+      {
+        baseUrl: apiConfig.baseUrl,
+        token: apiConfig.token,
+        apiKey: apiConfig.apiKey,
+        useRealData: apiConfig.useRealData,
+      },
+      { cache: "no-store" },
+    );
 
-      const response = await fetch(url.toString(), {
-        cache: "no-store",
-        headers,
-      });
-
-      if (!response.ok) {
-        continue;
-      }
-
-      const payload = (await response.json()) as DashboardApiEnvelope | null;
-      const dashboardData = payload?.data?.dashboard ?? payload?.dashboard ?? payload;
-      const hasDataset = !!dashboardData && (
-        Array.isArray(dashboardData.threats) ||
-        Array.isArray(dashboardData.entities) ||
-        Array.isArray(dashboardData.incidents) ||
-        Array.isArray(dashboardData.alerts)
-      );
-
-      if (hasDataset) {
-        return normalizeRealApiPayload(payload, normalizedSection);
-      }
-    } catch {
+    if (!payload) {
       continue;
+    }
+
+    const dashboardData = payload?.data?.dashboard ?? payload?.dashboard ?? payload;
+    const hasDataset = !!dashboardData && (
+      Array.isArray((dashboardData as { threats?: unknown[] }).threats) ||
+      Array.isArray((dashboardData as { entities?: unknown[] }).entities) ||
+      Array.isArray((dashboardData as { incidents?: unknown[] }).incidents) ||
+      Array.isArray((dashboardData as { alerts?: unknown[] }).alerts)
+    );
+
+    if (hasDataset) {
+      return normalizeLiveDashboardPayload(payload, normalizedSection);
     }
   }
 
