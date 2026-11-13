@@ -1,0 +1,1 @@
+cl : Wiersz polecenia warning D9002 : ignorowanie nieznanej opcji "-std=c++17"

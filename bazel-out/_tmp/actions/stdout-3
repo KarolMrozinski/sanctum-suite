@@ -1,0 +1,1 @@
+LINK : warning LNK4315: /DEBUG:FASTLINK nie jest juz obslugiwany. Zamiast tego uzyj parametru /DEBUG:FULL. Uzyj lancucha narzedzi programu VS 2022, aby kontynuowac kompilowanie za pomoca polecenia /DEBUG:FASTLINK

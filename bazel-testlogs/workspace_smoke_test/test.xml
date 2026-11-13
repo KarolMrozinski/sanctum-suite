@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuites>
+<testsuite name=".\workspace_smoke_test.exe" tests="1" failures="0" errors="0">
+<testcase name=".\workspace_smoke_test.exe" classname="" status="run" duration="0" time="0"></testcase>
+<system-out><![CDATA[Executing tests from //:workspace_smoke_test
+-----------------------------------------------------------------------------
+workspace smoke test passed
+]]></system-out>
+</testsuite>
+</testsuites>
