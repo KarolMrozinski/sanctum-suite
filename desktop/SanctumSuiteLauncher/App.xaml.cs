@@ -35,12 +35,13 @@ public partial class App : Wpf.Application
     private readonly HttpClient _client = new();
     private readonly object _startupLock = new();
     private bool _startupInProgress;
-    private string AppUrl => Environment.GetEnvironmentVariable("SANCTUM_APP_URL") ?? "http://localhost:3000";
+    private string AppUrl => NormalizeAppUrl(Environment.GetEnvironmentVariable("SANCTUM_APP_URL") ?? "http://127.0.0.1:3000");
     private Wpf.Window _window = null!;
     private readonly DispatcherTimer _timer = new();
     private Process? _nodeProcess;
     private Wpf.Controls.Button _startBtn = null!;
     private Wpf.Controls.Button _stopBtn = null!;
+    private Wpf.Controls.Button _killStaleBtn = null!;
     private Wpf.Controls.Button _openBtn = null!;
     private Wpf.Controls.TextBlock _status = null!;
     private Wpf.Controls.TextBlock _statusDetail = null!;
@@ -130,6 +131,63 @@ public partial class App : Wpf.Application
         }
 
         return baseDir;
+    }
+
+    private static string NormalizeAppUrl(string? value)
+    {
+        var candidate = string.IsNullOrWhiteSpace(value) ? "http://127.0.0.1:3000" : value.Trim();
+        if (candidate.EndsWith("/", StringComparison.Ordinal) && candidate.Length > 1)
+        {
+            candidate = candidate.TrimEnd('/');
+        }
+
+        candidate = candidate.Replace("0.0.0.0", "127.0.0.1", StringComparison.OrdinalIgnoreCase);
+        if (!Uri.TryCreate(candidate, UriKind.Absolute, out var uri))
+        {
+            return "http://127.0.0.1:3000";
+        }
+
+        return uri.GetLeftPart(UriPartial.Authority).TrimEnd('/') + (string.IsNullOrEmpty(uri.AbsolutePath) || uri.AbsolutePath == "/" ? string.Empty : uri.AbsolutePath);
+    }
+
+    private static bool IsAppHealthy(string url)
+    {
+        try
+        {
+            using var client = new HttpClient { Timeout = TimeSpan.FromSeconds(2) };
+            using var response = client.GetAsync(url).GetAwaiter().GetResult();
+            return response.IsSuccessStatusCode;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    private void CleanupStaleSanctumProcesses()
+    {
+        foreach (var proc in Process.GetProcesses().Where(p =>
+                     p.ProcessName.Contains("node", StringComparison.OrdinalIgnoreCase)
+                     || p.ProcessName.Contains("powershell", StringComparison.OrdinalIgnoreCase)
+                     || p.ProcessName.Contains("cmd", StringComparison.OrdinalIgnoreCase)).ToList())
+        {
+            try
+            {
+                var cmd = proc.StartInfo?.Arguments ?? string.Empty;
+                var matchesSanctum = cmd.Contains("sanctum-dashboard", StringComparison.OrdinalIgnoreCase)
+                    || cmd.Contains("next dev", StringComparison.OrdinalIgnoreCase)
+                    || cmd.Contains("npm run dev", StringComparison.OrdinalIgnoreCase)
+                    || cmd.Contains("--port 3000", StringComparison.OrdinalIgnoreCase)
+                    || cmd.Contains("--hostname", StringComparison.OrdinalIgnoreCase);
+
+                if (matchesSanctum && !IsAppHealthy(AppUrl))
+                {
+                    proc.Kill(true);
+                    AppendLog($"[launcher] Killed stale Sanctum dev process PID {proc.Id}.");
+                }
+            }
+            catch { }
+        }
     }
 
     protected override void OnExit(ExitEventArgs e)
@@ -403,12 +461,13 @@ public partial class App : Wpf.Application
         buttons.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
         buttons.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
         buttons.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        buttons.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1.15, GridUnitType.Star) });
 
         _startBtn = new Wpf.Controls.Button
         {
             Content = "Start",
             Height = 46,
-            Margin = new Thickness(0, 0, 10, 0),
+            Margin = new Thickness(0, 0, 8, 0),
             Background = new SolidColorBrush(System.Windows.Media.Color.FromRgb(14, 116, 144)),
             Foreground = System.Windows.Media.Brushes.White,
             BorderBrush = System.Windows.Media.Brushes.Transparent,
@@ -429,7 +488,7 @@ public partial class App : Wpf.Application
         {
             Content = "Stop",
             Height = 46,
-            Margin = new Thickness(10, 0, 10, 0),
+            Margin = new Thickness(8, 0, 8, 0),
             Background = new SolidColorBrush(System.Windows.Media.Color.FromRgb(51, 65, 85)),
             Foreground = System.Windows.Media.Brushes.White,
             BorderBrush = System.Windows.Media.Brushes.Transparent,
@@ -446,11 +505,32 @@ public partial class App : Wpf.Application
             Template = CreateFlatButtonTemplate(System.Windows.Media.Color.FromRgb(51, 65, 85))
         };
 
+        _killStaleBtn = new Wpf.Controls.Button
+        {
+            Content = "Kill stale server",
+            Height = 46,
+            Margin = new Thickness(8, 0, 8, 0),
+            Background = new SolidColorBrush(System.Windows.Media.Color.FromRgb(120, 53, 15)),
+            Foreground = System.Windows.Media.Brushes.White,
+            BorderBrush = System.Windows.Media.Brushes.Transparent,
+            BorderThickness = new Thickness(0),
+            FontWeight = FontWeights.SemiBold,
+            Cursor = System.Windows.Input.Cursors.Hand,
+            Padding = new Thickness(0),
+            HorizontalAlignment = Wpf.HorizontalAlignment.Stretch,
+            VerticalContentAlignment = VerticalAlignment.Center,
+            HorizontalContentAlignment = Wpf.HorizontalAlignment.Center,
+            FocusVisualStyle = null,
+            SnapsToDevicePixels = true,
+            UseLayoutRounding = true,
+            Template = CreateFlatButtonTemplate(System.Windows.Media.Color.FromRgb(120, 53, 15))
+        };
+
         _openBtn = new Wpf.Controls.Button
         {
             Content = "Open app",
             Height = 46,
-            Margin = new Thickness(10, 0, 0, 0),
+            Margin = new Thickness(8, 0, 0, 0),
             Background = new SolidColorBrush(System.Windows.Media.Color.FromRgb(24, 24, 27)),
             Foreground = System.Windows.Media.Brushes.White,
             BorderBrush = System.Windows.Media.Brushes.Transparent,
@@ -469,10 +549,12 @@ public partial class App : Wpf.Application
 
         Grid.SetColumn(_startBtn, 0);
         Grid.SetColumn(_stopBtn, 1);
-        Grid.SetColumn(_openBtn, 2);
+        Grid.SetColumn(_killStaleBtn, 2);
+        Grid.SetColumn(_openBtn, 3);
 
         _startBtn.Click += async (_, _) => await StartAppAsync();
         _stopBtn.Click += (_, _) => StopApp();
+        _killStaleBtn.Click += (_, _) => KillStaleNodeServer();
         _openBtn.Click += (_, _) =>
         {
             if (!IsAppRunning()) return;
@@ -481,6 +563,7 @@ public partial class App : Wpf.Application
 
         buttons.Children.Add(_startBtn);
         buttons.Children.Add(_stopBtn);
+        buttons.Children.Add(_killStaleBtn);
         buttons.Children.Add(_openBtn);
 
         Grid.SetRow(header, 0);
@@ -525,6 +608,9 @@ public partial class App : Wpf.Application
         var stopItem = new WinForms.ToolStripMenuItem("Stop");
         stopItem.Click += (_, _) => StopApp();
 
+        var killStaleItem = new WinForms.ToolStripMenuItem("Kill stale server");
+        killStaleItem.Click += (_, _) => KillStaleNodeServer();
+
         var showItem = new WinForms.ToolStripMenuItem("Show");
         showItem.Click += (_, _) => RestoreWindow();
 
@@ -547,6 +633,7 @@ public partial class App : Wpf.Application
 
         trayMenu.Items.Add(startItem);
         trayMenu.Items.Add(stopItem);
+        trayMenu.Items.Add(killStaleItem);
         trayMenu.Items.Add(new ToolStripSeparator());
         trayMenu.Items.Add(showItem);
         trayMenu.Items.Add(openItem);
@@ -588,10 +675,12 @@ public partial class App : Wpf.Application
         {
             var appProjectDir = _appDir;
 
+            CleanupStaleSanctumProcesses();
+
             if (IsAppRunning())
             {
-                SetStatus("Running", true, "Dashboard is already responding on http://localhost:3000");
-                AppendLog("[launcher] App already running; skipping startup");
+                SetStatus("Running", true, $"Dashboard is already responding on {AppUrl}");
+                AppendLog($"[launcher] App already running; skipping startup ({AppUrl})");
                 return;
             }
 
@@ -850,7 +939,7 @@ public partial class App : Wpf.Application
             var appRunning = IsAppRunning();
             if (!appRunning)
             {
-                issues.Add($"Port {port} is already in use by another process.");
+                issues.Add($"Port {port} jest zajęty przez stary proces Node. Zamknąć i uruchomić ponownie?");
             }
         }
 
@@ -904,6 +993,58 @@ public partial class App : Wpf.Application
         }
     }
 
+    private void KillStaleNodeServer()
+    {
+        var killedAny = false;
+
+        foreach (var proc in Process.GetProcesses().Where(p =>
+                     p.ProcessName.Contains("node", StringComparison.OrdinalIgnoreCase)
+                     || p.ProcessName.Contains("powershell", StringComparison.OrdinalIgnoreCase)
+                     || p.ProcessName.Contains("cmd", StringComparison.OrdinalIgnoreCase)).ToList())
+        {
+            try
+            {
+                var cmd = proc.StartInfo?.Arguments ?? string.Empty;
+                var isSanctumDev = cmd.Contains("sanctum-dashboard", StringComparison.OrdinalIgnoreCase)
+                    || cmd.Contains("next dev", StringComparison.OrdinalIgnoreCase)
+                    || cmd.Contains("npm run dev", StringComparison.OrdinalIgnoreCase)
+                    || cmd.Contains("--hostname", StringComparison.OrdinalIgnoreCase)
+                    || cmd.Contains("--port 3000", StringComparison.OrdinalIgnoreCase)
+                    || cmd.Contains("3000", StringComparison.OrdinalIgnoreCase);
+
+                if (!isSanctumDev)
+                {
+                    continue;
+                }
+
+                proc.Kill(true);
+                killedAny = true;
+                AppendLog($"[launcher] Killed stale Node server PID {proc.Id} on port 3000.");
+            }
+            catch { }
+        }
+
+        if (!killedAny)
+        {
+            AppendLog("[launcher] No stale Sanctum Node process was found to kill.");
+        }
+
+        try
+        {
+            File.Delete(_pidFile);
+        }
+        catch { }
+
+        try
+        {
+            File.Delete(_browserFlag);
+        }
+        catch { }
+
+        SetStatus("ready", true, "Port 3000 is free again. You can start the dashboard.");
+        RefreshStatus();
+    }
+
     private void OpenBrowserOnce()
     {
         TryOpenBrowser(true);
@@ -912,6 +1053,12 @@ public partial class App : Wpf.Application
     private bool IsAppRunning()
     {
         var targetUrl = AppUrl;
+
+        if (IsAppHealthy(targetUrl))
+        {
+            return true;
+        }
+
         var expectedHost = ExtractHost(targetUrl);
         var expectedPort = ExtractPort(targetUrl);
 
@@ -925,7 +1072,7 @@ public partial class App : Wpf.Application
                     using var proc = Process.GetProcessById(pid);
                     if (!proc.HasExited)
                     {
-                        return true;
+                        return IsAppHealthy(targetUrl);
                     }
                 }
                 catch { }
@@ -950,7 +1097,7 @@ public partial class App : Wpf.Application
 
                 if (isNodeOrShell && (matchesDevServer || matchesTargetUrl))
                 {
-                    return true;
+                    return IsAppHealthy(targetUrl);
                 }
             }
             catch { }
@@ -972,6 +1119,7 @@ public partial class App : Wpf.Application
     {
         var isRunning = IsAppRunning();
         var envIssues = ValidateEnvironment();
+        var stalePortIssue = IsPortInUse(ExtractPort(AppUrl)) && !isRunning;
 
         if (isRunning)
         {
@@ -995,6 +1143,9 @@ public partial class App : Wpf.Application
 
         _stopBtn.IsEnabled = isRunning;
         _stopBtn.Background = new SolidColorBrush(isRunning ? System.Windows.Media.Color.FromRgb(51, 65, 85) : System.Windows.Media.Color.FromRgb(30, 41, 59));
+
+        _killStaleBtn.IsEnabled = stalePortIssue;
+        _killStaleBtn.Background = new SolidColorBrush(stalePortIssue ? System.Windows.Media.Color.FromRgb(120, 53, 15) : System.Windows.Media.Color.FromRgb(30, 41, 59));
 
         var browserOpened = File.Exists(_browserFlag);
         _openBtn.IsEnabled = isRunning && !browserOpened;
