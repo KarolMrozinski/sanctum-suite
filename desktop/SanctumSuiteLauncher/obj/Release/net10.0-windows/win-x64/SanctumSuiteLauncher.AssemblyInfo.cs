@@ -10,11 +10,13 @@
 using System;
 using System.Reflection;
 
-[assembly: System.Reflection.AssemblyCompanyAttribute("SanctumSuiteLauncher")]
+[assembly: System.Reflection.AssemblyCompanyAttribute("KarolMrozinski")]
 [assembly: System.Reflection.AssemblyConfigurationAttribute("Release")]
+[assembly: System.Reflection.AssemblyCopyrightAttribute("Copyright © KarolMrozinski")]
+[assembly: System.Reflection.AssemblyDescriptionAttribute("Sanctum Suite desktop launcher and runtime shell for the CTI dashboard.")]
 [assembly: System.Reflection.AssemblyFileVersionAttribute("1.0.0.0")]
-[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+076b4d2c982ac49de56699af53dd9f47f8f7c4c9")]
-[assembly: System.Reflection.AssemblyProductAttribute("SanctumSuiteLauncher")]
+[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+0dac45980aefca6493532b2fb8fb20640cdc0392")]
+[assembly: System.Reflection.AssemblyProductAttribute("Sanctum Suite")]
 [assembly: System.Reflection.AssemblyTitleAttribute("SanctumSuiteLauncher")]
 [assembly: System.Reflection.AssemblyVersionAttribute("1.0.0.0")]
 [assembly: System.Runtime.Versioning.TargetPlatformAttribute("Windows7.0")]
