@@ -1,3 +1,5 @@
+load("@rules_cc//cc:defs.bzl", "cc_library", "cc_test")
+
 filegroup(
     name = "live_runtime",
     srcs = glob(
@@ -7,8 +9,29 @@ filegroup(
             "**/bazel-*/**",
             "**/target/**",
             "**/node_modules/**",
+            "**/.venv/**",
+            "**/.idea/**",
         ],
         allow_empty = True,
     ),
     visibility = ["//visibility:public"],
+)
+
+cc_library(
+    name = "runtime_transport_windows",
+    srcs = ["src/runtime_transport_windows.cc"],
+    hdrs = ["src/runtime_transport_windows.h"],
+    includes = ["."],
+    visibility = ["//visibility:public"],
+)
+
+cc_test(
+    name = "runtime_transport_windows_test",
+    srcs = ["tests/runtime_transport_windows_test.cc"],
+    deps = [":runtime_transport_windows"],
+    size = "small",
+    copts = select({
+        "@bazel_tools//tools/cpp:msvc": ["/std:c++17"],
+        "//conditions:default": ["-std=c++17"],
+    }),
 )

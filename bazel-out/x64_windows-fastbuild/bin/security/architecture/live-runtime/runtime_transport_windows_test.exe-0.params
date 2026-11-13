@@ -1,0 +1,9 @@
+/nologo
+/OUT:bazel-out/x64_windows-fastbuild/bin/security/architecture/live-runtime/runtime_transport_windows_test.exe
+bazel-out/x64_windows-fastbuild/bin/security/architecture/live-runtime/_objs/runtime_transport_windows_test/runtime_transport_windows_test.obj
+bazel-out/x64_windows-fastbuild/bin/security/architecture/live-runtime/runtime_transport_windows.lib
+/SUBSYSTEM:CONSOLE
+/MACHINE:X64
+/DEFAULTLIB:msvcrt.lib
+/DEBUG:FASTLINK
+/INCREMENTAL:NO

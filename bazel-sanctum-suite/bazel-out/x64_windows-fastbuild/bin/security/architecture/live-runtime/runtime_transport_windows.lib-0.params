@@ -1,0 +1,5 @@
+/nologo
+/OUT:bazel-out/x64_windows-fastbuild/bin/security/architecture/live-runtime/runtime_transport_windows.lib
+/MACHINE:X64
+bazel-out/x64_windows-fastbuild/bin/security/architecture/live-runtime/_objs/runtime_transport_windows/runtime_transport_windows.obj
+/ignore:4221

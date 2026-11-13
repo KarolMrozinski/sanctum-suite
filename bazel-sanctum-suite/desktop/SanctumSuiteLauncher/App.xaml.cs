@@ -647,14 +647,8 @@ public partial class App : Wpf.Application
 
         _window.Show();
         _window.Activate();
-        AppendLog("[launcher] Startup diagnostics initialized.");
+        AppendLog("[launcher] Startup diagnostics initialized. Automatic app launch is disabled until user starts it manually.");
         RefreshStatus();
-
-        _ = Task.Run(async () =>
-        {
-            await Task.Delay(500);
-            await Dispatcher.InvokeAsync(async () => await StartAppAsync());
-        });
 
         base.OnStartup(e);
     }
@@ -785,8 +779,7 @@ public partial class App : Wpf.Application
             if (started)
             {
                 SetStatus("Running", true, "Dashboard is live and responding on localhost:3000");
-                AppendLog("[launcher] Dashboard health check passed.");
-                TryOpenBrowser(false);
+                AppendLog("[launcher] Dashboard health check passed. Browser launch is deferred until the user clicks Open app.");
             }
             else
             {

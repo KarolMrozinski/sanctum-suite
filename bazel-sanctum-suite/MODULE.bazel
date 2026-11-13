@@ -4,3 +4,8 @@ module(
 )
 
 bazel_dep(name = "rules_cc", version = "0.2.17")
+bazel_dep(name = "rules_python", version = "1.7.0")
+bazel_dep(name = "rules_shell", version = "0.6.1")
+
+# Optional Windows-native toolchain integration hooks for C/C++ and Bazel-based local validation.
+# These remain intentionally lightweight and do not duplicate existing build logic.
