@@ -53,17 +53,6 @@ From the repository root:
 - `sanctum-suite-gui-launcher.ps1`
 - `SanctumSuiteLauncher.exe`
 
-Sanctum Suite now stays quiet until you launch it intentionally; it no longer opens hidden background instances during startup.
-
-### Clean stale background instances
-
-If older Sanctum windows remain running in the background, use:
-
-- `kill-stale-sanctum.ps1`
-- `kill-stale-sanctum.cmd`
-
-This helps clear stale local dashboard processes without a full reboot.
-
 ### Stop the runtime
 
 ```bash
